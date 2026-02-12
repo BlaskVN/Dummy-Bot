@@ -1,0 +1,50 @@
+[Unit]
+Description=Rust Discord Bot Service
+# Only start after network is fully online.
+# Critical for power outage recovery: server boots faster than router/modem,
+# so the bot would crash without network if started immediately.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Security: run as dedicated non-root user
+User=bot_user
+Group=bot_user
+
+# Path to the compiled release binary
+ExecStart=/home/bot_user/bot/my_rust_bot
+WorkingDirectory=/home/bot_user/bot
+
+# --- AUTO-RECOVERY CONFIGURATION ---
+# 'always': Restart regardless of exit code (0 or non-zero, killed or crashed)
+Restart=always
+
+# Wait 10 seconds before restarting (prevents Discord API rate limiting on crash loops)
+RestartSec=10
+
+# Restart loop prevention:
+# If the bot restarts more than 5 times within 60 seconds, systemd stops it entirely
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# --- LOGGING ---
+# Route stdout/stderr to journald for centralized log management
+# View logs: journalctl -u discord-bot -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=discord-bot
+
+# --- ENVIRONMENT ---
+EnvironmentFile=/home/bot_user/bot/.env
+
+# --- RESOURCE LIMITS ---
+# Prevent the bot from consuming excessive memory
+MemoryMax=256M
+# Limit CPU usage
+CPUQuota=50%
+
+[Install]
+# Enable at normal multi-user runlevel (standard server mode)
+WantedBy=multi-user.target

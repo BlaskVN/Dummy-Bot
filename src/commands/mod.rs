@@ -1,0 +1,29 @@
+pub mod administration;
+pub mod general;
+pub mod moderation;
+pub mod music;
+
+use crate::{Data, Error};
+
+/// Returns a vector of all registered commands.
+///
+/// This function acts as the central registry — add new command modules here
+/// and call their individual commands. `main.rs` only needs to call `commands::all()`.
+pub fn all() -> Vec<poise::Command<Data, Error>> {
+    vec![
+        // General utilities
+        general::ping(),
+        general::botinfo(),
+        general::serverinfo(),
+        // Moderation
+        moderation::kick(),
+        moderation::ban(),
+        moderation::purge(),
+        // Administration
+        administration::settings(),
+        administration::setprefix(),
+        // Music (placeholder)
+        music::play(),
+        music::stop(),
+    ]
+}
