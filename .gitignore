@@ -1,1 +1,10 @@
 /target
+/data
+
+# environment variables
+.env
+
+# editor
+/.vscode
+/.idea
+

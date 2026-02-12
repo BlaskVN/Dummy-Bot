@@ -31,6 +31,19 @@ pub async fn init_db(database_url: &str) -> Result<SqlitePool> {
     .await
     .context("Failed to create guild_config table")?;
 
+    // Message logging configuration table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS message_log_config (
+            guild_id TEXT PRIMARY KEY,
+            log_channel_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create message_log_config table")?;
+
     tracing::info!("Database initialized successfully");
     Ok(pool)
 }

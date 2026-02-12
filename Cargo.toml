@@ -1,5 +1,5 @@
 [package]
-name = "my_rust_bot"
+name = "rust_discord_bot"
 version = "0.1.0"
 edition = "2024"
 description = "High-performance modular Discord bot in Rust"
@@ -26,6 +26,9 @@ dotenv = "0.15"
 
 # Chrono for timestamps
 chrono = "0.4"
+
+# HTTP client for downloading attachments
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 [profile.release]
 opt-level = 3

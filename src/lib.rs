@@ -2,6 +2,7 @@ pub mod commands;
 pub mod config;
 pub mod database;
 pub mod error;
+pub mod handlers;
 
 use sqlx::SqlitePool;
 
@@ -9,6 +10,7 @@ use sqlx::SqlitePool;
 pub struct Data {
     pub db_pool: SqlitePool,
     pub start_time: std::time::Instant,
+    pub http_client: reqwest::Client,
 }
 
 /// Centralized error type for the entire bot.
