@@ -62,10 +62,17 @@ pub async fn handle_message_delete(
     };
 
     // Build the embed
+    // Description limit is 4096 chars, reserve space for labels and formatting
+    // author_text (~40) + channel_text (~40) + content_label (~15) + newlines (~3) = ~98 chars
+    // Available for content: 4096 - 98 - 6 (``` ```) = ~3992 chars
+    // But we'll be more conservative to ensure total embed stays under 6000 chars
+    const MAX_CONTENT_CHARS: usize = 1900;
+    
     let content_preview = if message.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
-        message.content.chars().take(1000).collect()
+        let preview: String = message.content.chars().take(MAX_CONTENT_CHARS).collect();
+        format!("```{}```", preview)
     };
 
     let author_text = tf(lang, TranslationKey::MessageAuthor, &[&message.author.id]);
@@ -173,8 +180,12 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
     };
 
     // Build embed showing before/after
-    let old_preview: String = old_message.content.chars().take(500).collect();
-    let new_preview: String = new_content.chars().take(500).collect();
+    // Field value limit is 1024 chars, with ``` ``` overhead (6 chars) = 1018 chars available
+    // We'll use 900 chars to leave some margin and ensure total embed stays under 6000
+    const MAX_FIELD_CONTENT_CHARS: usize = 900;
+    
+    let old_preview: String = old_message.content.chars().take(MAX_FIELD_CONTENT_CHARS).collect();
+    let new_preview: String = new_content.chars().take(MAX_FIELD_CONTENT_CHARS).collect();
 
     let author_text = tf(lang, TranslationKey::MessageAuthor, &[&old_message.author.id]);
     let channel_text = tf(lang, TranslationKey::MessageChannel, &[&event.channel_id]);
@@ -271,28 +282,50 @@ pub async fn handle_message_delete_bulk(
     let total_count = deleted_message_ids.len();
     let user_count = cached_count - bot_count;
 
-    // Build detailed message list (limited to first 10 to avoid spam)
+    // Build all formatted lines for user messages
     let media_only = t(lang, TranslationKey::MessageMediaOnly);
-    let mut message_list = String::new();
-    for (i, (author, content)) in user_messages.iter().take(10).enumerate() {
-        let content_preview: String = content.chars().take(100).collect();
+    let mut all_lines: Vec<String> = Vec::new();
+
+    for (i, (author, content)) in user_messages.iter().enumerate() {
+        let content_preview: String = content.chars().take(50).collect();
         let preview = if content_preview.is_empty() {
-            media_only
+            media_only.to_string()
         } else {
-            &content_preview
+            content_preview
         };
-        message_list.push_str(&format!("{}. **{}**: {}\n", i + 1, author, preview));
+        all_lines.push(format!("{}. {}: {}", i + 1, author, preview));
     }
 
-    if user_messages.len() > 10 {
-        message_list.push_str(&format!("\n*...and {} more messages*", user_messages.len() - 10));
+    // Split lines into chunks that fit within field value limit
+    // Field value limit: 1024 chars, ``` ``` overhead: 6 chars → 1018 usable
+    const MAX_CHUNK_CHARS: usize = 1000;
+
+    let mut chunks: Vec<String> = Vec::new();
+    let mut current_chunk = String::new();
+
+    for line in &all_lines {
+        let needed = if current_chunk.is_empty() {
+            line.len()
+        } else {
+            line.len() + 1 // +1 for \n separator
+        };
+
+        if !current_chunk.is_empty() && current_chunk.len() + needed > MAX_CHUNK_CHARS {
+            chunks.push(current_chunk);
+            current_chunk = String::new();
+        }
+
+        if !current_chunk.is_empty() {
+            current_chunk.push('\n');
+        }
+        current_chunk.push_str(line);
     }
 
-    if message_list.is_empty() {
-        message_list = "*No cached messages to display*".to_string();
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk);
     }
 
-    // Build the embed
+    // Build summary texts
     let channel_text = tf(lang, TranslationKey::MessageChannel, &[&channel_id]);
     let total_text = tf(lang, TranslationKey::MessageTotalDeleted, &[&total_count]);
     let cached_text = tf(lang, TranslationKey::MessageCached, &[&cached_count, &user_count, &bot_count]);
@@ -304,19 +337,75 @@ pub async fn handle_message_delete_bulk(
 
     let deleted_messages_label = t(lang, TranslationKey::MessageDeletedMessages);
     let footer_text = tf(lang, TranslationKey::MessagePurged, &[&total_count]);
+    let total_chunks = chunks.len();
 
-    let embed = serenity::CreateEmbed::new()
-        .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
-        .description(description)
-        .field(deleted_messages_label, message_list, false)
-        .color(0xe67e22) // Orange
-        .timestamp(serenity::Timestamp::now())
-        .footer(serenity::CreateEmbedFooter::new(footer_text));
+    // Build embeds: first embed has full summary, subsequent embeds are continuation pages
+    let mut embeds: Vec<serenity::CreateEmbed> = Vec::new();
 
-    let builder = serenity::CreateMessage::new().embed(embed);
+    if chunks.is_empty() {
+        // No cached messages to display
+        let embed = serenity::CreateEmbed::new()
+            .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
+            .description(description)
+            .field(deleted_messages_label, "*No cached messages to display*", false)
+            .color(0xe67e22)
+            .timestamp(serenity::Timestamp::now())
+            .footer(serenity::CreateEmbedFooter::new(footer_text));
+        embeds.push(embed);
+    } else {
+        for (idx, chunk) in chunks.iter().enumerate() {
+            let field_value = format!("```{}```", chunk);
 
-    if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
-        tracing::error!("Failed to send bulk delete log: {}", e);
+            if idx == 0 {
+                // Main embed with summary info
+                let field_name = if total_chunks > 1 {
+                    format!("{} [{}/{}]", deleted_messages_label, idx + 1, total_chunks)
+                } else {
+                    deleted_messages_label.to_string()
+                };
+
+                let embed = serenity::CreateEmbed::new()
+                    .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
+                    .description(&description)
+                    .field(field_name, field_value, false)
+                    .color(0xe67e22)
+                    .timestamp(serenity::Timestamp::now())
+                    .footer(serenity::CreateEmbedFooter::new(&footer_text));
+                embeds.push(embed);
+            } else {
+                // Continuation embed — lightweight, just the message chunk
+                let field_name = format!(
+                    "{} [{}/{}]",
+                    deleted_messages_label,
+                    idx + 1,
+                    total_chunks
+                );
+
+                let embed = serenity::CreateEmbed::new()
+                    .field(field_name, field_value, false)
+                    .color(0xe67e22);
+                embeds.push(embed);
+            }
+        }
+    }
+
+    // Send embeds in batches of 10 (Discord limit per message)
+    const MAX_EMBEDS_PER_MESSAGE: usize = 10;
+    let mut remaining = embeds;
+
+    while !remaining.is_empty() {
+        let batch_size = remaining.len().min(MAX_EMBEDS_PER_MESSAGE);
+        let batch: Vec<serenity::CreateEmbed> = remaining.drain(..batch_size).collect();
+
+        let mut builder = serenity::CreateMessage::new();
+        for embed in batch {
+            builder = builder.embed(embed);
+        }
+
+        if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
+            tracing::error!("Failed to send bulk delete log: {}", e);
+            break;
+        }
     }
 }
 
