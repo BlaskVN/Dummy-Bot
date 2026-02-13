@@ -1,39 +1,40 @@
-pub mod administration;
-pub mod general;
-pub mod language;
-pub mod logging;
-pub mod moderation;
-pub mod music;
-pub mod presence;
-
+pub mod global;
+pub mod guild;
 
 use crate::{Data, Error};
 
 /// Returns a vector of all registered commands.
 ///
-/// This function acts as the central registry — add new command modules here
-/// and call their individual commands. `main.rs` only needs to call `commands::all()`.
+/// Commands are organized by:
+/// - **Channel type**: `guild` (server-only) / `global` (DM + server)
+/// - **Permission level**: `everyone` / `moderator` / `admin` / `owner`
+/// - **Feature**: individual command files
+///
+/// ```text
+/// commands/
+/// ├── guild/                          # Server-only commands
+/// │   ├── everyone/                   # No special permissions
+/// │   │   ├── serverinfo.rs
+/// │   │   └── music.rs
+/// │   ├── moderator/                  # KICK/BAN/MANAGE_MESSAGES
+/// │   │   ├── kick.rs
+/// │   │   ├── ban.rs
+/// │   │   └── purge.rs
+/// │   └── admin/                      # MANAGE_GUILD
+/// │       ├── settings.rs
+/// │       ├── setprefix.rs
+/// │       ├── logging.rs
+/// │       └── language.rs
+/// └── global/                         # DM + Server commands
+///     ├── everyone/
+///     │   ├── ping.rs
+///     │   └── botinfo.rs
+///     └── owner/                      # Bot owner only
+///         └── presence.rs
+/// ```
 pub fn all() -> Vec<poise::Command<Data, Error>> {
-    vec![
-        // General utilities
-        general::ping(),
-        general::botinfo(),
-        general::serverinfo(),
-        // Moderation
-        moderation::kick(),
-        moderation::ban(),
-        moderation::purge(),
-        // Administration
-        administration::settings(),
-        administration::setprefix(),
-        // Message Logging
-        logging::messagelog(),
-        // Language
-        language::language(),
-        // Music (placeholder)
-        music::play(),
-        music::stop(),
-        // Presence (owner only)
-        presence::presence(),
-    ]
+    let mut commands = Vec::new();
+    commands.extend(guild::all());
+    commands.extend(global::all());
+    commands
 }

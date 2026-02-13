@@ -141,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
                 // Convert poise commands to serenity commands with contexts set
                 let commands = &framework.options().commands;
                 let serenity_commands = poise::builtins::create_application_commands(commands);
-                
+
                 // Modify each command to support DM contexts
                 let serenity_commands: Vec<_> = serenity_commands
                     .into_iter()
@@ -160,7 +160,7 @@ async fn main() -> anyhow::Result<()> {
                             ])
                     })
                     .collect();
-                
+
                 // Register the commands globally
                 serenity::Command::set_global_commands(ctx, serenity_commands).await?;
                 tracing::info!("Slash commands registered globally with DM support");
