@@ -28,13 +28,10 @@ dotenvy = "0.15.7"
 chrono = "0.4.43"
 
 # HTTP client for downloading attachments
-reqwest = { version = "0.13.2", default-features = false, features = ["rustls"] }
+reqwest = { version = "0.13.2", features = ["rustls"] }
 
 # Voice support
 songbird = "0.5.0"
-
-# Lazy static initialization
-once_cell = "1.21.3"
 
 [profile.release]
 opt-level = 3

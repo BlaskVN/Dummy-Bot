@@ -1,5 +1,6 @@
 use crate::i18n::{get_guild_language, t, tf, TranslationKey};
 use crate::Data;
+use chrono::DateTime;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
 
@@ -67,7 +68,7 @@ pub async fn handle_message_delete(
     // Available for content: 4096 - 98 - 6 (``` ```) = ~3992 chars
     // But we'll be more conservative to ensure total embed stays under 6000 chars
     const MAX_CONTENT_CHARS: usize = 1900;
-    
+
     let content_preview = if message.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
@@ -183,7 +184,7 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
     // Field value limit is 1024 chars, with ``` ``` overhead (6 chars) = 1018 chars available
     // We'll use 900 chars to leave some margin and ensure total embed stays under 6000
     const MAX_FIELD_CONTENT_CHARS: usize = 900;
-    
+
     let old_preview: String = old_message.content.chars().take(MAX_FIELD_CONTENT_CHARS).collect();
     let new_preview: String = new_content.chars().take(MAX_FIELD_CONTENT_CHARS).collect();
 
@@ -265,7 +266,7 @@ pub async fn handle_message_delete_bulk(
     // Try to fetch cached messages and build a summary
     let mut cached_count = 0;
     let mut bot_count = 0;
-    let mut user_messages = Vec::new();
+    let mut user_messages: Vec<(String, String, i64)> = Vec::new();
 
     for &msg_id in deleted_message_ids {
         if let Some(msg) = ctx.cache.message(channel_id, msg_id) {
@@ -273,27 +274,35 @@ pub async fn handle_message_delete_bulk(
             if msg.author.bot {
                 bot_count += 1;
             } else {
-                // Store user message info for detailed logging
-                user_messages.push((msg.author.name.clone(), msg.content.clone()));
+                // Store user message info with unix timestamp for sorting and display
+                let unix_ts = msg.timestamp.unix_timestamp();
+                user_messages.push((msg.author.name.clone(), msg.content.clone(), unix_ts));
             }
         }
     }
 
+    // Sort messages chronologically (oldest first)
+    user_messages.sort_by_key(|(_, _, ts)| *ts);
+
     let total_count = deleted_message_ids.len();
     let user_count = cached_count - bot_count;
 
-    // Build all formatted lines for user messages
+    // Build all formatted lines for user messages with timestamps
     let media_only = t(lang, TranslationKey::MessageMediaOnly);
     let mut all_lines: Vec<String> = Vec::new();
 
-    for (i, (author, content)) in user_messages.iter().enumerate() {
-        let content_preview: String = content.chars().take(50).collect();
+    for (author, content, unix_ts) in &user_messages {
+        let ts_str = DateTime::from_timestamp(*unix_ts, 0)
+            .map(|dt| dt.format("%d/%m %H:%M").to_string())
+            .unwrap_or_else(|| "??/?? ??:??".to_string());
+
+        let content_preview: String = content.chars().take(45).collect();
         let preview = if content_preview.is_empty() {
             media_only.to_string()
         } else {
             content_preview
         };
-        all_lines.push(format!("{}. {}: {}", i + 1, author, preview));
+        all_lines.push(format!("[{}] {}: {}", ts_str, author, preview));
     }
 
     // Split lines into chunks that fit within field value limit

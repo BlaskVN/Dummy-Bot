@@ -1,4 +1,4 @@
-use crate::i18n::{get_guild_language, Language};
+use crate::i18n::{get_guild_language, t, tf, TranslationKey};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -21,11 +21,7 @@ pub async fn ban(
     let guild_id = ctx.guild_id().ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
 
-    let reason = reason.unwrap_or_else(|| match lang {
-        Language::Vietnamese => "Không có lý do".to_string(),
-        Language::Japanese => "理由なし".to_string(),
-        _ => "No reason provided".to_string(),
-    });
+    let reason = reason.unwrap_or_else(|| t(lang, TranslationKey::ModerationNoReason).to_string());
     let delete_days = delete_days.unwrap_or(0).min(7);
     let member_name = member.user.name.clone();
 
@@ -41,11 +37,7 @@ pub async fn ban(
         "Member banned"
     );
 
-    let message = match lang {
-        Language::Vietnamese => format!("Đã ban **{}**\nLý do: ```{}```", member_name, reason),
-        Language::Japanese => format!("**{}**をBANしました\n理由：```{}```", member_name, reason),
-        _ => format!("Banned **{}**\nReason: ```{}```", member_name, reason),
-    };
+    let message = tf(lang, TranslationKey::ModerationBanned, &[&member_name, &reason]);
 
     let embed = serenity::CreateEmbed::new()
         .description(message)

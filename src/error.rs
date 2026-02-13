@@ -1,4 +1,4 @@
-use crate::i18n::{get_guild_language, tf, Language, TranslationKey};
+use crate::i18n::{get_guild_language, t, tf, Language, TranslationKey};
 use crate::{Data, Error};
 
 /// Centralized error handler for the Poise framework.
@@ -36,11 +36,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 "Argument parse error"
             );
 
-            let message = match lang {
-                Language::Vietnamese => format!("Tham số không hợp lệ: {}", error),
-                Language::Japanese => format!("無効なパラメータ：{}", error),
-                _ => format!("Invalid argument: {}", error),
-            };
+            let message = tf(lang, TranslationKey::ModerationInvalidArgument, &[&error]);
             let _ = ctx.say(message).await;
         }
         poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
@@ -51,18 +47,10 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 
             tracing::warn!(command = ctx.command().name, "Command check failed");
             let message = if let Some(error) = error {
-                match lang {
-                    Language::Vietnamese => format!("Bạn không có quyền: {}", error),
-                    Language::Japanese => format!("権限がありません：{}", error),
-                    _ => format!("You don't have permission: {}", error),
-                }
+                tf(lang, TranslationKey::ModerationUserMissingPermissions, &[&error])
             } else {
                 // owners_only and other checks fire with error = None
-                match lang {
-                    Language::Vietnamese => "Bạn không có quyền sử dụng lệnh này.".to_string(),
-                    Language::Japanese => "このコマンドを使用する権限がありません。".to_string(),
-                    _ => "You don't have permission to use this command.".to_string(),
-                }
+                t(lang, TranslationKey::ErrorNoPermission).to_string()
             };
             let _ = ctx.say(message).await;
         }
@@ -82,11 +70,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 "Bot missing permissions"
             );
 
-            let message = match lang {
-                Language::Vietnamese => format!("Bot thiếu quyền: {}", missing_permissions),
-                Language::Japanese => format!("Botの権限が不足しています：{}", missing_permissions),
-                _ => format!("Bot missing permissions: {}", missing_permissions),
-            };
+            let message = tf(lang, TranslationKey::ModerationBotMissingPermissions, &[&missing_permissions]);
             let _ = ctx.say(message).await;
         }
         poise::FrameworkError::MissingUserPermissions {
@@ -100,11 +84,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             };
 
             if let Some(perms) = missing_permissions {
-                let message = match lang {
-                    Language::Vietnamese => format!("Bạn thiếu quyền: {}", perms),
-                    Language::Japanese => format!("権限が不足しています：{}", perms),
-                    _ => format!("You're missing permissions: {}", perms),
-                };
+                let message = tf(lang, TranslationKey::ModerationUserMissingPermissions, &[&perms]);
                 let _ = ctx.say(message).await;
             }
         }

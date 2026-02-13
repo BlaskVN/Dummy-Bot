@@ -1,5 +1,6 @@
-use once_cell::sync::Lazy;
+use poise::serenity_prelude;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 /// Supported languages
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -11,7 +12,7 @@ pub enum Language {
 
 impl Language {
     /// Parse from database string
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "vi" | "vietnamese" => Language::Vietnamese,
             "ja" | "japanese" => Language::Japanese,
@@ -96,12 +97,15 @@ pub enum TranslationKey {
     LanguageAvailable,
 
     // Moderation commands
-    KickSuccess,
-    KickFailed,
-    BanSuccess,
-    BanFailed,
-    PurgeSuccess,
-    PurgeFailed,
+    ModerationNoReason,
+    ModerationKicked,
+    ModerationKickReason,
+    ModerationBanned,
+    ModerationBanReason,
+    ModerationPurged,
+    ModerationInvalidArgument,
+    ModerationBotMissingPermissions,
+    ModerationUserMissingPermissions,
 
     // Settings
     SettingsTitle,
@@ -140,7 +144,7 @@ pub enum TranslationKey {
 type TranslationMap = HashMap<TranslationKey, &'static str>;
 
 /// Global translation storage
-static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
+static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new(|| {
     let mut translations = HashMap::new();
 
     // English translations
@@ -187,6 +191,15 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     en.insert(TranslationKey::LanguageChangedTo, "Language changed to");
     en.insert(TranslationKey::LanguageCurrent, "**Current Language:** {}");
     en.insert(TranslationKey::LanguageAvailable, "**Available:** English (en), Tiếng Việt (vi), 日本語 (ja)");
+    en.insert(TranslationKey::ModerationNoReason, "No reason provided");
+    en.insert(TranslationKey::ModerationKicked, "Kicked **{}**\nReason: ```{}```");
+    en.insert(TranslationKey::ModerationKickReason, "Reason");
+    en.insert(TranslationKey::ModerationBanned, "Banned **{}**\nReason: ```{}```");
+    en.insert(TranslationKey::ModerationBanReason, "Reason");
+    en.insert(TranslationKey::ModerationPurged, "Deleted **{}** messages.");
+    en.insert(TranslationKey::ModerationInvalidArgument, "Invalid argument: {}");
+    en.insert(TranslationKey::ModerationBotMissingPermissions, "Bot missing permissions: {}");
+    en.insert(TranslationKey::ModerationUserMissingPermissions, "You're missing permissions: {}");
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     en.insert(TranslationKey::SettingsLogChannel, "**Log Channel:** {}");
@@ -258,6 +271,15 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     vi.insert(TranslationKey::LanguageChangedTo, "Đã đổi ngôn ngữ sang");
     vi.insert(TranslationKey::LanguageCurrent, "**Ngôn ngữ hiện tại:** {}");
     vi.insert(TranslationKey::LanguageAvailable, "**Có sẵn:** English (en), Tiếng Việt (vi), 日本語 (ja)");
+    vi.insert(TranslationKey::ModerationNoReason, "Không có lý do");
+    vi.insert(TranslationKey::ModerationKicked, "Đã kick **{}**\nLý do: ```{}```");
+    vi.insert(TranslationKey::ModerationKickReason, "Lý do");
+    vi.insert(TranslationKey::ModerationBanned, "Đã ban **{}**\nLý do: ```{}```");
+    vi.insert(TranslationKey::ModerationBanReason, "Lý do");
+    vi.insert(TranslationKey::ModerationPurged, "Đã xóa **{}** tin nhắn.");
+    vi.insert(TranslationKey::ModerationInvalidArgument, "Tham số không hợp lệ: {}");
+    vi.insert(TranslationKey::ModerationBotMissingPermissions, "Bot thiếu quyền: {}");
+    vi.insert(TranslationKey::ModerationUserMissingPermissions, "Bạn thiếu quyền: {}");
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     vi.insert(TranslationKey::SettingsLogChannel, "**Kênh Log:** {}");
@@ -329,6 +351,15 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     ja.insert(TranslationKey::LanguageChangedTo, "言語を変更しました");
     ja.insert(TranslationKey::LanguageCurrent, "**現在の言語：** {}");
     ja.insert(TranslationKey::LanguageAvailable, "**利用可能：** English (en), Tiếng Việt (vi), 日本語 (ja)");
+    ja.insert(TranslationKey::ModerationNoReason, "理由なし");
+    ja.insert(TranslationKey::ModerationKicked, "**{}**をキックしました\n理由：```{}```");
+    ja.insert(TranslationKey::ModerationKickReason, "理由");
+    ja.insert(TranslationKey::ModerationBanned, "**{}**をBANしました\n理由：```{}```");
+    ja.insert(TranslationKey::ModerationBanReason, "理由");
+    ja.insert(TranslationKey::ModerationPurged, "**{}**件のメッセージを削除しました。");
+    ja.insert(TranslationKey::ModerationInvalidArgument, "無効なパラメータ：{}");
+    ja.insert(TranslationKey::ModerationBotMissingPermissions, "Botの権限が不足しています：{}");
+    ja.insert(TranslationKey::ModerationUserMissingPermissions, "権限が不足しています：{}");
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
     ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");
     ja.insert(TranslationKey::SettingsLogChannel, "**ログチャンネル：** {}");
@@ -380,12 +411,8 @@ pub fn tf(lang: Language, key: TranslationKey, args: &[&dyn std::fmt::Display]) 
     let template = t(lang, key);
     let mut result = template.to_string();
 
-    for (i, arg) in args.iter().enumerate() {
-        result = result.replace("{}", &arg.to_string());
-        if i < args.len() - 1 {
-            // Find next occurrence of {} for the next replacement
-            continue;
-        }
+    for arg in args.iter() {
+        result = result.replacen("{}", &arg.to_string(), 1);
     }
 
     result
@@ -406,7 +433,7 @@ pub async fn get_guild_language(
         .flatten();
 
     match lang_str {
-        Some(s) => Language::from_str(&s),
+        Some(s) => Language::parse(&s),
         None => Language::English, // Default to English
     }
 }
@@ -430,5 +457,3 @@ pub async fn set_guild_language(
     Ok(())
 }
 
-// Re-export serenity types for convenience
-use poise::serenity_prelude;

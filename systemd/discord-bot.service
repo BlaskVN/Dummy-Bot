@@ -14,8 +14,8 @@ User=bot_user
 Group=bot_user
 
 # Path to the compiled release binary
-ExecStart=/home/bot_user/bot/my_rust_bot
 WorkingDirectory=/home/bot_user/bot
+ExecStart=/home/bot_user/bot/rust_discord_bot
 
 # --- AUTO-RECOVERY CONFIGURATION ---
 # 'always': Restart regardless of exit code (0 or non-zero, killed or crashed)
@@ -34,7 +34,6 @@ StartLimitBurst=5
 # View logs: journalctl -u discord-bot -f
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=discord-bot
 
 # --- ENVIRONMENT ---
 EnvironmentFile=/home/bot_user/bot/.env
@@ -44,6 +43,12 @@ EnvironmentFile=/home/bot_user/bot/.env
 MemoryMax=256M
 # Limit CPU usage
 CPUQuota=50%
+
+# Security hardening thêm cho Debian/DietPi
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
 
 [Install]
 # Enable at normal multi-user runlevel (standard server mode)

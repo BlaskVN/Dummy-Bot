@@ -8,7 +8,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-BINARY_NAME="my_rust_bot"
+BINARY_NAME="rust_discord_bot"
 REMOTE_DIR="/home/bot_user/bot"
 SERVICE_NAME="discord-bot"
 
@@ -28,22 +28,22 @@ echo "=== Uploading binary to server ==="
 scp "target/release/${BINARY_NAME}" "${REMOTE_HOST}:${REMOTE_DIR}/${BINARY_NAME}.new"
 
 echo "=== Deploying on server ==="
-ssh "${REMOTE_HOST}" << 'EOF'
-    cd /home/bot_user/bot
+ssh "${REMOTE_HOST}" << EOF
+    cd ${REMOTE_DIR}
 
     # Swap binaries atomically
-    if [ -f my_rust_bot ]; then
-        mv my_rust_bot my_rust_bot.bak
+    if [ -f ${BINARY_NAME} ]; then
+        mv ${BINARY_NAME} ${BINARY_NAME}.bak
     fi
-    mv my_rust_bot.new my_rust_bot
-    chmod +x my_rust_bot
+    mv ${BINARY_NAME}.new ${BINARY_NAME}
+    chmod +x ${BINARY_NAME}
 
     # Restart the service
-    sudo systemctl restart discord-bot
+    sudo systemctl restart ${SERVICE_NAME}
 
     # Show status
     echo "=== Service Status ==="
-    sudo systemctl status discord-bot --no-pager
+    sudo systemctl status ${SERVICE_NAME} --no-pager
 EOF
 
 echo "=== Deploy complete ==="

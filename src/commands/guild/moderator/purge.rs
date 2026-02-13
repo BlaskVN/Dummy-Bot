@@ -1,4 +1,4 @@
-use crate::i18n::{get_guild_language, Language};
+use crate::i18n::{get_guild_language, tf, TranslationKey};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -42,11 +42,7 @@ pub async fn purge(
         "Messages purged"
     );
 
-    let message = match lang {
-        Language::Vietnamese => format!("Đã xóa **{}** tin nhắn.", count),
-        Language::Japanese => format!("**{}**件のメッセージを削除しました。", count),
-        _ => format!("Deleted **{}** messages.", count),
-    };
+    let message = tf(lang, TranslationKey::ModerationPurged, &[&count]);
 
     let reply = ctx.say(message).await?;
 
