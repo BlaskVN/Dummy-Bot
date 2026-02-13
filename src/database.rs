@@ -27,9 +27,9 @@ pub async fn init_db(database_url: &str) -> Result<SqlitePool> {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
     )
-    .execute(&pool)
-    .await
-    .context("Failed to create guild_config table")?;
+        .execute(&pool)
+        .await
+        .context("Failed to create guild_config table")?;
 
     // Message logging configuration table
     sqlx::query(
@@ -40,9 +40,21 @@ pub async fn init_db(database_url: &str) -> Result<SqlitePool> {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
     )
-    .execute(&pool)
-    .await
-    .context("Failed to create message_log_config table")?;
+        .execute(&pool)
+        .await
+        .context("Failed to create message_log_config table")?;
+
+    // Guild language preferences table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS guild_language (
+            guild_id TEXT PRIMARY KEY,
+            language TEXT NOT NULL DEFAULT 'en',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+    )
+        .execute(&pool)
+        .await
+        .context("Failed to create guild_language table")?;
 
     tracing::info!("Database initialized successfully");
     Ok(pool)

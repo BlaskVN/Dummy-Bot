@@ -1,9 +1,9 @@
-use rust_discord_bot::Data;
 use rust_discord_bot::commands;
 use rust_discord_bot::config;
 use rust_discord_bot::database;
 use rust_discord_bot::error;
 use rust_discord_bot::handlers;
+use rust_discord_bot::Data;
 
 use poise::serenity_prelude as serenity;
 
@@ -56,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
                                 *guild_id,
                                 data,
                             )
-                            .await;
+                                .await;
                         }
                         serenity::FullEvent::MessageDeleteBulk {
                             channel_id,
@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
                                 *guild_id,
                                 data,
                             )
-                            .await;
+                                .await;
                         }
                         serenity::FullEvent::MessageUpdate { event, .. } => {
                             handlers::message_log::handle_message_update(ctx, event, data).await;

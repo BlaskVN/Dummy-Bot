@@ -22,21 +22,25 @@ src/
 ## Quick Start
 
 ### 1. Prerequisites
+
 - [Rust](https://rustup.rs/) (stable)
 - A Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
 
 ### 2. Setup
+
 ```bash
 cp .env.example .env
 # Edit .env and set your DISCORD_TOKEN
 ```
 
 ### 3. Run (Development)
+
 ```bash
 cargo run
 ```
 
 ### 4. Build (Release)
+
 ```bash
 cargo build --release
 # Binary: target/release/my_rust_bot
@@ -56,6 +60,7 @@ cargo build --release
 ## Deployment (Linux Server + Systemd)
 
 ### First-time Server Setup
+
 ```bash
 # On the server:
 sudo useradd -m -s /bin/bash bot_user
@@ -73,11 +78,13 @@ sudo systemctl start discord-bot
 ```
 
 ### Deploy Updates
+
 ```bash
 ./deploy.sh bot_user@your-server
 ```
 
 ### Monitor
+
 ```bash
 # View logs
 journalctl -u discord-bot -f
@@ -92,6 +99,7 @@ sudo systemctl restart discord-bot
 ## Auto-Recovery
 
 The Systemd service is configured with:
+
 - **`Restart=always`** — restarts on any crash or exit
 - **`RestartSec=10`** — 10-second delay to avoid API rate limits
 - **`After=network-online.target`** — waits for network after power outage
@@ -99,11 +107,11 @@ The Systemd service is configured with:
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Language | Rust 🦀 |
-| Framework | Poise + Serenity |
-| Async Runtime | Tokio |
-| Database | SQLite (via SQLx) |
-| Logging | tracing + tracing-subscriber |
-| Process Manager | Systemd |
+| Component       | Technology                   |
+|-----------------|------------------------------|
+| Language        | Rust 🦀                      |
+| Framework       | Poise + Serenity             |
+| Async Runtime   | Tokio                        |
+| Database        | SQLite (via SQLx)            |
+| Logging         | tracing + tracing-subscriber |
+| Process Manager | Systemd                      |

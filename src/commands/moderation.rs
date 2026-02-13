@@ -1,3 +1,4 @@
+use crate::i18n::{get_guild_language, Language};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -11,12 +12,19 @@ use poise::serenity_prelude as serenity;
 )]
 pub async fn kick(
     ctx: Context<'_>,
-    #[description = "Thành viên cần kick"] member: serenity::Member,
-    #[description = "Lý do kick"]
+    #[description = "Member to kick"] member: serenity::Member,
+    #[description = "Reason for kick"]
     #[rest]
     reason: Option<String>,
 ) -> Result<(), Error> {
-    let reason = reason.unwrap_or_else(|| "Không có lý do".to_string());
+    let guild_id = ctx.guild_id().ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+
+    let reason = reason.unwrap_or_else(|| match lang {
+        Language::Vietnamese => "Không có lý do".to_string(),
+        Language::Japanese => "理由なし".to_string(),
+        _ => "No reason provided".to_string(),
+    });
     let member_name = member.user.name.clone();
 
     member.kick_with_reason(&ctx.http(), &reason).await?;
@@ -28,11 +36,17 @@ pub async fn kick(
         "Member kicked"
     );
 
-    ctx.say(format!(
-        "👢 Đã kick **{}** — Lý do: {}",
-        member_name, reason
-    ))
-    .await?;
+    let message = match lang {
+        Language::Vietnamese => format!("Đã kick **{}** — Lý do: {}", member_name, reason),
+        Language::Japanese => format!("**{}**をキックしました — 理由：{}", member_name, reason),
+        _ => format!("Kicked **{}** — Reason: {}", member_name, reason),
+    };
+
+    let embed = serenity::CreateEmbed::new()
+        .description(message)
+        .color(0xe74c3c); // Red
+
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
@@ -47,13 +61,20 @@ pub async fn kick(
 )]
 pub async fn ban(
     ctx: Context<'_>,
-    #[description = "Thành viên cần ban"] member: serenity::Member,
-    #[description = "Số ngày xóa tin nhắn (0-7)"] delete_days: Option<u8>,
-    #[description = "Lý do ban"]
+    #[description = "Member to ban"] member: serenity::Member,
+    #[description = "Days of messages to delete (0-7)"] delete_days: Option<u8>,
+    #[description = "Reason for ban"]
     #[rest]
     reason: Option<String>,
 ) -> Result<(), Error> {
-    let reason = reason.unwrap_or_else(|| "Không có lý do".to_string());
+    let guild_id = ctx.guild_id().ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+
+    let reason = reason.unwrap_or_else(|| match lang {
+        Language::Vietnamese => "Không có lý do".to_string(),
+        Language::Japanese => "理由なし".to_string(),
+        _ => "No reason provided".to_string(),
+    });
     let delete_days = delete_days.unwrap_or(0).min(7);
     let member_name = member.user.name.clone();
 
@@ -69,11 +90,17 @@ pub async fn ban(
         "Member banned"
     );
 
-    ctx.say(format!(
-        "🔨 Đã ban **{}** — Lý do: {}",
-        member_name, reason
-    ))
-    .await?;
+    let message = match lang {
+        Language::Vietnamese => format!("Đã ban **{}** — Lý do: {}", member_name, reason),
+        Language::Japanese => format!("**{}**をBANしました — 理由：{}", member_name, reason),
+        _ => format!("Banned **{}** — Reason: {}", member_name, reason),
+    };
+
+    let embed = serenity::CreateEmbed::new()
+        .description(message)
+        .color(0xe74c3c); // Red
+
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
@@ -88,11 +115,14 @@ pub async fn ban(
 )]
 pub async fn purge(
     ctx: Context<'_>,
-    #[description = "Số tin nhắn cần xóa (1-100)"]
+    #[description = "Number of messages to delete (1-100)"]
     #[min = 1]
     #[max = 100]
     amount: u8,
 ) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+
     let channel = ctx.channel_id();
 
     // Fetch messages to delete
@@ -115,9 +145,13 @@ pub async fn purge(
         "Messages purged"
     );
 
-    let reply = ctx
-        .say(format!("🗑️ Đã xóa **{}** tin nhắn.", count))
-        .await?;
+    let message = match lang {
+        Language::Vietnamese => format!("Đã xóa **{}** tin nhắn.", count),
+        Language::Japanese => format!("**{}**件のメッセージを削除しました。", count),
+        _ => format!("Deleted **{}** messages.", count),
+    };
+
+    let reply = ctx.say(message).await?;
 
     // Auto-delete the confirmation after 3 seconds
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;

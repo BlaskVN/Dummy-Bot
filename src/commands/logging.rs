@@ -1,3 +1,4 @@
+use crate::i18n::{get_guild_language, t, tf, TranslationKey};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -16,11 +17,13 @@ pub async fn messagelog(_ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn enable(
     ctx: Context<'_>,
-    #[description = "Kênh để gửi log tin nhắn"] log_channel: serenity::GuildChannel,
+    #[description = "Channel to send message logs to"] log_channel: serenity::GuildChannel,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+
+    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
 
     // Insert or update config
     sqlx::query(
@@ -28,10 +31,10 @@ pub async fn enable(
          VALUES (?, ?, 1)
          ON CONFLICT(guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id, enabled = 1",
     )
-    .bind(guild_id.to_string())
-    .bind(log_channel.id.to_string())
-    .execute(&ctx.data().db_pool)
-    .await?;
+        .bind(guild_id.to_string())
+        .bind(log_channel.id.to_string())
+        .execute(&ctx.data().db_pool)
+        .await?;
 
     tracing::info!(
         guild = %guild_id,
@@ -40,11 +43,13 @@ pub async fn enable(
         "Message logging enabled"
     );
 
-    ctx.say(format!(
-        "✅ Đã bật message log. Kênh log: <#{}>",
-        log_channel.id
-    ))
-    .await?;
+    let message = tf(lang, TranslationKey::MessageLogEnabled, &[&log_channel.id]);
+
+    let embed = serenity::CreateEmbed::new()
+        .description(message)
+        .color(0x2ecc71); // Green
+
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
@@ -56,6 +61,8 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
 
+    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+
     // Update config to disabled
     let result = sqlx::query("UPDATE message_log_config SET enabled = 0 WHERE guild_id = ?")
         .bind(guild_id.to_string())
@@ -63,7 +70,10 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
 
     if result.rows_affected() == 0 {
-        ctx.say("⚠️ Message logging chưa được thiết lập.").await?;
+        let embed = serenity::CreateEmbed::new()
+            .description(t(lang, TranslationKey::MessageLogNotSetup))
+            .color(0xe67e22); // Orange
+        ctx.send(poise::CreateReply::default().embed(embed)).await?;
         return Ok(());
     }
 
@@ -73,7 +83,11 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         "Message logging disabled"
     );
 
-    ctx.say("✅ Đã tắt message log.").await?;
+    let embed = serenity::CreateEmbed::new()
+        .description(t(lang, TranslationKey::MessageLogDisabled))
+        .color(0x2ecc71); // Green
+
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
@@ -85,29 +99,43 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
 
+    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+
     let config = sqlx::query_as::<_, (String, i64)>(
         "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
     )
-    .bind(guild_id.to_string())
-    .fetch_optional(&ctx.data().db_pool)
-    .await?;
+        .bind(guild_id.to_string())
+        .fetch_optional(&ctx.data().db_pool)
+        .await?;
 
     match config {
         Some((channel_id, enabled)) => {
             let status = if enabled == 1 {
-                "✅ Đang bật"
+                t(lang, TranslationKey::MessageLogStatusEnabled)
             } else {
-                "❌ Đang tắt"
+                t(lang, TranslationKey::MessageLogStatusDisabled)
             };
-            ctx.say(format!(
-                "📊 **Message Log Status**\n├ Trạng thái: {}\n└ Kênh log: <#{}>",
-                status, channel_id
-            ))
-            .await?;
+
+            let status_label = t(lang, TranslationKey::MessageLogStatus);
+            let channel_text = tf(lang, TranslationKey::MessageLogChannel, &[&channel_id]);
+
+            let description = format!(
+                "├ {} {}\n└ {}",
+                status_label, status, channel_text
+            );
+
+            let embed = serenity::CreateEmbed::new()
+                .title(t(lang, TranslationKey::MessageLogStatusTitle))
+                .description(description)
+                .color(0x3498db); // Blue
+
+            ctx.send(poise::CreateReply::default().embed(embed)).await?;
         }
         None => {
-            ctx.say("⚠️ Message logging chưa được thiết lập. Sử dụng `/messagelog enable` để bật.")
-                .await?;
+            let embed = serenity::CreateEmbed::new()
+                .description(t(lang, TranslationKey::MessageLogUseEnable))
+                .color(0xe67e22); // Orange
+            ctx.send(poise::CreateReply::default().embed(embed)).await?;
         }
     }
 

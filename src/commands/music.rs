@@ -21,7 +21,7 @@ pub async fn play(
          _Module âm nhạc đang được phát triển. Hãy tích hợp `songbird` để sử dụng._",
         query
     ))
-    .await?;
+        .await?;
 
     Ok(())
 }

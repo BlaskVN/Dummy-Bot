@@ -1,5 +1,6 @@
 pub mod administration;
 pub mod general;
+pub mod language;
 pub mod logging;
 pub mod moderation;
 pub mod music;
@@ -25,6 +26,8 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
         administration::setprefix(),
         // Message Logging
         logging::messagelog(),
+        // Language
+        language::language(),
         // Music (placeholder)
         music::play(),
         music::stop(),

@@ -30,6 +30,9 @@ chrono = "0.4"
 # HTTP client for downloading attachments
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
+# Lazy static initialization
+once_cell = "1.19"
+
 [profile.release]
 opt-level = 3
 lto = true

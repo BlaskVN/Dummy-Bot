@@ -1,3 +1,4 @@
+use crate::i18n::{get_guild_language, t, tf, TranslationKey};
 use crate::Data;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
@@ -18,6 +19,9 @@ pub async fn handle_message_delete(
         Some(id) => id,
         None => return,
     };
+
+    // Get language for this guild
+    let lang = get_guild_language(&data.db_pool, guild_id).await;
 
     // Try to fetch the message from cache
     let message = match ctx.cache.message(channel_id, deleted_message_id) {
@@ -40,9 +44,9 @@ pub async fn handle_message_delete(
     let config = match sqlx::query_as::<_, (String, i64)>(
         "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
     )
-    .bind(guild_id.to_string())
-    .fetch_optional(&data.db_pool)
-    .await
+        .bind(guild_id.to_string())
+        .fetch_optional(&data.db_pool)
+        .await
     {
         Ok(Some((channel, enabled))) if enabled == 1 => channel,
         Ok(_) => return, // Logging disabled or not configured
@@ -59,16 +63,20 @@ pub async fn handle_message_delete(
 
     // Build the embed
     let content_preview = if message.content.is_empty() {
-        "*[Media only]*".to_string()
+        t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
         message.content.chars().take(1000).collect()
     };
 
+    let author_text = tf(lang, TranslationKey::MessageAuthor, &[&message.author.id]);
+    let channel_text = tf(lang, TranslationKey::MessageChannel, &[&channel_id]);
+    let content_label = t(lang, TranslationKey::MessageContent);
+
     let embed = serenity::CreateEmbed::new()
-        .title("🗑️ Message Deleted")
+        .title(t(lang, TranslationKey::MessageDeleted))
         .description(format!(
-            "**Author:** <@{}>\n**Channel:** <#{}>\n**Content:**\n{}",
-            message.author.id, channel_id, content_preview
+            "{}\n{}\n{}\n{}",
+            author_text, channel_text, content_label, content_preview
         ))
         .color(0xe74c3c) // Red
         .timestamp(message.timestamp)
@@ -94,7 +102,7 @@ pub async fn handle_message_delete(
 
     // Send log message (embed first)
     let builder = serenity::CreateMessage::new().embed(embed);
-    
+
     if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
         tracing::error!("Failed to send deletion log: {}", e);
         return;
@@ -118,6 +126,9 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
         Some(id) => id,
         None => return,
     };
+
+    // Get language for this guild
+    let lang = get_guild_language(&data.db_pool, guild_id).await;
 
     // Get old message from cache
     let old_message = match ctx.cache.message(event.channel_id, event.id) {
@@ -144,9 +155,9 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
     let config = match sqlx::query_as::<_, (String, i64)>(
         "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
     )
-    .bind(guild_id.to_string())
-    .fetch_optional(&data.db_pool)
-    .await
+        .bind(guild_id.to_string())
+        .fetch_optional(&data.db_pool)
+        .await
     {
         Ok(Some((channel, enabled))) if enabled == 1 => channel,
         Ok(_) => return,
@@ -165,19 +176,27 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
     let old_preview: String = old_message.content.chars().take(500).collect();
     let new_preview: String = new_content.chars().take(500).collect();
 
+    let author_text = tf(lang, TranslationKey::MessageAuthor, &[&old_message.author.id]);
+    let channel_text = tf(lang, TranslationKey::MessageChannel, &[&event.channel_id]);
+    let jump_url = format!(
+        "https://discord.com/channels/{}/{}/{}",
+        guild_id, event.channel_id, event.id
+    );
+    let jump_text = tf(lang, TranslationKey::MessageJumpTo, &[&jump_url]);
+
+    let before_label = t(lang, TranslationKey::MessageBefore);
+    let after_label = t(lang, TranslationKey::MessageAfter);
+
     let embed = serenity::CreateEmbed::new()
-        .title("✏️ Message Edited")
+        .title(t(lang, TranslationKey::MessageEditedTitle))
         .description(format!(
-            "**Author:** <@{}>\n**Channel:** <#{}>\n[Jump to Message]({})",
-            old_message.author.id,
-            event.channel_id,
-            format!(
-                "https://discord.com/channels/{}/{}/{}",
-                guild_id, event.channel_id, event.id
-            )
+            "{}\n{}\n{}",
+            author_text,
+            channel_text,
+            jump_text
         ))
-        .field("Before", format!("```{}```", old_preview), false)
-        .field("After", format!("```{}```", new_preview), false)
+        .field(before_label, format!("```{}```", old_preview), false)
+        .field(after_label, format!("```{}```", new_preview), false)
         .color(0xf39c12) // Orange
         .timestamp(serenity::Timestamp::now())
         .footer(serenity::CreateEmbedFooter::new(format!(
@@ -208,13 +227,16 @@ pub async fn handle_message_delete_bulk(
         None => return,
     };
 
+    // Get language for this guild
+    let lang = get_guild_language(&data.db_pool, guild_id).await;
+
     // Check if logging is enabled for this guild
     let config = match sqlx::query_as::<_, (String, i64)>(
         "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
     )
-    .bind(guild_id.to_string())
-    .fetch_optional(&data.db_pool)
-    .await
+        .bind(guild_id.to_string())
+        .fetch_optional(&data.db_pool)
+        .await
     {
         Ok(Some((channel, enabled))) if enabled == 1 => channel,
         Ok(_) => return, // Logging disabled or not configured
@@ -250,11 +272,12 @@ pub async fn handle_message_delete_bulk(
     let user_count = cached_count - bot_count;
 
     // Build detailed message list (limited to first 10 to avoid spam)
+    let media_only = t(lang, TranslationKey::MessageMediaOnly);
     let mut message_list = String::new();
     for (i, (author, content)) in user_messages.iter().take(10).enumerate() {
         let content_preview: String = content.chars().take(100).collect();
         let preview = if content_preview.is_empty() {
-            "*[Media only]*"
+            media_only
         } else {
             &content_preview
         };
@@ -270,21 +293,25 @@ pub async fn handle_message_delete_bulk(
     }
 
     // Build the embed
+    let channel_text = tf(lang, TranslationKey::MessageChannel, &[&channel_id]);
+    let total_text = tf(lang, TranslationKey::MessageTotalDeleted, &[&total_count]);
+    let cached_text = tf(lang, TranslationKey::MessageCached, &[&cached_count, &user_count, &bot_count]);
+
     let description = format!(
-        "**Channel:** <#{}>\n**Total Deleted:** {} messages\n**Cached:** {} messages ({} user, {} bot)",
-        channel_id, total_count, cached_count, user_count, bot_count
+        "{}\n{}\n{}",
+        channel_text, total_text, cached_text
     );
 
+    let deleted_messages_label = t(lang, TranslationKey::MessageDeletedMessages);
+    let footer_text = tf(lang, TranslationKey::MessagePurged, &[&total_count]);
+
     let embed = serenity::CreateEmbed::new()
-        .title("🧹 Bulk Message Delete (Purge)")
+        .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
         .description(description)
-        .field("Deleted Messages", message_list, false)
+        .field(deleted_messages_label, message_list, false)
         .color(0xe67e22) // Orange
         .timestamp(serenity::Timestamp::now())
-        .footer(serenity::CreateEmbedFooter::new(format!(
-            "{} messages purged",
-            total_count
-        )));
+        .footer(serenity::CreateEmbedFooter::new(footer_text));
 
     let builder = serenity::CreateMessage::new().embed(embed);
 
