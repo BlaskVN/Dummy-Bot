@@ -50,14 +50,21 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             };
 
             tracing::warn!(command = ctx.command().name, "Command check failed");
-            if let Some(error) = error {
-                let message = match lang {
+            let message = if let Some(error) = error {
+                match lang {
                     Language::Vietnamese => format!("Bạn không có quyền: {}", error),
                     Language::Japanese => format!("権限がありません：{}", error),
                     _ => format!("You don't have permission: {}", error),
-                };
-                let _ = ctx.say(message).await;
-            }
+                }
+            } else {
+                // owners_only and other checks fire with error = None
+                match lang {
+                    Language::Vietnamese => "Bạn không có quyền sử dụng lệnh này.".to_string(),
+                    Language::Japanese => "このコマンドを使用する権限がありません。".to_string(),
+                    _ => "You don't have permission to use this command.".to_string(),
+                }
+            };
+            let _ = ctx.say(message).await;
         }
         poise::FrameworkError::MissingBotPermissions {
             missing_permissions,

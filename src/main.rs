@@ -36,10 +36,42 @@ async fn main() -> anyhow::Result<()> {
     // Initialize HTTP client for downloading attachments
     let http_client = reqwest::Client::new();
 
+    // Determine bot owner(s) before building framework
+    let mut owners = std::collections::HashSet::new();
+
+    // Check for OWNER_ID env var first (optional override)
+    if let Ok(owner_id_str) = std::env::var("OWNER_ID") {
+        if let Ok(id) = owner_id_str.parse::<u64>() {
+            owners.insert(serenity::UserId::new(id));
+            tracing::info!(owner_id = id, "Owner set from OWNER_ID env var");
+        }
+    }
+
+    // If no env var, try to fetch from Discord application info using bot token
+    if owners.is_empty() {
+        let http = serenity::Http::new(&config.discord_token);
+        match http.get_current_application_info().await {
+            Ok(app_info) => {
+                if let Some(owner) = app_info.owner {
+                    owners.insert(owner.id);
+                    tracing::info!(owner = %owner.name, "Owner set from application info");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Could not fetch application info for owner detection: {}", e);
+            }
+        }
+    }
+
+    if owners.is_empty() {
+        tracing::warn!("No bot owners configured! Set OWNER_ID env var or ensure your bot application has an owner.");
+    }
+
     // Build the Poise framework
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: commands::all(),
+            owners,
             on_error: |error| Box::pin(error::on_error(error)),
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(async move {
@@ -105,12 +137,33 @@ async fn main() -> anyhow::Result<()> {
                     "Bot is connected and ready!"
                 );
 
-                // Register slash commands globally
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                tracing::info!("Slash commands registered globally");
-
-                // // Initialize HTTP client for downloading attachments
-                // let http_client = reqwest::Client::new();
+                // Register slash commands globally with DM support
+                // Convert poise commands to serenity commands with contexts set
+                let commands = &framework.options().commands;
+                let serenity_commands = poise::builtins::create_application_commands(commands);
+                
+                // Modify each command to support DM contexts
+                let serenity_commands: Vec<_> = serenity_commands
+                    .into_iter()
+                    .map(|cmd| {
+                        cmd
+                            // Enable DM support: set contexts to allow guild, bot DM, and private channels
+                            .contexts(vec![
+                                serenity::InteractionContext::Guild,
+                                serenity::InteractionContext::BotDm,
+                                serenity::InteractionContext::PrivateChannel,
+                            ])
+                            // integration_types: Guild install and User install
+                            .integration_types(vec![
+                                serenity::InstallationContext::Guild,
+                                serenity::InstallationContext::User,
+                            ])
+                    })
+                    .collect();
+                
+                // Register the commands globally
+                serenity::Command::set_global_commands(ctx, serenity_commands).await?;
+                tracing::info!("Slash commands registered globally with DM support");
 
                 Ok(Data {
                     db_pool,

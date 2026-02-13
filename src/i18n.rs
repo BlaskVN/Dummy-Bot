@@ -110,6 +110,18 @@ pub enum TranslationKey {
     SettingsNotConfigured,
     PrefixChanged,
 
+    // Presence commands
+    PresenceTitle,
+    PresenceHelp,
+    PresenceStatusTitle,
+    PresenceStatusSet,
+    PresenceStatusSetDuration,
+    PresenceActivityTitle,
+    PresenceActivitySet,
+    PresenceActivitySetDuration,
+    PresenceActivityCleared,
+    PresenceOwnerOnly,
+
     // Common
     ErrorNotInGuild,
     ErrorNoPermission,
@@ -171,6 +183,16 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     en.insert(TranslationKey::SettingsLogChannel, "**Log Channel:** {}");
     en.insert(TranslationKey::SettingsNotConfigured, "Not configured");
     en.insert(TranslationKey::PrefixChanged, "Prefix changed to `{}`");
+    en.insert(TranslationKey::PresenceTitle, "**Bot Presence Management**");
+    en.insert(TranslationKey::PresenceHelp, "Use subcommands to manage the bot's presence:\n├ `/presence status` — Set online status\n├ `/presence activity` — Set Rich Presence\n└ `/presence clear` — Clear activity");
+    en.insert(TranslationKey::PresenceStatusTitle, "**Status Updated**");
+    en.insert(TranslationKey::PresenceStatusSet, "Bot status set to **{}**");
+    en.insert(TranslationKey::PresenceStatusSetDuration, "Bot status set to **{}** for **{} minutes**");
+    en.insert(TranslationKey::PresenceActivityTitle, "**Activity Updated**");
+    en.insert(TranslationKey::PresenceActivitySet, "Activity set to **{} {}**\nStatus: **{}**");
+    en.insert(TranslationKey::PresenceActivitySetDuration, "Activity set to **{} {}**\nStatus: **{}**\nReverts in **{} minutes**");
+    en.insert(TranslationKey::PresenceActivityCleared, "Activity cleared and status reset to **Online**");
+    en.insert(TranslationKey::PresenceOwnerOnly, "Only the bot owner can use this command.");
     en.insert(TranslationKey::ErrorNotInGuild, "This command can only be used in a server.");
     en.insert(TranslationKey::ErrorNoPermission, "You don't have permission to use this command.");
     en.insert(TranslationKey::ErrorGeneric, "An error occurred: {}");
@@ -225,6 +247,16 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     vi.insert(TranslationKey::SettingsLogChannel, "**Kênh Log:** {}");
     vi.insert(TranslationKey::SettingsNotConfigured, "Chưa thiết lập");
     vi.insert(TranslationKey::PrefixChanged, "Đã đổi prefix thành `{}`");
+    vi.insert(TranslationKey::PresenceTitle, "**Quản Lý Trạng Thái Bot**");
+    vi.insert(TranslationKey::PresenceHelp, "Sử dụng lệnh con để quản lý trạng thái bot:\n├ `/presence status` — Đặt trạng thái trực tuyến\n├ `/presence activity` — Đặt Rich Presence\n└ `/presence clear` — Xóa hoạt động");
+    vi.insert(TranslationKey::PresenceStatusTitle, "**Đã Cập Nhật Trạng Thái**");
+    vi.insert(TranslationKey::PresenceStatusSet, "Trạng thái bot đã đặt thành **{}**");
+    vi.insert(TranslationKey::PresenceStatusSetDuration, "Trạng thái bot đã đặt thành **{}** trong **{} phút**");
+    vi.insert(TranslationKey::PresenceActivityTitle, "**Đã Cập Nhật Hoạt Động**");
+    vi.insert(TranslationKey::PresenceActivitySet, "Hoạt động đã đặt thành **{} {}**\nTrạng thái: **{}**");
+    vi.insert(TranslationKey::PresenceActivitySetDuration, "Hoạt động đã đặt thành **{} {}**\nTrạng thái: **{}**\nTự động hoàn lại sau **{} phút**");
+    vi.insert(TranslationKey::PresenceActivityCleared, "Đã xóa hoạt động và đặt lại trạng thái thành **Trực tuyến**");
+    vi.insert(TranslationKey::PresenceOwnerOnly, "Chỉ chủ sở hữu bot mới có thể sử dụng lệnh này.");
     vi.insert(TranslationKey::ErrorNotInGuild, "Lệnh này chỉ có thể sử dụng trong máy chủ.");
     vi.insert(TranslationKey::ErrorNoPermission, "Bạn không có quyền sử dụng lệnh này.");
     vi.insert(TranslationKey::ErrorGeneric, "Đã xảy ra lỗi: {}");
@@ -279,6 +311,16 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     ja.insert(TranslationKey::SettingsLogChannel, "**ログチャンネル：** {}");
     ja.insert(TranslationKey::SettingsNotConfigured, "未設定");
     ja.insert(TranslationKey::PrefixChanged, "プレフィックスを`{}`に変更しました");
+    ja.insert(TranslationKey::PresenceTitle, "**ボットプレゼンス管理**");
+    ja.insert(TranslationKey::PresenceHelp, "サブコマンドでボットのプレゼンスを管理します：\n├ `/presence status` — オンラインステータスを設定\n├ `/presence activity` — リッチプレゼンスを設定\n└ `/presence clear` — アクティビティをクリア");
+    ja.insert(TranslationKey::PresenceStatusTitle, "**ステータス更新**");
+    ja.insert(TranslationKey::PresenceStatusSet, "ボットのステータスを**{}**に設定しました");
+    ja.insert(TranslationKey::PresenceStatusSetDuration, "ボットのステータスを**{}**に**{}分間**設定しました");
+    ja.insert(TranslationKey::PresenceActivityTitle, "**アクティビティ更新**");
+    ja.insert(TranslationKey::PresenceActivitySet, "アクティビティを**{} {}**に設定しました\nステータス: **{}**");
+    ja.insert(TranslationKey::PresenceActivitySetDuration, "アクティビティを**{} {}**に設定しました\nステータス: **{}**\n**{}分後**に元に戻ります");
+    ja.insert(TranslationKey::PresenceActivityCleared, "アクティビティをクリアし、ステータスを**オンライン**にリセットしました");
+    ja.insert(TranslationKey::PresenceOwnerOnly, "このコマンドはボットのオーナーのみ使用できます。");
     ja.insert(TranslationKey::ErrorNotInGuild, "このコマンドはサーバー内でのみ使用できます。");
     ja.insert(TranslationKey::ErrorNoPermission, "このコマンドを使用する権限がありません。");
     ja.insert(TranslationKey::ErrorGeneric, "エラーが発生しました：{}");

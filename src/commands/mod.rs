@@ -4,6 +4,8 @@ pub mod language;
 pub mod logging;
 pub mod moderation;
 pub mod music;
+pub mod presence;
+
 
 use crate::{Data, Error};
 
@@ -31,5 +33,7 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
         // Music (placeholder)
         music::play(),
         music::stop(),
+        // Presence (owner only)
+        presence::presence(),
     ]
 }
