@@ -1,5 +1,5 @@
-pub mod music;
 pub mod serverinfo;
+pub mod voice;
 
 use crate::{Data, Error};
 
@@ -7,7 +7,7 @@ use crate::{Data, Error};
 pub fn all() -> Vec<poise::Command<Data, Error>> {
     vec![
         serverinfo::serverinfo(),
-        music::play(),
-        music::stop(),
+        voice::voice_connect(),
+        voice::voice_disconnect(),
     ]
 }

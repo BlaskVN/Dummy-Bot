@@ -122,6 +122,15 @@ pub enum TranslationKey {
     PresenceActivityCleared,
     PresenceOwnerOnly,
 
+    // Voice commands
+    VoiceConnected,
+    VoiceDisconnected,
+    VoiceNotInChannel,
+    VoiceNotConnected,
+    VoiceAlreadyConnected,
+    VoiceJoinFailed,
+    VoiceKicked,
+
     // Common
     ErrorNotInGuild,
     ErrorNoPermission,
@@ -193,6 +202,13 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     en.insert(TranslationKey::PresenceActivitySetDuration, "Activity set to **{} {}**\nStatus: **{}**\nReverts in **{} minutes**");
     en.insert(TranslationKey::PresenceActivityCleared, "Activity cleared and status reset to **Online**");
     en.insert(TranslationKey::PresenceOwnerOnly, "Only the bot owner can use this command.");
+    en.insert(TranslationKey::VoiceConnected, "Connected to <#{}>");
+    en.insert(TranslationKey::VoiceDisconnected, "Disconnected from voice channel.");
+    en.insert(TranslationKey::VoiceNotInChannel, "You are not in a voice channel.");
+    en.insert(TranslationKey::VoiceNotConnected, "Bot is not connected to any voice channel.");
+    en.insert(TranslationKey::VoiceAlreadyConnected, "Bot is already connected to a voice channel. Use `/disconnect` first.");
+    en.insert(TranslationKey::VoiceJoinFailed, "Failed to join voice channel.");
+    en.insert(TranslationKey::VoiceKicked, "Bot was disconnected from the voice channel by a server member.");
     en.insert(TranslationKey::ErrorNotInGuild, "This command can only be used in a server.");
     en.insert(TranslationKey::ErrorNoPermission, "You don't have permission to use this command.");
     en.insert(TranslationKey::ErrorGeneric, "An error occurred: {}");
@@ -257,6 +273,13 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     vi.insert(TranslationKey::PresenceActivitySetDuration, "Hoạt động đã đặt thành **{} {}**\nTrạng thái: **{}**\nTự động hoàn lại sau **{} phút**");
     vi.insert(TranslationKey::PresenceActivityCleared, "Đã xóa hoạt động và đặt lại trạng thái thành **Trực tuyến**");
     vi.insert(TranslationKey::PresenceOwnerOnly, "Chỉ chủ sở hữu bot mới có thể sử dụng lệnh này.");
+    vi.insert(TranslationKey::VoiceConnected, "Đã kết nối tới <#{}>");
+    vi.insert(TranslationKey::VoiceDisconnected, "Đã ngắt kết nối khỏi kênh thoại.");
+    vi.insert(TranslationKey::VoiceNotInChannel, "Bạn không ở trong kênh thoại nào.");
+    vi.insert(TranslationKey::VoiceNotConnected, "Bot không ở trong kênh thoại nào.");
+    vi.insert(TranslationKey::VoiceAlreadyConnected, "Bot đã ở trong một kênh thoại. Sử dụng `/disconnect` trước.");
+    vi.insert(TranslationKey::VoiceJoinFailed, "Không thể tham gia kênh thoại.");
+    vi.insert(TranslationKey::VoiceKicked, "Bot đã bị ngắt kết nối khỏi kênh thoại bởi một thành viên.");
     vi.insert(TranslationKey::ErrorNotInGuild, "Lệnh này chỉ có thể sử dụng trong máy chủ.");
     vi.insert(TranslationKey::ErrorNoPermission, "Bạn không có quyền sử dụng lệnh này.");
     vi.insert(TranslationKey::ErrorGeneric, "Đã xảy ra lỗi: {}");
@@ -321,6 +344,13 @@ static TRANSLATIONS: Lazy<HashMap<Language, TranslationMap>> = Lazy::new(|| {
     ja.insert(TranslationKey::PresenceActivitySetDuration, "アクティビティを**{} {}**に設定しました\nステータス: **{}**\n**{}分後**に元に戻ります");
     ja.insert(TranslationKey::PresenceActivityCleared, "アクティビティをクリアし、ステータスを**オンライン**にリセットしました");
     ja.insert(TranslationKey::PresenceOwnerOnly, "このコマンドはボットのオーナーのみ使用できます。");
+    ja.insert(TranslationKey::VoiceConnected, "<#{}>に接続しました");
+    ja.insert(TranslationKey::VoiceDisconnected, "ボイスチャンネルから切断しました。");
+    ja.insert(TranslationKey::VoiceNotInChannel, "ボイスチャンネルに参加していません。");
+    ja.insert(TranslationKey::VoiceNotConnected, "ボットはボイスチャンネルに接続していません。");
+    ja.insert(TranslationKey::VoiceAlreadyConnected, "ボットは既にボイスチャンネルに接続しています。先に`/disconnect`を使用してください。");
+    ja.insert(TranslationKey::VoiceJoinFailed, "ボイスチャンネルへの参加に失敗しました。");
+    ja.insert(TranslationKey::VoiceKicked, "ボットはメンバーによってボイスチャンネルから切断されました。");
     ja.insert(TranslationKey::ErrorNotInGuild, "このコマンドはサーバー内でのみ使用できます。");
     ja.insert(TranslationKey::ErrorNoPermission, "このコマンドを使用する権限がありません。");
     ja.insert(TranslationKey::ErrorGeneric, "エラーが発生しました：{}");

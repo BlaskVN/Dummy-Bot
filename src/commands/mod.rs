@@ -15,7 +15,7 @@ use crate::{Data, Error};
 /// ├── guild/                          # Server-only commands
 /// │   ├── everyone/                   # No special permissions
 /// │   │   ├── serverinfo.rs
-/// │   │   └── music.rs
+/// │   │   └── voice.rs
 /// │   ├── moderator/                  # KICK/BAN/MANAGE_MESSAGES
 /// │   │   ├── kick.rs
 /// │   │   ├── ban.rs

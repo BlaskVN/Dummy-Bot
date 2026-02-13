@@ -6,11 +6,14 @@ use rust_discord_bot::handlers;
 use rust_discord_bot::Data;
 
 use poise::serenity_prelude as serenity;
+use songbird::SerenityInit;
+use std::collections::HashMap;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load .env file (silently skip if not present)
-    let _ = dotenv::dotenv();
+    let _ = dotenvy::dotenv();
 
     // Initialize structured logging with tracing
     tracing_subscriber::fmt()
@@ -107,6 +110,10 @@ async fn main() -> anyhow::Result<()> {
                         serenity::FullEvent::MessageUpdate { event, .. } => {
                             handlers::message_log::handle_message_update(ctx, event, data).await;
                         }
+                        serenity::FullEvent::VoiceStateUpdate { old, new, .. } => {
+                            handlers::voice::handle_voice_state_update(ctx, old, new, data)
+                                .await;
+                        }
                         _ => {}
                     }
                     Ok(())
@@ -169,6 +176,7 @@ async fn main() -> anyhow::Result<()> {
                     db_pool,
                     start_time,
                     http_client,
+                    voice_text_channels: RwLock::new(HashMap::new()),
                 })
             })
         })
@@ -177,7 +185,8 @@ async fn main() -> anyhow::Result<()> {
     // Configure gateway intents
     let intents = serenity::GatewayIntents::non_privileged()
         | serenity::GatewayIntents::MESSAGE_CONTENT
-        | serenity::GatewayIntents::GUILD_MEMBERS;
+        | serenity::GatewayIntents::GUILD_MEMBERS
+        | serenity::GatewayIntents::GUILD_VOICE_STATES;
 
     // Build and start the Serenity client
     let cache_settings = {
@@ -187,6 +196,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let mut client = serenity::ClientBuilder::new(&config.discord_token, intents)
         .framework(framework)
+        .register_songbird()
         .cache_settings(cache_settings)
         .await?;
 
