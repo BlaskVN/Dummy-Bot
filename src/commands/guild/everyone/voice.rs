@@ -1,5 +1,5 @@
 use crate::i18n::{get_guild_language, t, tf, TranslationKey};
-use crate::{Context, Error};
+use crate::{Context, Error, VoiceConnectionInfo};
 use poise::serenity_prelude as serenity;
 
 /// Join the voice channel you are currently in.
@@ -74,10 +74,13 @@ pub async fn voice_connect(
         }
     }
 
-    // Store the text channel where connect was used (for kick notification)
+    // Store connection info (text channel + voice channel) for kick notification & auto-reconnection
     {
-        let mut map = ctx.data().voice_text_channels.write().await;
-        map.insert(guild_id, ctx.channel_id());
+        let mut map = ctx.data().voice_connections.write().await;
+        map.insert(guild_id, VoiceConnectionInfo {
+            text_channel_id: ctx.channel_id(),
+            voice_channel_id: voice_channel_id,
+        });
     }
 
     tracing::info!(
@@ -125,9 +128,9 @@ pub async fn voice_disconnect(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     }
 
-    // Remove from tracking FIRST (before remove) to prevent false kick notification
+    // Remove from tracking FIRST (before remove) to prevent false kick notification / auto-reconnection
     {
-        let mut map = ctx.data().voice_text_channels.write().await;
+        let mut map = ctx.data().voice_connections.write().await;
         map.remove(&guild_id);
     }
 

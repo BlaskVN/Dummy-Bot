@@ -1,6 +1,8 @@
+use crate::database::{clear_bot_presence, load_bot_presence, save_bot_presence};
 use crate::i18n::{get_guild_language, t, tf, Language, TranslationKey};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
+use sqlx::SqlitePool;
 
 /// Available bot status options mapped to Discord's OnlineStatus.
 #[derive(Debug, poise::ChoiceParameter, Clone, Copy)]
@@ -39,10 +41,31 @@ impl BotStatus {
     /// Embed color for each status.
     fn color(self) -> u32 {
         match self {
-            BotStatus::Online => 0x43b581,    // Green
-            BotStatus::Idle => 0xfaa61a,      // Yellow/Orange
-            BotStatus::DoNotDisturb => 0xf04747, // Red
-            BotStatus::Invisible => 0x747f8d,  // Gray
+            BotStatus::Online => 0x43b581,
+            BotStatus::Idle => 0xfaa61a,
+            BotStatus::DoNotDisturb => 0xf04747,
+            BotStatus::Invisible => 0x747f8d,
+        }
+    }
+
+    /// Lowercase key stored in the database.
+    fn to_db_str(self) -> &'static str {
+        match self {
+            BotStatus::Online => "online",
+            BotStatus::Idle => "idle",
+            BotStatus::DoNotDisturb => "dnd",
+            BotStatus::Invisible => "invisible",
+        }
+    }
+
+    /// Parse a database key back to the enum.
+    fn from_db_str(s: &str) -> Option<Self> {
+        match s {
+            "online" => Some(BotStatus::Online),
+            "idle" => Some(BotStatus::Idle),
+            "dnd" => Some(BotStatus::DoNotDisturb),
+            "invisible" => Some(BotStatus::Invisible),
+            _ => None,
         }
     }
 }
@@ -84,7 +107,76 @@ impl ActivityKind {
             ActivityKind::Custom => "Custom",
         }
     }
+
+    /// Lowercase key stored in the database.
+    fn to_db_str(self) -> &'static str {
+        match self {
+            ActivityKind::Playing => "playing",
+            ActivityKind::Listening => "listening",
+            ActivityKind::Watching => "watching",
+            ActivityKind::Competing => "competing",
+            ActivityKind::Custom => "custom",
+        }
+    }
+
+    /// Parse a database key back to the enum.
+    fn from_db_str(s: &str) -> Option<Self> {
+        match s {
+            "playing" => Some(ActivityKind::Playing),
+            "listening" => Some(ActivityKind::Listening),
+            "watching" => Some(ActivityKind::Watching),
+            "competing" => Some(ActivityKind::Competing),
+            "custom" => Some(ActivityKind::Custom),
+            _ => None,
+        }
+    }
 }
+
+// ─── Public helper called on bot startup ────────────────────────────────────
+
+/// Restore the bot's presence from the database after a restart.
+/// No-ops silently if no persistent presence is stored.
+pub async fn restore_presence(ctx: &serenity::Context, pool: &SqlitePool) {
+    match load_bot_presence(pool).await {
+        Ok(Some(record)) => {
+            let online_status = BotStatus::from_db_str(&record.status)
+                .map(|s| s.to_online_status())
+                .unwrap_or(serenity::OnlineStatus::Online);
+
+            let activity = record
+                .activity_kind
+                .as_deref()
+                .and_then(ActivityKind::from_db_str)
+                .zip(record.activity_text.as_deref())
+                .map(|(kind, text)| serenity::ActivityData {
+                    name: text.to_owned(),
+                    kind: kind.to_activity_type(),
+                    state: if matches!(kind, ActivityKind::Custom) {
+                        Some(text.to_owned())
+                    } else {
+                        None
+                    },
+                    url: None,
+                });
+
+            ctx.set_presence(activity, online_status);
+            tracing::info!(
+                status = %record.status,
+                activity_kind = ?record.activity_kind,
+                activity_text = ?record.activity_text,
+                "Persistent bot presence restored from database"
+            );
+        }
+        Ok(None) => {
+            tracing::debug!("No persistent bot presence found in database");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to load persistent bot presence from database");
+        }
+    }
+}
+
+// ─── Commands ───────────────────────────────────────────────────────────────
 
 /// Manage bot presence — status and Rich Presence. (Owner only)
 #[poise::command(
@@ -126,29 +218,40 @@ pub async fn status(
     };
 
     let online_status = new_status.to_online_status();
+    let is_permanent = duration_minutes.map_or(true, |m| m == 0);
 
-    // Set the presence using the shard messenger
     ctx.serenity_context()
         .set_presence(None, online_status);
+
+    // Persist only when permanent so the bot restores it after a restart.
+    if is_permanent {
+        if let Err(e) = save_bot_presence(
+            &ctx.data().db_pool,
+            new_status.to_db_str(),
+            None,
+            None,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "Failed to persist bot status to database");
+        }
+    }
 
     tracing::info!(
         status = new_status.display_name(),
         duration_minutes = ?duration_minutes,
+        persistent = is_permanent,
         owner = %ctx.author().name,
         "Bot status updated"
     );
 
     let description = if let Some(mins) = duration_minutes {
         if mins > 0 {
-            // Schedule a revert task
             let ctx_serenity = ctx.serenity_context().clone();
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(mins * 60)).await;
                 ctx_serenity.set_presence(None, serenity::OnlineStatus::Online);
-                tracing::info!(
-                    "Bot status reverted to Online after {} minutes",
-                    mins
-                );
+                tracing::info!("Bot status reverted to Online after {} minutes", mins);
             });
             tf(
                 lang,
@@ -170,10 +273,16 @@ pub async fn status(
         )
     };
 
-    let embed = serenity::CreateEmbed::new()
+    let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::PresenceStatusTitle))
         .description(description)
         .color(new_status.color());
+
+    if is_permanent {
+        embed = embed.footer(serenity::CreateEmbedFooter::new(
+            "Saved persistently — will restore on bot restart",
+        ));
+    }
 
     ctx.send(poise::CreateReply::default().embed(embed))
         .await?;
@@ -205,6 +314,8 @@ pub async fn activity(
         .map(|s| s.to_online_status())
         .unwrap_or(serenity::OnlineStatus::Online);
 
+    let is_permanent = duration_minutes.map_or(true, |m| m == 0);
+
     let activity = serenity::ActivityData {
         name: text.clone(),
         kind: kind.to_activity_type(),
@@ -219,23 +330,39 @@ pub async fn activity(
     ctx.serenity_context()
         .set_presence(Some(activity.clone()), online_status);
 
+    // Persist only when permanent.
+    if is_permanent {
+        let status_str = new_status
+            .map(|s| s.to_db_str())
+            .unwrap_or("online");
+        if let Err(e) = save_bot_presence(
+            &ctx.data().db_pool,
+            status_str,
+            Some(kind.to_db_str()),
+            Some(&text),
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "Failed to persist bot activity to database");
+        }
+    }
+
     tracing::info!(
         activity_type = kind.display_name(),
         activity_text = %text,
         status = ?new_status.map(|s| s.display_name()),
         duration_minutes = ?duration_minutes,
+        persistent = is_permanent,
         owner = %ctx.author().name,
         "Bot activity updated"
     );
 
-    // Schedule revert if duration is set
     if let Some(mins) = duration_minutes {
         if mins > 0 {
             let ctx_serenity = ctx.serenity_context().clone();
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(mins * 60)).await;
-                ctx_serenity
-                    .set_presence(None, serenity::OnlineStatus::Online);
+                ctx_serenity.set_presence(None, serenity::OnlineStatus::Online);
                 tracing::info!(
                     "Bot activity cleared and status reverted to Online after {} minutes",
                     mins
@@ -244,9 +371,7 @@ pub async fn activity(
         }
     }
 
-    let status_name = new_status
-        .map(|s| s.display_name())
-        .unwrap_or("Online");
+    let status_name = new_status.map(|s| s.display_name()).unwrap_or("Online");
 
     let description = if let Some(mins) = duration_minutes {
         if mins > 0 {
@@ -272,10 +397,16 @@ pub async fn activity(
 
     let color = new_status.map(|s| s.color()).unwrap_or(0x43b581);
 
-    let embed = serenity::CreateEmbed::new()
+    let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::PresenceActivityTitle))
         .description(description)
         .color(color);
+
+    if is_permanent {
+        embed = embed.footer(serenity::CreateEmbedFooter::new(
+            "Saved persistently — will restore on bot restart",
+        ));
+    }
 
     ctx.send(poise::CreateReply::default().embed(embed))
         .await?;
@@ -298,6 +429,11 @@ pub async fn clear_activity(ctx: Context<'_>) -> Result<(), Error> {
 
     ctx.serenity_context()
         .set_presence(None, serenity::OnlineStatus::Online);
+
+    // Remove from database so the next restart doesn't restore the old presence.
+    if let Err(e) = clear_bot_presence(&ctx.data().db_pool).await {
+        tracing::warn!(error = %e, "Failed to clear persistent bot presence from database");
+    }
 
     tracing::info!(
         owner = %ctx.author().name,

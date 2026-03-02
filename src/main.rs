@@ -8,6 +8,7 @@ use rust_discord_bot::Data;
 use poise::serenity_prelude as serenity;
 use songbird::SerenityInit;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[tokio::main]
@@ -175,11 +176,14 @@ async fn main() -> anyhow::Result<()> {
                 serenity::Command::set_global_commands(ctx, serenity_commands).await?;
                 tracing::info!("Slash commands registered globally with DM support");
 
+                // Restore any persistent presence saved by the owner before restart.
+                commands::global::owner::presence::restore_presence(ctx, &db_pool).await;
+
                 Ok(Data {
                     db_pool,
                     start_time,
                     http_client,
-                    voice_text_channels: RwLock::new(HashMap::new()),
+                    voice_connections: Arc::new(RwLock::new(HashMap::new())),
                 })
             })
         })

@@ -134,6 +134,9 @@ pub enum TranslationKey {
     VoiceAlreadyConnected,
     VoiceJoinFailed,
     VoiceKicked,
+    VoiceReconnecting,
+    VoiceReconnected,
+    VoiceReconnectFailed,
 
     // Common
     ErrorNotInGuild,
@@ -222,6 +225,9 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(TranslationKey::VoiceAlreadyConnected, "Bot is already connected to a voice channel. Use `/disconnect` first.");
     en.insert(TranslationKey::VoiceJoinFailed, "Failed to join voice channel.");
     en.insert(TranslationKey::VoiceKicked, "Bot was disconnected from the voice channel by a server member.");
+    en.insert(TranslationKey::VoiceReconnecting, "Connection to <#{}> was lost. Attempting to reconnect...");
+    en.insert(TranslationKey::VoiceReconnected, "Successfully reconnected to <#{}>.");
+    en.insert(TranslationKey::VoiceReconnectFailed, "Failed to reconnect to the voice channel after multiple attempts. Use `/connect` to rejoin.");
     en.insert(TranslationKey::ErrorNotInGuild, "This command can only be used in a server.");
     en.insert(TranslationKey::ErrorNoPermission, "You don't have permission to use this command.");
     en.insert(TranslationKey::ErrorGeneric, "An error occurred: {}");
@@ -302,6 +308,9 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(TranslationKey::VoiceAlreadyConnected, "Bot đã ở trong một kênh thoại. Sử dụng `/disconnect` trước.");
     vi.insert(TranslationKey::VoiceJoinFailed, "Không thể tham gia kênh thoại.");
     vi.insert(TranslationKey::VoiceKicked, "Bot đã bị ngắt kết nối khỏi kênh thoại bởi một thành viên.");
+    vi.insert(TranslationKey::VoiceReconnecting, "Mất kết nối tới <#{}>. Đang thử kết nối lại...");
+    vi.insert(TranslationKey::VoiceReconnected, "Đã kết nối lại thành công tới <#{}>.");
+    vi.insert(TranslationKey::VoiceReconnectFailed, "Không thể kết nối lại kênh thoại sau nhiều lần thử. Sử dụng `/connect` để kết nối lại.");
     vi.insert(TranslationKey::ErrorNotInGuild, "Lệnh này chỉ có thể sử dụng trong máy chủ.");
     vi.insert(TranslationKey::ErrorNoPermission, "Bạn không có quyền sử dụng lệnh này.");
     vi.insert(TranslationKey::ErrorGeneric, "Đã xảy ra lỗi: {}");
@@ -382,6 +391,9 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(TranslationKey::VoiceAlreadyConnected, "ボットは既にボイスチャンネルに接続しています。先に`/disconnect`を使用してください。");
     ja.insert(TranslationKey::VoiceJoinFailed, "ボイスチャンネルへの参加に失敗しました。");
     ja.insert(TranslationKey::VoiceKicked, "ボットはメンバーによってボイスチャンネルから切断されました。");
+    ja.insert(TranslationKey::VoiceReconnecting, "<#{}>への接続が切断されました。再接続を試みています...");
+    ja.insert(TranslationKey::VoiceReconnected, "<#{}>に再接続しました。");
+    ja.insert(TranslationKey::VoiceReconnectFailed, "複数回の試行後、ボイスチャンネルへの再接続に失敗しました。`/connect`で再参加してください。");
     ja.insert(TranslationKey::ErrorNotInGuild, "このコマンドはサーバー内でのみ使用できます。");
     ja.insert(TranslationKey::ErrorNoPermission, "このコマンドを使用する権限がありません。");
     ja.insert(TranslationKey::ErrorGeneric, "エラーが発生しました：{}");
