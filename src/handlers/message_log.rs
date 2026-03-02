@@ -62,36 +62,65 @@ pub async fn handle_message_delete(
         Err(_) => return,
     };
 
-    // Build the embed
-    // Description limit is 4096 chars, reserve space for labels and formatting
-    // author_text (~40) + channel_text (~40) + content_label (~15) + newlines (~3) = ~98 chars
-    // Available for content: 4096 - 98 - 6 (``` ```) = ~3992 chars
-    // But we'll be more conservative to ensure total embed stays under 6000 chars
+    // Try to fetch audit logs to see who deleted the message
+    let executor = if let Ok(guild) = guild_id.to_partial_guild(&ctx.http).await {
+        let action = serenity::audit_log::Action::Message(serenity::audit_log::MessageAction::Delete);
+        match guild.audit_logs(&ctx.http, Some(action), None, None, Some(1)).await {
+            Ok(logs) => {
+                logs.entries.first().and_then(|entry| {
+                    // Check if this audit log entry matches our deleted message
+                    if entry.target_id.map(|id| id.get()) == Some(message.author.id.get()) {
+                        Some(entry.user_id)
+                    } else {
+                        None
+                    }
+                })
+            }
+            Err(e) => {
+                tracing::debug!("Failed to fetch audit logs: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Build the embed with fields (matching JavaScript format)
     const MAX_CONTENT_CHARS: usize = 1900;
 
     let content_preview = if message.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
         let preview: String = message.content.chars().take(MAX_CONTENT_CHARS).collect();
-        format!("```{}```", preview)
+        preview
     };
 
-    let author_text = tf(lang, TranslationKey::MessageAuthor, &[&message.author.id]);
-    let channel_text = tf(lang, TranslationKey::MessageChannel, &[&channel_id]);
-    let content_label = t(lang, TranslationKey::MessageContent);
+    // Get author avatar URL
+    let avatar_url = message.author.face();
 
-    let embed = serenity::CreateEmbed::new()
+    let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageDeleted))
-        .description(format!(
-            "{}\n{}\n{}\n{}",
-            author_text, channel_text, content_label, content_preview
-        ))
-        .color(0xe74c3c) // Red
-        .timestamp(message.timestamp)
-        .footer(serenity::CreateEmbedFooter::new(format!(
-            "Message ID: {}",
-            message.id
-        )));
+        .thumbnail(avatar_url)
+        .color(0xff0000) // Red (#ff0000 from your JS code)
+        .field("Author", format!("<@{}>", message.author.id), true)
+        .field("ID", message.author.id.to_string(), true)
+        .field("In channel", format!("<#{}>", channel_id), false)
+        .field("Content", content_preview, false);
+
+    // Add "Deleted by" fields if we found an executor
+    if let Some(executor_id) = executor {
+        embed = embed
+            .field("Deleted by", format!("<@{}>", executor_id), true)
+            .field("ID", executor_id.to_string(), true);
+    }
+
+    // Add timestamp in Discord format (Unix timestamp)
+    let unix_timestamp = message.timestamp.unix_timestamp();
+    embed = embed.field(
+        "Time deleted",
+        format!("<t:{}:f>", unix_timestamp),
+        false
+    );
 
     // Download and re-attach media files
     let mut attachments = Vec::new();

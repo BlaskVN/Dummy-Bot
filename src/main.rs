@@ -12,6 +12,9 @@ use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Install Rustls crypto provider for voice connections (must be called before any TLS operations)
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    
     // Load .env file (silently skip if not present)
     let _ = dotenvy::dotenv();
 
