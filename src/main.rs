@@ -118,6 +118,12 @@ async fn main() -> anyhow::Result<()> {
                             handlers::voice::handle_voice_state_update(ctx, old, new, data)
                                 .await;
                         }
+                        serenity::FullEvent::Resume { .. } => {
+                            handlers::reconnect::handle_resume(ctx, data).await;
+                        }
+                        serenity::FullEvent::Ready { .. } => {
+                            handlers::reconnect::handle_ready_reconnect(ctx, data).await;
+                        }
                         _ => {}
                     }
                     Ok(())
