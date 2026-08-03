@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use sqlx::SqlitePool;
+use std::path::Path;
 
 /// Persistent presence configuration stored across bot restarts.
 pub struct BotPresenceRecord {
@@ -43,11 +44,13 @@ pub async fn load_bot_presence(pool: &SqlitePool) -> Result<Option<BotPresenceRe
     .await
     .context("Failed to load bot presence")?;
 
-    Ok(row.map(|(status, activity_kind, activity_text)| BotPresenceRecord {
-        status,
-        activity_kind,
-        activity_text,
-    }))
+    Ok(
+        row.map(|(status, activity_kind, activity_text)| BotPresenceRecord {
+            status,
+            activity_kind,
+            activity_text,
+        }),
+    )
 }
 
 /// Remove the persistent presence row so the bot starts with Discord's default.
@@ -59,75 +62,93 @@ pub async fn clear_bot_presence(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+pub async fn guild_prefix(
+    pool: &SqlitePool,
+    guild_id: Option<poise::serenity_prelude::GuildId>,
+    default: &str,
+) -> Result<String> {
+    let Some(guild_id) = guild_id else {
+        return Ok(default.to_owned());
+    };
+
+    Ok(
+        sqlx::query_scalar("SELECT prefix FROM guild_config WHERE guild_id = ?")
+            .bind(guild_id.to_string())
+            .fetch_optional(pool)
+            .await
+            .context("Failed to load guild prefix")?
+            .unwrap_or_else(|| default.to_owned()),
+    )
+}
+
+pub async fn message_log_channel(
+    pool: &SqlitePool,
+    guild_id: poise::serenity_prelude::GuildId,
+) -> Result<Option<poise::serenity_prelude::ChannelId>> {
+    let row = sqlx::query_as::<_, (String, i64)>(
+        "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .fetch_optional(pool)
+    .await
+    .context("Failed to load message log configuration")?;
+
+    match row {
+        Some((channel, 1)) => Ok(Some(poise::serenity_prelude::ChannelId::new(
+            channel.parse().context("Invalid stored log channel ID")?,
+        ))),
+        _ => Ok(None),
+    }
+}
+
 /// Initialize the SQLite database connection pool.
 ///
 /// Creates the `data/` directory if it doesn't exist and establishes
 /// a connection pool with reasonable defaults for a Discord bot workload.
-pub async fn init_db(database_url: &str) -> Result<SqlitePool> {
-    // Ensure the data directory exists for SQLite file
-    if database_url.contains("data/") {
-        tokio::fs::create_dir_all("data")
-            .await
-            .context("Failed to create data directory")?;
-    }
+pub async fn init_db(database_url: &str, data_directory: &Path) -> Result<SqlitePool> {
+    tokio::fs::create_dir_all(data_directory)
+        .await
+        .context("Failed to create data directory")?;
 
     let pool = SqlitePool::connect(database_url)
         .await
         .context("Failed to connect to SQLite database")?;
 
-    // Run migrations or create initial tables
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS guild_config (
-            guild_id TEXT PRIMARY KEY,
-            prefix TEXT NOT NULL DEFAULT '!',
-            log_channel_id TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-    )
-        .execute(&pool)
+    sqlx::migrate!()
+        .run(&pool)
         .await
-        .context("Failed to create guild_config table")?;
-
-    // Message logging configuration table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS message_log_config (
-            guild_id TEXT PRIMARY KEY,
-            log_channel_id TEXT NOT NULL,
-            enabled INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-    )
-        .execute(&pool)
-        .await
-        .context("Failed to create message_log_config table")?;
-
-    // Guild language preferences table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS guild_language (
-            guild_id TEXT PRIMARY KEY,
-            language TEXT NOT NULL DEFAULT 'en',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-    )
-    .execute(&pool)
-    .await
-    .context("Failed to create guild_language table")?;
-
-    // Persistent bot presence (single-row, id always = 1)
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS bot_presence (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            status TEXT NOT NULL DEFAULT 'online',
-            activity_kind TEXT,
-            activity_text TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )",
-    )
-    .execute(&pool)
-    .await
-    .context("Failed to create bot_presence table")?;
+        .context("Failed to run database migrations")?;
 
     tracing::info!("Database initialized successfully");
     Ok(pool)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::init_db;
+
+    #[tokio::test]
+    async fn applies_initial_migration() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-db-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let url = format!("sqlite:{}/bot.db?mode=rwc", directory.display());
+        let pool = init_db(&url, &directory).await.unwrap();
+
+        let tables: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'guild_config'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(tables, 1);
+
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }

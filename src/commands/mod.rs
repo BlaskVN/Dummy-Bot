@@ -1,40 +1,16 @@
-pub mod global;
-pub mod guild;
+pub mod configuration;
+pub mod general;
+pub mod moderation;
+pub mod presence;
+pub mod voice;
 
 use crate::{Data, Error};
 
-/// Returns a vector of all registered commands.
-///
-/// Commands are organized by:
-/// - **Channel type**: `guild` (server-only) / `global` (DM + server)
-/// - **Permission level**: `everyone` / `moderator` / `admin` / `owner`
-/// - **Feature**: individual command files
-///
-/// ```text
-/// commands/
-/// ├── guild/                          # Server-only commands
-/// │   ├── everyone/                   # No special permissions
-/// │   │   ├── serverinfo.rs
-/// │   │   └── voice.rs
-/// │   ├── moderator/                  # KICK/BAN/MANAGE_MESSAGES
-/// │   │   ├── kick.rs
-/// │   │   ├── ban.rs
-/// │   │   └── purge.rs
-/// │   └── admin/                      # MANAGE_GUILD
-/// │       ├── settings.rs
-/// │       ├── setprefix.rs
-/// │       ├── logging.rs
-/// │       └── language.rs
-/// └── global/                         # DM + Server commands
-///     ├── everyone/
-///     │   ├── ping.rs
-///     │   └── botinfo.rs
-///     └── owner/                      # Bot owner only
-///         └── presence.rs
-/// ```
 pub fn all() -> Vec<poise::Command<Data, Error>> {
-    let mut commands = Vec::new();
-    commands.extend(guild::all());
-    commands.extend(global::all());
+    let mut commands = general::all();
+    commands.extend(moderation::all());
+    commands.extend(configuration::all());
+    commands.extend(voice::all());
+    commands.push(presence::presence());
     commands
 }

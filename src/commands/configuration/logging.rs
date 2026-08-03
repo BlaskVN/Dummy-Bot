@@ -1,4 +1,5 @@
-use crate::i18n::{get_guild_language, t, tf, TranslationKey};
+use crate::i18n::{TranslationKey, t, tf};
+use crate::permissions::missing_channel_permissions;
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -7,6 +8,7 @@ use poise::serenity_prelude as serenity;
     slash_command,
     subcommands("enable", "disable", "status"),
     guild_only,
+    default_member_permissions = "MANAGE_GUILD",
     required_permissions = "MANAGE_GUILD"
 )]
 pub async fn messagelog(_ctx: Context<'_>) -> Result<(), Error> {
@@ -23,7 +25,23 @@ pub async fn enable(
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
 
-    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+    let lang = ctx.data().language(guild_id).await;
+
+    let required = serenity::Permissions::VIEW_CHANNEL
+        | serenity::Permissions::SEND_MESSAGES
+        | serenity::Permissions::EMBED_LINKS
+        | serenity::Permissions::ATTACH_FILES;
+    let missing =
+        missing_channel_permissions(ctx, log_channel.id, ctx.cache().current_user().id, required)?;
+    if !missing.is_empty() {
+        let message = tf(
+            lang,
+            TranslationKey::ModerationBotMissingPermissions,
+            &[&missing],
+        );
+        ctx.say(message).await?;
+        return Ok(());
+    }
 
     // Insert or update config
     sqlx::query(
@@ -31,10 +49,10 @@ pub async fn enable(
          VALUES (?, ?, 1)
          ON CONFLICT(guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id, enabled = 1",
     )
-        .bind(guild_id.to_string())
-        .bind(log_channel.id.to_string())
-        .execute(&ctx.data().db_pool)
-        .await?;
+    .bind(guild_id.to_string())
+    .bind(log_channel.id.to_string())
+    .execute(&ctx.data().db_pool)
+    .await?;
 
     tracing::info!(
         guild = %guild_id,
@@ -47,7 +65,7 @@ pub async fn enable(
 
     let embed = serenity::CreateEmbed::new()
         .description(message)
-        .color(0x2ecc71); // Green
+        .color(ctx.data().config.colors.success);
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
@@ -61,7 +79,7 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
 
-    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+    let lang = ctx.data().language(guild_id).await;
 
     // Update config to disabled
     let result = sqlx::query("UPDATE message_log_config SET enabled = 0 WHERE guild_id = ?")
@@ -72,7 +90,7 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
     if result.rows_affected() == 0 {
         let embed = serenity::CreateEmbed::new()
             .description(t(lang, TranslationKey::MessageLogNotSetup))
-            .color(0xe67e22); // Orange
+            .color(ctx.data().config.colors.warning);
         ctx.send(poise::CreateReply::default().embed(embed)).await?;
         return Ok(());
     }
@@ -85,7 +103,7 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
 
     let embed = serenity::CreateEmbed::new()
         .description(t(lang, TranslationKey::MessageLogDisabled))
-        .color(0x2ecc71); // Green
+        .color(ctx.data().config.colors.success);
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
@@ -99,14 +117,14 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
 
-    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+    let lang = ctx.data().language(guild_id).await;
 
     let config = sqlx::query_as::<_, (String, i64)>(
         "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
     )
-        .bind(guild_id.to_string())
-        .fetch_optional(&ctx.data().db_pool)
-        .await?;
+    .bind(guild_id.to_string())
+    .fetch_optional(&ctx.data().db_pool)
+    .await?;
 
     match config {
         Some((channel_id, enabled)) => {
@@ -119,22 +137,19 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
             let status_label = t(lang, TranslationKey::MessageLogStatus);
             let channel_text = tf(lang, TranslationKey::MessageLogChannel, &[&channel_id]);
 
-            let description = format!(
-                "├ {} {}\n└ {}",
-                status_label, status, channel_text
-            );
+            let description = format!("├ {} {}\n└ {}", status_label, status, channel_text);
 
             let embed = serenity::CreateEmbed::new()
                 .title(t(lang, TranslationKey::MessageLogStatusTitle))
                 .description(description)
-                .color(0x3498db); // Blue
+                .color(ctx.data().config.colors.primary);
 
             ctx.send(poise::CreateReply::default().embed(embed)).await?;
         }
         None => {
             let embed = serenity::CreateEmbed::new()
                 .description(t(lang, TranslationKey::MessageLogUseEnable))
-                .color(0xe67e22); // Orange
+                .color(ctx.data().config.colors.warning);
             ctx.send(poise::CreateReply::default().embed(embed)).await?;
         }
     }

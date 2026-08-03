@@ -1,49 +1,42 @@
 #!/bin/bash
-# =============================================================================
-# Discord Bot - Build & Deploy Script
-# Usage: ./deploy.sh <server_user@server_host>
-# Example: ./deploy.sh bot_user@192.168.1.100
-# =============================================================================
-
 set -euo pipefail
 
-# --- Configuration ---
-BINARY_NAME="rust_discord_bot"
-REMOTE_DIR="/home/bot_user/bot"
-SERVICE_NAME="discord-bot"
-
-# --- Validate Arguments ---
-if [ $# -lt 1 ]; then
-    echo "Usage: $0 <user@host>"
-    echo "Example: $0 bot_user@192.168.1.100"
+config_file="${1:-.deploy.env}"
+if [[ ! -f "$config_file" ]]; then
+    echo "Missing deployment config: $config_file (copy .deploy.env.example first)" >&2
     exit 1
 fi
 
-REMOTE_HOST="$1"
+# shellcheck source=/dev/null
+source "$config_file"
+: "${DEPLOY_REMOTE_HOST:?Missing DEPLOY_REMOTE_HOST}"
+: "${DEPLOY_REMOTE_DIR:?Missing DEPLOY_REMOTE_DIR}"
+: "${DEPLOY_BINARY_NAME:?Missing DEPLOY_BINARY_NAME}"
+: "${DEPLOY_SERVICE_NAME:?Missing DEPLOY_SERVICE_NAME}"
 
-echo "=== Building release binary ==="
 cargo build --release
+scp "target/release/${DEPLOY_BINARY_NAME}" \
+    "${DEPLOY_REMOTE_HOST}:${DEPLOY_REMOTE_DIR}/${DEPLOY_BINARY_NAME}.new"
 
-echo "=== Uploading binary to server ==="
-scp "target/release/${BINARY_NAME}" "${REMOTE_HOST}:${REMOTE_DIR}/${BINARY_NAME}.new"
+ssh "$DEPLOY_REMOTE_HOST" bash -s -- \
+    "$DEPLOY_REMOTE_DIR" "$DEPLOY_BINARY_NAME" "$DEPLOY_SERVICE_NAME" <<'REMOTE'
+set -euo pipefail
+remote_dir="$1"
+binary_name="$2"
+service_name="$3"
+cd "$remote_dir"
 
-echo "=== Deploying on server ==="
-ssh "${REMOTE_HOST}" << EOF
-    cd ${REMOTE_DIR}
+if [[ ! -f .env ]]; then
+    echo "Missing runtime config: $remote_dir/.env" >&2
+    exit 1
+fi
 
-    # Swap binaries atomically
-    if [ -f ${BINARY_NAME} ]; then
-        mv ${BINARY_NAME} ${BINARY_NAME}.bak
-    fi
-    mv ${BINARY_NAME}.new ${BINARY_NAME}
-    chmod +x ${BINARY_NAME}
-
-    # Restart the service
-    sudo systemctl restart ${SERVICE_NAME}
-
-    # Show status
-    echo "=== Service Status ==="
-    sudo systemctl status ${SERVICE_NAME} --no-pager
-EOF
-
-echo "=== Deploy complete ==="
+sudo rm -f "${binary_name}.installed"
+sudo install -o root -g root -m 0755 "${binary_name}.new" "${binary_name}.installed"
+sudo mv -f "${binary_name}.installed" "$binary_name"
+rm -f "${binary_name}.new"
+sudo chown root:root .env
+sudo chmod 0600 .env
+sudo systemctl restart "$service_name"
+sudo systemctl status "$service_name" --no-pager
+REMOTE

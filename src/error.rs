@@ -1,4 +1,4 @@
-use crate::i18n::{get_guild_language, t, tf, Language, TranslationKey};
+use crate::i18n::{TranslationKey, t, tf};
 use crate::{Data, Error};
 
 /// Centralized error handler for the Poise framework.
@@ -10,8 +10,8 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Command { error, ctx, .. } => {
             let lang = match ctx.guild_id() {
-                Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-                None => Language::English,
+                Some(guild_id) => ctx.data().language(guild_id).await,
+                None => ctx.data().default_language(),
             };
 
             tracing::error!(
@@ -21,13 +21,13 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 "Command error"
             );
 
-            let message = tf(lang, TranslationKey::ErrorGeneric, &[&error]);
+            let message = t(lang, TranslationKey::ErrorGeneric);
             let _ = ctx.say(message).await;
         }
         poise::FrameworkError::ArgumentParse { error, ctx, .. } => {
             let lang = match ctx.guild_id() {
-                Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-                None => Language::English,
+                Some(guild_id) => ctx.data().language(guild_id).await,
+                None => ctx.data().default_language(),
             };
 
             tracing::warn!(
@@ -39,15 +39,33 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             let message = tf(lang, TranslationKey::ModerationInvalidArgument, &[&error]);
             let _ = ctx.say(message).await;
         }
+        poise::FrameworkError::CooldownHit {
+            remaining_cooldown,
+            ctx,
+            ..
+        } => {
+            let lang = match ctx.guild_id() {
+                Some(guild_id) => ctx.data().language(guild_id).await,
+                None => ctx.data().default_language(),
+            };
+            let seconds =
+                remaining_cooldown.as_secs() + u64::from(remaining_cooldown.subsec_nanos() != 0);
+            let message = tf(lang, TranslationKey::ErrorCooldown, &[&seconds]);
+            let _ = ctx.say(message).await;
+        }
         poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
             let lang = match ctx.guild_id() {
-                Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-                None => Language::English,
+                Some(guild_id) => ctx.data().language(guild_id).await,
+                None => ctx.data().default_language(),
             };
 
             tracing::warn!(command = ctx.command().name, "Command check failed");
             let message = if let Some(error) = error {
-                tf(lang, TranslationKey::ModerationUserMissingPermissions, &[&error])
+                tf(
+                    lang,
+                    TranslationKey::ModerationUserMissingPermissions,
+                    &[&error],
+                )
             } else {
                 // owners_only and other checks fire with error = None
                 t(lang, TranslationKey::ErrorNoPermission).to_string()
@@ -60,8 +78,8 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             ..
         } => {
             let lang = match ctx.guild_id() {
-                Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-                None => Language::English,
+                Some(guild_id) => ctx.data().language(guild_id).await,
+                None => ctx.data().default_language(),
             };
 
             tracing::warn!(
@@ -70,7 +88,11 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 "Bot missing permissions"
             );
 
-            let message = tf(lang, TranslationKey::ModerationBotMissingPermissions, &[&missing_permissions]);
+            let message = tf(
+                lang,
+                TranslationKey::ModerationBotMissingPermissions,
+                &[&missing_permissions],
+            );
             let _ = ctx.say(message).await;
         }
         poise::FrameworkError::MissingUserPermissions {
@@ -79,12 +101,16 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             ..
         } => {
             let lang = match ctx.guild_id() {
-                Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-                None => Language::English,
+                Some(guild_id) => ctx.data().language(guild_id).await,
+                None => ctx.data().default_language(),
             };
 
             if let Some(perms) = missing_permissions {
-                let message = tf(lang, TranslationKey::ModerationUserMissingPermissions, &[&perms]);
+                let message = tf(
+                    lang,
+                    TranslationKey::ModerationUserMissingPermissions,
+                    &[&perms],
+                );
                 let _ = ctx.say(message).await;
             }
         }

@@ -1,13 +1,13 @@
-use crate::i18n::{get_guild_language, t, tf, Language, TranslationKey};
+use crate::i18n::{TranslationKey, t, tf};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
 /// Display bot information and uptime.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, user_cooldown = 5)]
 pub async fn botinfo(ctx: Context<'_>) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
-        Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-        None => Language::English,
+        Some(guild_id) => ctx.data().language(guild_id).await,
+        None => ctx.data().default_language(),
     };
 
     let uptime = ctx.data().start_time.elapsed();
@@ -17,7 +17,11 @@ pub async fn botinfo(ctx: Context<'_>) -> Result<(), Error> {
 
     let guild_count = ctx.cache().guilds().len();
 
-    let uptime_text = tf(lang, TranslationKey::BotInfoUptime, &[&hours, &minutes, &seconds]);
+    let uptime_text = tf(
+        lang,
+        TranslationKey::BotInfoUptime,
+        &[&hours, &minutes, &seconds],
+    );
     let servers_text = tf(lang, TranslationKey::BotInfoServers, &[&guild_count]);
     let language_text = t(lang, TranslationKey::BotInfoLanguage);
     let framework_text = t(lang, TranslationKey::BotInfoFramework);
@@ -30,7 +34,7 @@ pub async fn botinfo(ctx: Context<'_>) -> Result<(), Error> {
     let embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::BotInfoTitle))
         .description(description)
-        .color(0x3498db); // Blue
+        .color(ctx.data().config.colors.primary);
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 

@@ -1,4 +1,4 @@
-use crate::i18n::{get_guild_language, tf, TranslationKey};
+use crate::i18n::{TranslationKey, tf};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -7,20 +7,29 @@ use poise::serenity_prelude as serenity;
     slash_command,
     prefix_command,
     guild_only,
+    default_member_permissions = "MANAGE_GUILD",
     required_permissions = "MANAGE_GUILD"
 )]
 pub async fn setprefix(
     ctx: Context<'_>,
-    #[description = "New prefix for the server"]
-    #[min_length = 1]
-    #[max_length = 5]
-    new_prefix: String,
+    #[description = "New prefix for the server"] new_prefix: String,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
 
-    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+    let lang = ctx.data().language(guild_id).await;
+
+    let length = new_prefix.chars().count();
+    if length == 0 || length > ctx.data().config.prefix_max_chars {
+        let message = tf(
+            lang,
+            TranslationKey::PrefixInvalidLength,
+            &[&ctx.data().config.prefix_max_chars],
+        );
+        ctx.say(message).await?;
+        return Ok(());
+    }
 
     sqlx::query(
         "INSERT INTO guild_config (guild_id, prefix, updated_at)
@@ -43,7 +52,7 @@ pub async fn setprefix(
 
     let embed = serenity::CreateEmbed::new()
         .description(message)
-        .color(0x2ecc71); // Green
+        .color(ctx.data().config.colors.success);
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 

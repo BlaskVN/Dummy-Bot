@@ -1,8 +1,12 @@
-use crate::i18n::{get_guild_language, t, tf, TranslationKey};
 use crate::Data;
+use crate::config::discord_limits;
+use crate::database;
+use crate::i18n::{TranslationKey, t, tf};
 use chrono::DateTime;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
+
+const MAX_ATTACHMENT_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Handle message deletion events.
 ///
@@ -22,7 +26,7 @@ pub async fn handle_message_delete(
     };
 
     // Get language for this guild
-    let lang = get_guild_language(&data.db_pool, guild_id).await;
+    let lang = data.language(guild_id).await;
 
     // Try to fetch the message from cache
     let message = match ctx.cache.message(channel_id, deleted_message_id) {
@@ -41,115 +45,79 @@ pub async fn handle_message_delete(
         return;
     }
 
-    // Check if logging is enabled for this guild
-    let config = match sqlx::query_as::<_, (String, i64)>(
-        "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
-    )
-        .bind(guild_id.to_string())
-        .fetch_optional(&data.db_pool)
-        .await
-    {
-        Ok(Some((channel, enabled))) if enabled == 1 => channel,
-        Ok(_) => return, // Logging disabled or not configured
+    let log_channel_id = match database::message_log_channel(&data.db_pool, guild_id).await {
+        Ok(Some(channel)) => channel,
+        Ok(None) => return,
         Err(e) => {
             tracing::error!("Failed to query message_log_config: {}", e);
             return;
         }
     };
 
-    let log_channel_id = match config.parse::<u64>() {
-        Ok(id) => ChannelId::new(id),
-        Err(_) => return,
-    };
-
-    // Try to fetch audit logs to see who deleted the message
-    let executor = if let Ok(guild) = guild_id.to_partial_guild(&ctx.http).await {
-        let action = serenity::audit_log::Action::Message(serenity::audit_log::MessageAction::Delete);
-        match guild.audit_logs(&ctx.http, Some(action), None, None, Some(1)).await {
-            Ok(logs) => {
-                logs.entries.first().and_then(|entry| {
-                    // Check if this audit log entry matches our deleted message
-                    if entry.target_id.map(|id| id.get()) == Some(message.author.id.get()) {
-                        Some(entry.user_id)
-                    } else {
-                        None
-                    }
-                })
-            }
-            Err(e) => {
-                tracing::debug!("Failed to fetch audit logs: {}", e);
-                None
-            }
-        }
-    } else {
-        None
-    };
-
     // Build the embed with fields (matching JavaScript format)
-    const MAX_CONTENT_CHARS: usize = 1900;
-
     let content_preview = if message.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
-        let preview: String = message.content.chars().take(MAX_CONTENT_CHARS).collect();
+        let preview: String = message
+            .content
+            .chars()
+            .take(data.config.message_preview_chars)
+            .collect();
         preview
     };
 
     // Get author avatar URL
     let avatar_url = message.author.face();
 
-    let mut embed = serenity::CreateEmbed::new()
+    let embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageDeleted))
         .thumbnail(avatar_url)
-        .color(0xff0000) // Red (#ff0000 from your JS code)
-        .field("Author", format!("<@{}>", message.author.id), true)
-        .field("ID", message.author.id.to_string(), true)
-        .field("In channel", format!("<#{}>", channel_id), false)
-        .field("Content", content_preview, false);
+        .color(data.config.colors.error)
+        .field(
+            t(lang, TranslationKey::MessageAuthorLabel),
+            format!("<@{}>", message.author.id),
+            true,
+        )
+        .field(
+            t(lang, TranslationKey::MessageId),
+            message.author.id.to_string(),
+            true,
+        )
+        .field(
+            t(lang, TranslationKey::MessageChannelLabel),
+            format!("<#{}>", channel_id),
+            false,
+        )
+        .field(
+            t(lang, TranslationKey::MessageContent),
+            content_preview,
+            false,
+        )
+        .field(
+            t(lang, TranslationKey::MessageDeletedAt),
+            format!("<t:{}:f>", message.timestamp.unix_timestamp()),
+            false,
+        );
 
-    // Add "Deleted by" fields if we found an executor
-    if let Some(executor_id) = executor {
-        embed = embed
-            .field("Deleted by", format!("<@{}>", executor_id), true)
-            .field("ID", executor_id.to_string(), true);
-    }
-
-    // Add timestamp in Discord format (Unix timestamp)
-    let unix_timestamp = message.timestamp.unix_timestamp();
-    embed = embed.field(
-        "Time deleted",
-        format!("<t:{}:f>", unix_timestamp),
-        false
-    );
-
-    // Download and re-attach media files
-    let mut attachments = Vec::new();
-    for attachment in &message.attachments {
-        match download_attachment(&data.http_client, &attachment.url, &attachment.filename).await {
-            Ok(file) => attachments.push(file),
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to download attachment {}: {}",
-                    attachment.filename,
-                    e
-                );
-            }
-        }
-    }
-
-    // Send log message (embed first)
     let builder = serenity::CreateMessage::new().embed(embed);
 
     if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
         tracing::error!("Failed to send deletion log: {}", e);
-        return;
     }
 
-    // Send media files separately after the message info (matching old bot behavior)
-    if !attachments.is_empty() {
-        let media_builder = serenity::CreateMessage::new().files(attachments);
-        if let Err(e) = log_channel_id.send_message(&ctx.http, media_builder).await {
-            tracing::error!("Failed to send media attachments: {}", e);
+    for attachment in &message.attachments {
+        match download_attachment(data, attachment).await {
+            Ok(file) => {
+                let builder = serenity::CreateMessage::new().add_file(file);
+                if let Err(error) = log_channel_id.send_message(&ctx.http, builder).await {
+                    tracing::warn!(%error, "Failed to send logged attachment");
+                }
+            }
+            Err(error) => tracing::warn!(
+                filename = %attachment.filename,
+                %error,
+                "Skipped unsafe or oversized attachment"
+            ),
         }
     }
 }
@@ -165,7 +133,7 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
     };
 
     // Get language for this guild
-    let lang = get_guild_language(&data.db_pool, guild_id).await;
+    let lang = data.language(guild_id).await;
 
     // Get old message from cache
     let old_message = match ctx.cache.message(event.channel_id, event.id) {
@@ -188,36 +156,25 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
         return; // Content didn't change
     }
 
-    // Check if logging is enabled
-    let config = match sqlx::query_as::<_, (String, i64)>(
-        "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
-    )
-        .bind(guild_id.to_string())
-        .fetch_optional(&data.db_pool)
-        .await
-    {
-        Ok(Some((channel, enabled))) if enabled == 1 => channel,
-        Ok(_) => return,
+    let log_channel_id = match database::message_log_channel(&data.db_pool, guild_id).await {
+        Ok(Some(channel)) => channel,
+        Ok(None) => return,
         Err(e) => {
             tracing::error!("Failed to query message_log_config: {}", e);
             return;
         }
     };
 
-    let log_channel_id = match config.parse::<u64>() {
-        Ok(id) => ChannelId::new(id),
-        Err(_) => return,
-    };
-
     // Build embed showing before/after
-    // Field value limit is 1024 chars, with ``` ``` overhead (6 chars) = 1018 chars available
-    // We'll use 900 chars to leave some margin and ensure total embed stays under 6000
-    const MAX_FIELD_CONTENT_CHARS: usize = 900;
+    // Preview sizes are validated against Discord's embed limits at startup.
+    let old_preview = code_block(&old_message.content, data.config.message_preview_chars);
+    let new_preview = code_block(new_content, data.config.message_preview_chars);
 
-    let old_preview: String = old_message.content.chars().take(MAX_FIELD_CONTENT_CHARS).collect();
-    let new_preview: String = new_content.chars().take(MAX_FIELD_CONTENT_CHARS).collect();
-
-    let author_text = tf(lang, TranslationKey::MessageAuthor, &[&old_message.author.id]);
+    let author_text = tf(
+        lang,
+        TranslationKey::MessageAuthor,
+        &[&old_message.author.id],
+    );
     let channel_text = tf(lang, TranslationKey::MessageChannel, &[&event.channel_id]);
     let jump_url = format!(
         "https://discord.com/channels/{}/{}/{}",
@@ -230,19 +187,15 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
 
     let embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageEditedTitle))
-        .description(format!(
-            "{}\n{}\n{}",
-            author_text,
-            channel_text,
-            jump_text
-        ))
-        .field(before_label, format!("```{}```", old_preview), false)
-        .field(after_label, format!("```{}```", new_preview), false)
-        .color(0xf39c12) // Orange
+        .description(format!("{}\n{}\n{}", author_text, channel_text, jump_text))
+        .field(before_label, old_preview, false)
+        .field(after_label, new_preview, false)
+        .color(data.config.colors.warning)
         .timestamp(serenity::Timestamp::now())
-        .footer(serenity::CreateEmbedFooter::new(format!(
-            "Message ID: {}",
-            event.id
+        .footer(serenity::CreateEmbedFooter::new(tf(
+            lang,
+            TranslationKey::MessageIdValue,
+            &[&event.id],
         )));
 
     let builder = serenity::CreateMessage::new().embed(embed);
@@ -269,27 +222,15 @@ pub async fn handle_message_delete_bulk(
     };
 
     // Get language for this guild
-    let lang = get_guild_language(&data.db_pool, guild_id).await;
+    let lang = data.language(guild_id).await;
 
-    // Check if logging is enabled for this guild
-    let config = match sqlx::query_as::<_, (String, i64)>(
-        "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
-    )
-        .bind(guild_id.to_string())
-        .fetch_optional(&data.db_pool)
-        .await
-    {
-        Ok(Some((channel, enabled))) if enabled == 1 => channel,
-        Ok(_) => return, // Logging disabled or not configured
+    let log_channel_id = match database::message_log_channel(&data.db_pool, guild_id).await {
+        Ok(Some(channel)) => channel,
+        Ok(None) => return,
         Err(e) => {
             tracing::error!("Failed to query message_log_config: {}", e);
             return;
         }
-    };
-
-    let log_channel_id = match config.parse::<u64>() {
-        Ok(id) => ChannelId::new(id),
-        Err(_) => return,
     };
 
     // Try to fetch cached messages and build a summary
@@ -322,33 +263,41 @@ pub async fn handle_message_delete_bulk(
 
     for (author, content, unix_ts) in &user_messages {
         let ts_str = DateTime::from_timestamp(*unix_ts, 0)
-            .map(|dt| dt.format("%d/%m %H:%M").to_string())
-            .unwrap_or_else(|| "??/?? ??:??".to_string());
+            .map(|dt| dt.format(&data.config.message_timestamp_format).to_string())
+            .unwrap_or_else(|| t(lang, TranslationKey::MessageUnknownTimestamp).to_string());
 
-        let content_preview: String = content.chars().take(45).collect();
+        let content_preview: String = content
+            .chars()
+            .take(data.config.message_preview_chars)
+            .collect();
         let preview = if content_preview.is_empty() {
             media_only.to_string()
         } else {
             content_preview
         };
-        all_lines.push(format!("[{}] {}: {}", ts_str, author, preview));
+        all_lines.push(
+            escape_code_fences(&format!("[{}] {}: {}", ts_str, author, preview))
+                .chars()
+                .take(data.config.message_log_chunk_chars)
+                .collect(),
+        );
     }
 
     // Split lines into chunks that fit within field value limit
     // Field value limit: 1024 chars, ``` ``` overhead: 6 chars → 1018 usable
-    const MAX_CHUNK_CHARS: usize = 1000;
-
     let mut chunks: Vec<String> = Vec::new();
     let mut current_chunk = String::new();
 
     for line in &all_lines {
         let needed = if current_chunk.is_empty() {
-            line.len()
+            line.chars().count()
         } else {
-            line.len() + 1 // +1 for \n separator
+            line.chars().count() + 1 // +1 for \n separator
         };
 
-        if !current_chunk.is_empty() && current_chunk.len() + needed > MAX_CHUNK_CHARS {
+        if !current_chunk.is_empty()
+            && current_chunk.chars().count() + needed > data.config.message_log_chunk_chars
+        {
             chunks.push(current_chunk);
             current_chunk = String::new();
         }
@@ -366,12 +315,13 @@ pub async fn handle_message_delete_bulk(
     // Build summary texts
     let channel_text = tf(lang, TranslationKey::MessageChannel, &[&channel_id]);
     let total_text = tf(lang, TranslationKey::MessageTotalDeleted, &[&total_count]);
-    let cached_text = tf(lang, TranslationKey::MessageCached, &[&cached_count, &user_count, &bot_count]);
-
-    let description = format!(
-        "{}\n{}\n{}",
-        channel_text, total_text, cached_text
+    let cached_text = tf(
+        lang,
+        TranslationKey::MessageCached,
+        &[&cached_count, &user_count, &bot_count],
     );
+
+    let description = format!("{}\n{}\n{}", channel_text, total_text, cached_text);
 
     let deleted_messages_label = t(lang, TranslationKey::MessageDeletedMessages);
     let footer_text = tf(lang, TranslationKey::MessagePurged, &[&total_count]);
@@ -385,8 +335,12 @@ pub async fn handle_message_delete_bulk(
         let embed = serenity::CreateEmbed::new()
             .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
             .description(description)
-            .field(deleted_messages_label, "*No cached messages to display*", false)
-            .color(0xe67e22)
+            .field(
+                deleted_messages_label,
+                t(lang, TranslationKey::MessageNoCached),
+                false,
+            )
+            .color(data.config.colors.warning)
             .timestamp(serenity::Timestamp::now())
             .footer(serenity::CreateEmbedFooter::new(footer_text));
         embeds.push(embed);
@@ -406,33 +360,27 @@ pub async fn handle_message_delete_bulk(
                     .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
                     .description(&description)
                     .field(field_name, field_value, false)
-                    .color(0xe67e22)
+                    .color(data.config.colors.warning)
                     .timestamp(serenity::Timestamp::now())
                     .footer(serenity::CreateEmbedFooter::new(&footer_text));
                 embeds.push(embed);
             } else {
                 // Continuation embed — lightweight, just the message chunk
-                let field_name = format!(
-                    "{} [{}/{}]",
-                    deleted_messages_label,
-                    idx + 1,
-                    total_chunks
-                );
+                let field_name =
+                    format!("{} [{}/{}]", deleted_messages_label, idx + 1, total_chunks);
 
                 let embed = serenity::CreateEmbed::new()
                     .field(field_name, field_value, false)
-                    .color(0xe67e22);
+                    .color(data.config.colors.warning);
                 embeds.push(embed);
             }
         }
     }
 
-    // Send embeds in batches of 10 (Discord limit per message)
-    const MAX_EMBEDS_PER_MESSAGE: usize = 10;
     let mut remaining = embeds;
 
     while !remaining.is_empty() {
-        let batch_size = remaining.len().min(MAX_EMBEDS_PER_MESSAGE);
+        let batch_size = remaining.len().min(discord_limits::EMBEDS_PER_MESSAGE);
         let batch: Vec<serenity::CreateEmbed> = remaining.drain(..batch_size).collect();
 
         let mut builder = serenity::CreateMessage::new();
@@ -447,14 +395,81 @@ pub async fn handle_message_delete_bulk(
     }
 }
 
-/// Download an attachment from Discord CDN and return it as a CreateAttachment.
-async fn download_attachment(
-    client: &reqwest::Client,
-    url: &str,
-    filename: &str,
-) -> Result<serenity::CreateAttachment, Box<dyn std::error::Error + Send + Sync>> {
-    let response = client.get(url).send().await?;
-    let bytes = response.bytes().await?;
+fn escape_code_fences(value: &str) -> String {
+    value.replace("```", "`\u{200b}``")
+}
 
-    Ok(serenity::CreateAttachment::bytes(bytes.to_vec(), filename))
+async fn download_attachment(
+    data: &Data,
+    attachment: &serenity::Attachment,
+) -> anyhow::Result<serenity::CreateAttachment> {
+    anyhow::ensure!(
+        u64::from(attachment.size) <= MAX_ATTACHMENT_BYTES,
+        "attachment exceeds {MAX_ATTACHMENT_BYTES} bytes"
+    );
+    let url = reqwest::Url::parse(&attachment.url)?;
+    anyhow::ensure!(is_discord_cdn(&url), "attachment URL is not Discord CDN");
+
+    let _permit = data.attachment_downloads.acquire().await?;
+    let mut response = data
+        .attachment_client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?;
+    anyhow::ensure!(
+        response.content_length().unwrap_or(0) <= MAX_ATTACHMENT_BYTES,
+        "attachment response exceeds byte limit"
+    );
+
+    let mut bytes = Vec::with_capacity(attachment.size as usize);
+    while let Some(chunk) = response.chunk().await? {
+        anyhow::ensure!(
+            bytes.len() + chunk.len() <= MAX_ATTACHMENT_BYTES as usize,
+            "attachment body exceeds byte limit"
+        );
+        bytes.extend_from_slice(&chunk);
+    }
+
+    Ok(serenity::CreateAttachment::bytes(
+        bytes,
+        attachment.filename.clone(),
+    ))
+}
+
+fn is_discord_cdn(url: &reqwest::Url) -> bool {
+    url.scheme() == "https"
+        && matches!(
+            url.host_str(),
+            Some("cdn.discordapp.com" | "media.discordapp.net")
+        )
+}
+
+fn code_block(value: &str, max_chars: usize) -> String {
+    let escaped = escape_code_fences(value);
+    format!(
+        "```{}```",
+        escaped.chars().take(max_chars).collect::<String>()
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{code_block, is_discord_cdn};
+
+    #[test]
+    fn user_content_cannot_close_code_block() {
+        let block = code_block("before```fake log", 100);
+        assert_eq!(block.matches("```").count(), 2);
+    }
+
+    #[test]
+    fn attachments_only_use_discord_cdn() {
+        assert!(is_discord_cdn(
+            &"https://cdn.discordapp.com/attachments/1/2/file.png"
+                .parse()
+                .unwrap()
+        ));
+        assert!(!is_discord_cdn(&"https://127.0.0.1/file".parse().unwrap()));
+    }
 }

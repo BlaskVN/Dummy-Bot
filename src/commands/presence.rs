@@ -1,5 +1,6 @@
+use crate::config::EmbedColors;
 use crate::database::{clear_bot_presence, load_bot_presence, save_bot_presence};
-use crate::i18n::{get_guild_language, t, tf, Language, TranslationKey};
+use crate::i18n::{TranslationKey, t, tf};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 use sqlx::SqlitePool;
@@ -39,12 +40,12 @@ impl BotStatus {
     }
 
     /// Embed color for each status.
-    fn color(self) -> u32 {
+    fn color(self, colors: &EmbedColors) -> u32 {
         match self {
-            BotStatus::Online => 0x43b581,
-            BotStatus::Idle => 0xfaa61a,
-            BotStatus::DoNotDisturb => 0xf04747,
-            BotStatus::Invisible => 0x747f8d,
+            BotStatus::Online => colors.online,
+            BotStatus::Idle => colors.idle,
+            BotStatus::DoNotDisturb => colors.do_not_disturb,
+            BotStatus::Invisible => colors.invisible,
         }
     }
 
@@ -188,17 +189,16 @@ pub async fn restore_presence(ctx: &serenity::Context, pool: &SqlitePool) {
 )]
 pub async fn presence(ctx: Context<'_>) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
-        Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-        None => Language::English,
+        Some(guild_id) => ctx.data().language(guild_id).await,
+        None => ctx.data().default_language(),
     };
 
     let embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::PresenceTitle))
         .description(t(lang, TranslationKey::PresenceHelp))
-        .color(0x7289da);
+        .color(ctx.data().config.colors.presence);
 
-    ctx.send(poise::CreateReply::default().embed(embed))
-        .await?;
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
     Ok(())
 }
 
@@ -209,32 +209,35 @@ pub async fn status(
     #[description = "Bot status to set"] new_status: BotStatus,
     #[description = "Duration in minutes (0 = permanent)"]
     #[min = 0]
-    #[max = 1440]
     duration_minutes: Option<u64>,
 ) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
-        Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-        None => Language::English,
+        Some(guild_id) => ctx.data().language(guild_id).await,
+        None => ctx.data().default_language(),
     };
 
-    let online_status = new_status.to_online_status();
-    let is_permanent = duration_minutes.map_or(true, |m| m == 0);
+    if duration_minutes.is_some_and(|value| value > ctx.data().config.presence_max_duration_minutes)
+    {
+        let message = tf(
+            lang,
+            TranslationKey::PresenceDurationRange,
+            &[&ctx.data().config.presence_max_duration_minutes],
+        );
+        ctx.say(message).await?;
+        return Ok(());
+    }
 
-    ctx.serenity_context()
-        .set_presence(None, online_status);
+    let online_status = new_status.to_online_status();
+    let is_permanent = duration_minutes.is_none_or(|m| m == 0);
+
+    ctx.serenity_context().set_presence(None, online_status);
 
     // Persist only when permanent so the bot restores it after a restart.
-    if is_permanent {
-        if let Err(e) = save_bot_presence(
-            &ctx.data().db_pool,
-            new_status.to_db_str(),
-            None,
-            None,
-        )
-        .await
-        {
-            tracing::warn!(error = %e, "Failed to persist bot status to database");
-        }
+    if is_permanent
+        && let Err(e) =
+            save_bot_presence(&ctx.data().db_pool, new_status.to_db_str(), None, None).await
+    {
+        tracing::warn!(error = %e, "Failed to persist bot status to database");
     }
 
     tracing::info!(
@@ -276,16 +279,16 @@ pub async fn status(
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::PresenceStatusTitle))
         .description(description)
-        .color(new_status.color());
+        .color(new_status.color(&ctx.data().config.colors));
 
     if is_permanent {
-        embed = embed.footer(serenity::CreateEmbedFooter::new(
-            "Saved persistently — will restore on bot restart",
-        ));
+        embed = embed.footer(serenity::CreateEmbedFooter::new(t(
+            lang,
+            TranslationKey::PresencePersistent,
+        )));
     }
 
-    ctx.send(poise::CreateReply::default().embed(embed))
-        .await?;
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
@@ -298,23 +301,32 @@ pub async fn activity(
     #[description = "Activity text / name"]
     #[max_length = 128]
     text: String,
-    #[description = "Optional status to set alongside"]
-    new_status: Option<BotStatus>,
+    #[description = "Optional status to set alongside"] new_status: Option<BotStatus>,
     #[description = "Duration in minutes (0 = permanent)"]
     #[min = 0]
-    #[max = 1440]
     duration_minutes: Option<u64>,
 ) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
-        Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-        None => Language::English,
+        Some(guild_id) => ctx.data().language(guild_id).await,
+        None => ctx.data().default_language(),
     };
+
+    if duration_minutes.is_some_and(|value| value > ctx.data().config.presence_max_duration_minutes)
+    {
+        let message = tf(
+            lang,
+            TranslationKey::PresenceDurationRange,
+            &[&ctx.data().config.presence_max_duration_minutes],
+        );
+        ctx.say(message).await?;
+        return Ok(());
+    }
 
     let online_status = new_status
         .map(|s| s.to_online_status())
         .unwrap_or(serenity::OnlineStatus::Online);
 
-    let is_permanent = duration_minutes.map_or(true, |m| m == 0);
+    let is_permanent = duration_minutes.is_none_or(|m| m == 0);
 
     let activity = serenity::ActivityData {
         name: text.clone(),
@@ -334,7 +346,7 @@ pub async fn activity(
     if is_permanent {
         let status_str = new_status
             .map(|s| s.to_db_str())
-            .unwrap_or("online");
+            .unwrap_or(BotStatus::Online.to_db_str());
         if let Err(e) = save_bot_presence(
             &ctx.data().db_pool,
             status_str,
@@ -357,18 +369,18 @@ pub async fn activity(
         "Bot activity updated"
     );
 
-    if let Some(mins) = duration_minutes {
-        if mins > 0 {
-            let ctx_serenity = ctx.serenity_context().clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(mins * 60)).await;
-                ctx_serenity.set_presence(None, serenity::OnlineStatus::Online);
-                tracing::info!(
-                    "Bot activity cleared and status reverted to Online after {} minutes",
-                    mins
-                );
-            });
-        }
+    if let Some(mins) = duration_minutes
+        && mins > 0
+    {
+        let ctx_serenity = ctx.serenity_context().clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(mins * 60)).await;
+            ctx_serenity.set_presence(None, serenity::OnlineStatus::Online);
+            tracing::info!(
+                "Bot activity cleared and status reverted to Online after {} minutes",
+                mins
+            );
+        });
     }
 
     let status_name = new_status.map(|s| s.display_name()).unwrap_or("Online");
@@ -395,7 +407,9 @@ pub async fn activity(
         )
     };
 
-    let color = new_status.map(|s| s.color()).unwrap_or(0x43b581);
+    let color = new_status
+        .map(|s| s.color(&ctx.data().config.colors))
+        .unwrap_or(ctx.data().config.colors.online);
 
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::PresenceActivityTitle))
@@ -403,28 +417,23 @@ pub async fn activity(
         .color(color);
 
     if is_permanent {
-        embed = embed.footer(serenity::CreateEmbedFooter::new(
-            "Saved persistently — will restore on bot restart",
-        ));
+        embed = embed.footer(serenity::CreateEmbedFooter::new(t(
+            lang,
+            TranslationKey::PresencePersistent,
+        )));
     }
 
-    ctx.send(poise::CreateReply::default().embed(embed))
-        .await?;
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
 
 /// Clear the bot's current activity / Rich Presence and reset to Online.
-#[poise::command(
-    slash_command,
-    prefix_command,
-    owners_only,
-    rename = "clear"
-)]
+#[poise::command(slash_command, prefix_command, owners_only, rename = "clear")]
 pub async fn clear_activity(ctx: Context<'_>) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
-        Some(guild_id) => get_guild_language(&ctx.data().db_pool, guild_id).await,
-        None => Language::English,
+        Some(guild_id) => ctx.data().language(guild_id).await,
+        None => ctx.data().default_language(),
     };
 
     ctx.serenity_context()
@@ -443,10 +452,9 @@ pub async fn clear_activity(ctx: Context<'_>) -> Result<(), Error> {
     let embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::PresenceActivityTitle))
         .description(t(lang, TranslationKey::PresenceActivityCleared))
-        .color(0x43b581);
+        .color(ctx.data().config.colors.online);
 
-    ctx.send(poise::CreateReply::default().embed(embed))
-        .await?;
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }

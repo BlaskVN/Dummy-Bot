@@ -1,4 +1,4 @@
-use crate::i18n::{get_guild_language, tf, TranslationKey};
+use crate::i18n::{TranslationKey, tf};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -7,8 +7,9 @@ use poise::serenity_prelude as serenity;
     slash_command,
     prefix_command,
     guild_only,
+    default_member_permissions = "MANAGE_MESSAGES",
     required_permissions = "MANAGE_MESSAGES",
-    required_bot_permissions = "MANAGE_MESSAGES"
+    required_bot_permissions = "VIEW_CHANNEL | MANAGE_MESSAGES | READ_MESSAGE_HISTORY"
 )]
 pub async fn purge(
     ctx: Context<'_>,
@@ -17,8 +18,20 @@ pub async fn purge(
     #[max = 100]
     amount: u8,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
-    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = ctx.data().language(guild_id).await;
+
+    if amount > ctx.data().config.purge_max_messages {
+        let message = tf(
+            lang,
+            TranslationKey::ModerationPurgeRange,
+            &[&ctx.data().config.purge_max_messages],
+        );
+        ctx.say(message).await?;
+        return Ok(());
+    }
 
     let channel = ctx.channel_id();
 
@@ -31,9 +44,7 @@ pub async fn purge(
     let message_ids: Vec<serenity::MessageId> = messages.iter().map(|m| m.id).collect();
 
     // Bulk delete (only works for messages < 14 days old)
-    channel
-        .delete_messages(&ctx.http(), message_ids)
-        .await?;
+    channel.delete_messages(&ctx.http(), message_ids).await?;
 
     tracing::info!(
         moderator = %ctx.author().name,
@@ -46,8 +57,10 @@ pub async fn purge(
 
     let reply = ctx.say(message).await?;
 
-    // Auto-delete the confirmation after 3 seconds
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(
+        ctx.data().config.purge_confirmation_seconds,
+    ))
+    .await;
     let _ = reply.delete(ctx).await;
 
     Ok(())

@@ -1,4 +1,5 @@
-use crate::i18n::{get_guild_language, t, tf, TranslationKey};
+use crate::i18n::{TranslationKey, t, tf};
+use crate::permissions::{ModerationDenial, moderation_denial};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -7,6 +8,7 @@ use poise::serenity_prelude as serenity;
     slash_command,
     prefix_command,
     guild_only,
+    default_member_permissions = "KICK_MEMBERS",
     required_permissions = "KICK_MEMBERS",
     required_bot_permissions = "KICK_MEMBERS"
 )]
@@ -17,8 +19,20 @@ pub async fn kick(
     #[rest]
     reason: Option<String>,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
-    let lang = get_guild_language(&ctx.data().db_pool, guild_id).await;
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = ctx.data().language(guild_id).await;
+
+    if let Some(denial) = moderation_denial(ctx, member.user.id)? {
+        let key = match denial {
+            ModerationDenial::SelfTarget => TranslationKey::ModerationCannotTargetSelf,
+            ModerationDenial::UserHierarchy => TranslationKey::ModerationUserHierarchy,
+            ModerationDenial::BotHierarchy => TranslationKey::ModerationBotHierarchy,
+        };
+        ctx.say(t(lang, key)).await?;
+        return Ok(());
+    }
 
     let reason = reason.unwrap_or_else(|| t(lang, TranslationKey::ModerationNoReason).to_string());
     let member_name = member.user.name.clone();
@@ -32,11 +46,15 @@ pub async fn kick(
         "Member kicked"
     );
 
-    let message = tf(lang, TranslationKey::ModerationKicked, &[&member_name, &reason]);
+    let message = tf(
+        lang,
+        TranslationKey::ModerationKicked,
+        &[&member_name, &reason],
+    );
 
     let embed = serenity::CreateEmbed::new()
         .description(message)
-        .color(0xe74c3c); // Red
+        .color(ctx.data().config.colors.error);
 
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 

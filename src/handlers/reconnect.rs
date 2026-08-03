@@ -1,4 +1,5 @@
-use crate::commands::global::owner::presence::restore_presence;
+use crate::commands::presence::restore_presence;
+use crate::commands::voice::update_voice_state;
 use crate::{Data, VoiceConnectionInfo};
 use poise::serenity_prelude as serenity;
 use std::collections::HashMap;
@@ -13,7 +14,11 @@ use tokio::sync::RwLock;
 pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
     tracing::info!("Gateway resumed — restoring bot state");
     restore_presence(ctx, &data.db_pool).await;
-    spawn_voice_reconnect(ctx.clone(), data.voice_connections.clone(), 3);
+    spawn_voice_reconnect(
+        ctx.clone(),
+        data.voice_connections.clone(),
+        data.config.gateway_resume_delay_seconds,
+    );
 }
 
 /// Restore bot state after a shard restart (subsequent Ready event).
@@ -23,7 +28,11 @@ pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
 pub async fn handle_ready_reconnect(ctx: &serenity::Context, data: &Data) {
     tracing::info!("Shard restarted (new Ready) — restoring bot state");
     restore_presence(ctx, &data.db_pool).await;
-    spawn_voice_reconnect(ctx.clone(), data.voice_connections.clone(), 5);
+    spawn_voice_reconnect(
+        ctx.clone(),
+        data.voice_connections.clone(),
+        data.config.gateway_ready_delay_seconds,
+    );
 }
 
 /// Spawn a background task that waits `delay_secs`, then attempts to rejoin
@@ -54,17 +63,13 @@ async fn reconnect_stale_voice(
         return;
     }
 
-    let manager = match songbird::get(ctx).await {
-        Some(m) => m,
-        None => {
-            tracing::error!("Songbird not initialised during post-reconnect voice restore");
-            return;
-        }
-    };
-
     let bot_id = ctx.cache.current_user().id;
 
     for (guild_id, info) in snapshot {
+        if guild_id.shard_id(&ctx.cache) != ctx.shard_id.get() {
+            continue;
+        }
+
         // The VoiceStateUpdate handler may have already removed this entry
         // while we were waiting — re-check before acting.
         {
@@ -74,9 +79,10 @@ async fn reconnect_stale_voice(
             }
         }
 
-        let bot_channel = ctx.cache.guild(guild_id).and_then(|guild| {
-            guild.voice_states.get(&bot_id).and_then(|vs| vs.channel_id)
-        });
+        let bot_channel = ctx
+            .cache
+            .guild(guild_id)
+            .and_then(|guild| guild.voice_states.get(&bot_id).and_then(|vs| vs.channel_id));
 
         if bot_channel == Some(info.voice_channel_id) {
             tracing::debug!(
@@ -92,26 +98,6 @@ async fn reconnect_stale_voice(
             "Rejoining voice channel after reconnection"
         );
 
-        let _ = manager.remove(guild_id).await;
-
-        match manager.join(guild_id, info.voice_channel_id).await {
-            Ok(_) => {
-                tracing::info!(
-                    guild = %guild_id,
-                    voice_channel = %info.voice_channel_id,
-                    "Successfully rejoined voice channel after reconnection"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    guild = %guild_id,
-                    voice_channel = %info.voice_channel_id,
-                    error = %e,
-                    "Failed to rejoin voice channel after reconnection, removing tracking"
-                );
-                let mut map = voice_connections.write().await;
-                map.remove(&guild_id);
-            }
-        }
+        update_voice_state(ctx, guild_id, Some(info.voice_channel_id));
     }
 }
