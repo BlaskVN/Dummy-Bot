@@ -48,10 +48,18 @@ pub struct Config {
     pub message_preview_chars: usize,
     pub message_log_chunk_chars: usize,
     pub message_timestamp_format: String,
+    pub attachment_max_bytes: u64,
+    pub purge_attachment_max_total_bytes: u64,
     pub colors: EmbedColors,
 }
 
 impl Config {
+    pub fn load() -> Result<Self> {
+        dotenvy::from_filename("config.env").context("Failed to load config.env")?;
+        let _ = dotenvy::dotenv();
+        Self::from_env()
+    }
+
     pub fn from_env() -> Result<Self> {
         let config = Self {
             discord_token: required("DISCORD_TOKEN")?,
@@ -72,6 +80,8 @@ impl Config {
             message_preview_chars: required("MESSAGE_PREVIEW_CHARS")?,
             message_log_chunk_chars: required("MESSAGE_LOG_CHUNK_CHARS")?,
             message_timestamp_format: required("MESSAGE_TIMESTAMP_FORMAT")?,
+            attachment_max_bytes: required("ATTACHMENT_MAX_BYTES")?,
+            purge_attachment_max_total_bytes: required("PURGE_ATTACHMENT_MAX_TOTAL_BYTES")?,
             colors: EmbedColors {
                 primary: hex_color("EMBED_COLOR_PRIMARY")?,
                 success: hex_color("EMBED_COLOR_SUCCESS")?,
@@ -114,6 +124,12 @@ impl Config {
             || self.message_log_chunk_chars > discord_limits::EMBED_FIELD_CHARS.saturating_sub(6)
         {
             bail!("message log sizes must fit in a Discord embed field");
+        }
+        if self.attachment_max_bytes == 0 {
+            bail!("ATTACHMENT_MAX_BYTES must be greater than zero");
+        }
+        if self.purge_attachment_max_total_bytes < self.attachment_max_bytes {
+            bail!("PURGE_ATTACHMENT_MAX_TOTAL_BYTES must be at least ATTACHMENT_MAX_BYTES");
         }
         Ok(())
     }

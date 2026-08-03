@@ -1,3 +1,4 @@
+use crate::handlers::message_log;
 use crate::i18n::{TranslationKey, tf};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -34,6 +35,7 @@ pub async fn purge(
     }
 
     let channel = ctx.channel_id();
+    let _typing = ctx.defer_or_broadcast().await?;
 
     // Fetch messages to delete
     let messages = channel
@@ -42,6 +44,9 @@ pub async fn purge(
 
     let count = messages.len();
     let message_ids: Vec<serenity::MessageId> = messages.iter().map(|m| m.id).collect();
+
+    message_log::archive_purge_attachments(ctx.serenity_context(), guild_id, &messages, ctx.data())
+        .await;
 
     // Bulk delete (only works for messages < 14 days old)
     channel.delete_messages(&ctx.http(), message_ids).await?;

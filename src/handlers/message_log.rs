@@ -6,8 +6,6 @@ use chrono::DateTime;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
 
-const MAX_ATTACHMENT_BYTES: u64 = 16 * 1024 * 1024;
-
 /// Handle message deletion events.
 ///
 /// Looks up the cached message, checks if logging is enabled for this guild,
@@ -106,18 +104,74 @@ pub async fn handle_message_delete(
     }
 
     for attachment in &message.attachments {
-        match download_attachment(data, attachment).await {
-            Ok(file) => {
-                let builder = serenity::CreateMessage::new().add_file(file);
-                if let Err(error) = log_channel_id.send_message(&ctx.http, builder).await {
-                    tracing::warn!(%error, "Failed to send logged attachment");
-                }
-            }
-            Err(error) => tracing::warn!(
+        if let Err(error) = send_logged_attachment(ctx, log_channel_id, data, attachment).await {
+            tracing::warn!(
                 filename = %attachment.filename,
                 %error,
                 "Skipped unsafe or oversized attachment"
-            ),
+            );
+        }
+    }
+}
+
+/// Archive attachments fetched by `/purge` while their signed CDN URLs are still valid.
+pub async fn archive_purge_attachments(
+    ctx: &Context,
+    guild_id: serenity::GuildId,
+    messages: &[serenity::Message],
+    data: &Data,
+) {
+    if !messages
+        .iter()
+        .any(|message| !message.author.bot && !message.attachments.is_empty())
+    {
+        return;
+    }
+
+    let log_channel_id = match database::message_log_channel(&data.db_pool, guild_id).await {
+        Ok(Some(channel)) => channel,
+        Ok(None) => return,
+        Err(error) => {
+            tracing::error!(%error, "Failed to load message log channel for purge");
+            return;
+        }
+    };
+
+    let mut archived_bytes = 0;
+    for message in messages.iter().filter(|message| !message.author.bot) {
+        for attachment in &message.attachments {
+            let attachment_bytes = u64::from(attachment.size);
+            if attachment_bytes > data.config.attachment_max_bytes {
+                tracing::warn!(
+                    message_id = %message.id,
+                    filename = %attachment.filename,
+                    "Skipped oversized purged attachment"
+                );
+                continue;
+            }
+            if !fits_byte_budget(
+                archived_bytes,
+                attachment_bytes,
+                data.config.purge_attachment_max_total_bytes,
+            ) {
+                tracing::warn!(
+                    archived_bytes,
+                    limit = data.config.purge_attachment_max_total_bytes,
+                    "Stopped archiving purge attachments at byte limit"
+                );
+                return;
+            }
+            archived_bytes += attachment_bytes;
+
+            if let Err(error) = send_logged_attachment(ctx, log_channel_id, data, attachment).await
+            {
+                tracing::warn!(
+                    message_id = %message.id,
+                    filename = %attachment.filename,
+                    %error,
+                    "Failed to archive purged attachment"
+                );
+            }
         }
     }
 }
@@ -404,13 +458,13 @@ async fn download_attachment(
     attachment: &serenity::Attachment,
 ) -> anyhow::Result<serenity::CreateAttachment> {
     anyhow::ensure!(
-        u64::from(attachment.size) <= MAX_ATTACHMENT_BYTES,
-        "attachment exceeds {MAX_ATTACHMENT_BYTES} bytes"
+        u64::from(attachment.size) <= data.config.attachment_max_bytes,
+        "attachment exceeds {} bytes",
+        data.config.attachment_max_bytes
     );
     let url = reqwest::Url::parse(&attachment.url)?;
     anyhow::ensure!(is_discord_cdn(&url), "attachment URL is not Discord CDN");
 
-    let _permit = data.attachment_downloads.acquire().await?;
     let mut response = data
         .attachment_client
         .get(url)
@@ -418,14 +472,15 @@ async fn download_attachment(
         .await?
         .error_for_status()?;
     anyhow::ensure!(
-        response.content_length().unwrap_or(0) <= MAX_ATTACHMENT_BYTES,
+        response.content_length().unwrap_or(0) <= data.config.attachment_max_bytes,
         "attachment response exceeds byte limit"
     );
 
     let mut bytes = Vec::with_capacity(attachment.size as usize);
     while let Some(chunk) = response.chunk().await? {
         anyhow::ensure!(
-            bytes.len() + chunk.len() <= MAX_ATTACHMENT_BYTES as usize,
+            (bytes.len() as u64).saturating_add(chunk.len() as u64)
+                <= data.config.attachment_max_bytes,
             "attachment body exceeds byte limit"
         );
         bytes.extend_from_slice(&chunk);
@@ -435,6 +490,25 @@ async fn download_attachment(
         bytes,
         attachment.filename.clone(),
     ))
+}
+
+fn fits_byte_budget(used: u64, next: u64, limit: u64) -> bool {
+    used.checked_add(next).is_some_and(|total| total <= limit)
+}
+
+async fn send_logged_attachment(
+    ctx: &Context,
+    log_channel_id: ChannelId,
+    data: &Data,
+    attachment: &serenity::Attachment,
+) -> anyhow::Result<()> {
+    // Keep the permit through upload so buffered files stay within the concurrency ceiling.
+    let _permit = data.attachment_downloads.acquire().await?;
+    let file = download_attachment(data, attachment).await?;
+    log_channel_id
+        .send_message(&ctx.http, serenity::CreateMessage::new().add_file(file))
+        .await?;
+    Ok(())
 }
 
 fn is_discord_cdn(url: &reqwest::Url) -> bool {
@@ -455,7 +529,7 @@ fn code_block(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{code_block, is_discord_cdn};
+    use super::{code_block, fits_byte_budget, is_discord_cdn};
 
     #[test]
     fn user_content_cannot_close_code_block() {
@@ -471,5 +545,12 @@ mod tests {
                 .unwrap()
         ));
         assert!(!is_discord_cdn(&"https://127.0.0.1/file".parse().unwrap()));
+    }
+
+    #[test]
+    fn purge_attachment_budget_includes_boundary_and_rejects_overflow() {
+        assert!(fits_byte_budget(6, 4, 10));
+        assert!(!fits_byte_budget(7, 4, 10));
+        assert!(!fits_byte_budget(u64::MAX, 1, u64::MAX));
     }
 }

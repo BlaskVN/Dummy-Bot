@@ -6,6 +6,10 @@ if [[ ! -f "$config_file" ]]; then
     echo "Missing deployment config: $config_file (copy .deploy.env.example first)" >&2
     exit 1
 fi
+if [[ ! -f config.env ]]; then
+    echo "Missing runtime config: config.env" >&2
+    exit 1
+fi
 
 # shellcheck source=/dev/null
 source "$config_file"
@@ -17,6 +21,7 @@ source "$config_file"
 cargo build --release
 scp "target/release/${DEPLOY_BINARY_NAME}" \
     "${DEPLOY_REMOTE_HOST}:${DEPLOY_REMOTE_DIR}/${DEPLOY_BINARY_NAME}.new"
+scp config.env "${DEPLOY_REMOTE_HOST}:${DEPLOY_REMOTE_DIR}/config.env.new"
 
 ssh "$DEPLOY_REMOTE_HOST" bash -s -- \
     "$DEPLOY_REMOTE_DIR" "$DEPLOY_BINARY_NAME" "$DEPLOY_SERVICE_NAME" <<'REMOTE'
@@ -35,6 +40,8 @@ sudo rm -f "${binary_name}.installed"
 sudo install -o root -g root -m 0755 "${binary_name}.new" "${binary_name}.installed"
 sudo mv -f "${binary_name}.installed" "$binary_name"
 rm -f "${binary_name}.new"
+sudo install -o root -g root -m 0644 config.env.new config.env
+rm -f config.env.new
 sudo chown root:root .env
 sudo chmod 0600 .env
 sudo systemctl restart "$service_name"

@@ -53,7 +53,7 @@ Yêu cầu Rust stable và bot token từ Discord Developer Portal.
 
 ```bash
 cp .env.example .env
-# sửa mọi giá trị trong .env, tối thiểu phải thay DISCORD_TOKEN
+# đặt DISCORD_TOKEN trong .env; cấu hình không nhạy cảm nằm trong config.env
 cargo run
 ```
 
@@ -61,18 +61,19 @@ Bot cần bật các privileged intents tương ứng trong Developer Portal: Me
 
 ## Cấu hình runtime
 
-`Config::from_env()` không chứa fallback vận hành: thiếu hoặc sai biến sẽ dừng startup với lỗi rõ ràng. `.env.example` là cấu hình mẫu đầy đủ.
+`Config::load()` đọc cấu hình vận hành từ `config.env` và secret từ `.env`; thiếu hoặc sai biến sẽ dừng startup với lỗi rõ ràng.
 
 | Nhóm | Biến |
 |---|---|
-| Kết nối | `DISCORD_TOKEN`, `DATABASE_URL`, `DATA_DIRECTORY`, `RUST_LOG` |
+| Secret (`.env`) | `DISCORD_TOKEN` |
+| Kết nối (`config.env`) | `DATABASE_URL`, `DATA_DIRECTORY`, `RUST_LOG` |
 | Owner/default | `OWNER_IDS`, `DEFAULT_PREFIX`, `DEFAULT_LANGUAGE` |
 | Giới hạn command | `PREFIX_MAX_CHARS`, `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
 | Runtime/recovery | `CACHE_MAX_MESSAGES`, `GATEWAY_RESUME_DELAY_SECONDS`, `GATEWAY_READY_DELAY_SECONDS` |
-| Message log | `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT` |
+| Message log | `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
 | Giao diện | toàn bộ biến `EMBED_COLOR_*` |
 
-`OWNER_IDS` nhận danh sách Discord user ID phân tách bằng dấu phẩy. Để trống để bot lấy owner/team owner từ Discord application info. Các giới hạn cứng còn lại trong `config::discord_limits` là giới hạn giao thức Discord, không phải tham số triển khai.
+`OWNER_IDS` nhận danh sách Discord user ID phân tách bằng dấu phẩy. Để trống để bot lấy owner/team owner từ Discord application info. Attachment mặc định 10 MiB/file và 64 MiB/purge; hai lượt tải/upload đồng thời được giữ để cân bằng RAM, băng thông và thời gian xử lý. Chỉ tăng khi log guild có giới hạn upload cao hơn và tài nguyên cho phép. Các giới hạn cứng còn lại trong `config::discord_limits` là giới hạn giao thức Discord, không phải tham số triển khai.
 
 Prefix theo guild được lưu trong SQLite và được Poise đọc động; `DEFAULT_PREFIX` chỉ dùng khi guild chưa cấu hình.
 
