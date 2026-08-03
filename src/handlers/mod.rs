@@ -39,8 +39,12 @@ pub async fn dispatch(
             )
             .await;
         }
-        serenity::FullEvent::MessageUpdate { event, .. } => {
-            message_log::handle_message_update(ctx, event, data).await;
+        serenity::FullEvent::MessageUpdate {
+            old_if_available,
+            event,
+            ..
+        } => {
+            message_log::handle_message_update(ctx, old_if_available.as_ref(), event, data).await;
         }
         serenity::FullEvent::VoiceStateUpdate { old, new, .. } => {
             voice::handle_voice_state_update(ctx, old, new, data).await;

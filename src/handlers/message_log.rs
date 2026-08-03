@@ -179,7 +179,12 @@ pub async fn archive_purge_attachments(
 /// Handle message update (edit) events.
 ///
 /// Compares the old (cached) content with the new content and logs the diff.
-pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, data: &Data) {
+pub async fn handle_message_update(
+    ctx: &Context,
+    old_message: Option<&serenity::Message>,
+    event: &MessageUpdateEvent,
+    data: &Data,
+) {
     // Only process guild messages
     let guild_id = match event.guild_id {
         Some(id) => id,
@@ -189,9 +194,9 @@ pub async fn handle_message_update(ctx: &Context, event: &MessageUpdateEvent, da
     // Get language for this guild
     let lang = data.language(guild_id).await;
 
-    // Get old message from cache
-    let old_message = match ctx.cache.message(event.channel_id, event.id) {
-        Some(msg) => msg.clone(),
+    // Serenity snapshots this before applying the update to its cache.
+    let old_message = match old_message {
+        Some(message) => message,
         None => return, // Not in cache, can't compare
     };
 
