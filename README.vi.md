@@ -1,6 +1,6 @@
 # Dummy Bot
 
-[English (tài liệu chính)](README.md)
+[English](README.md)
 
 Dummy Bot là Discord bot viết bằng Rust, Poise/Serenity và SQLite. Cấu hình vận
 hành nằm trong `config.env`, secret nằm trong `.env`, và cấu hình triển khai nằm
