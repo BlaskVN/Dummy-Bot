@@ -1,4 +1,5 @@
 pub mod message_log;
+pub mod onboarding;
 pub mod reconnect;
 pub mod voice;
 
@@ -48,6 +49,9 @@ pub async fn dispatch(
         }
         serenity::FullEvent::VoiceStateUpdate { old, new, .. } => {
             voice::handle_voice_state_update(ctx, old, new, data).await;
+        }
+        serenity::FullEvent::GuildCreate { guild, is_new } => {
+            onboarding::handle_guild_create(ctx, guild, *is_new, data).await;
         }
         serenity::FullEvent::Resume { .. } => reconnect::handle_resume(ctx, data).await,
         serenity::FullEvent::Ready { .. } => reconnect::handle_ready_reconnect(ctx, data).await,

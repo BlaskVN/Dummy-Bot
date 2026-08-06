@@ -101,6 +101,22 @@ pub async fn message_log_channel(
     }
 }
 
+/// Claim a new Guild's one-time onboarding before attempting delivery.
+pub async fn claim_guild_onboarding(
+    pool: &SqlitePool,
+    guild_id: poise::serenity_prelude::GuildId,
+) -> Result<bool> {
+    Ok(sqlx::query(
+        "INSERT INTO guild_onboarding (guild_id) VALUES (?) ON CONFLICT(guild_id) DO NOTHING",
+    )
+    .bind(guild_id.to_string())
+    .execute(pool)
+    .await
+    .context("Failed to claim guild onboarding")?
+    .rows_affected()
+        == 1)
+}
+
 /// Initialize the SQLite database connection pool.
 ///
 /// Creates the `data/` directory if it doesn't exist and establishes
@@ -125,7 +141,7 @@ pub async fn init_db(database_url: &str, data_directory: &Path) -> Result<Sqlite
 
 #[cfg(test)]
 mod tests {
-    use super::init_db;
+    use super::{claim_guild_onboarding, init_db};
 
     #[tokio::test]
     async fn applies_initial_migration() {
@@ -188,6 +204,31 @@ mod tests {
                 .await
                 .unwrap();
         assert!(cleared.is_none());
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn onboarding_is_claimed_once_per_guild() {
+        let directory =
+            std::env::temp_dir().join(format!("dummy-bot-onboarding-test-{}", std::process::id()));
+        let url = format!("sqlite:{}/bot.db?mode=rwc", directory.display());
+        let pool = init_db(&url, &directory).await.unwrap();
+        assert!(
+            claim_guild_onboarding(&pool, poise::serenity_prelude::GuildId::new(1))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !claim_guild_onboarding(&pool, poise::serenity_prelude::GuildId::new(1))
+                .await
+                .unwrap()
+        );
+        assert!(
+            claim_guild_onboarding(&pool, poise::serenity_prelude::GuildId::new(2))
+                .await
+                .unwrap()
+        );
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }

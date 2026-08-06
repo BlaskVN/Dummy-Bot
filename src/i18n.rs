@@ -141,6 +141,9 @@ pub enum TranslationKey {
     TimezoneCleared,
     TimezoneInvalid,
 
+    // Installation onboarding
+    OnboardingMessage,
+
     // Presence commands
     PresenceTitle,
     PresenceHelp,
@@ -333,6 +336,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::TimezoneInvalid,
         "Use a valid IANA time zone, such as `Asia/Bangkok`.",
     );
+    en.insert(TranslationKey::OnboardingMessage, "Thanks for installing me! Start with `/settings`, then choose a language and time zone. Automations are opt-in.");
     en.insert(TranslationKey::PresenceTitle, "**Bot Presence Management**");
     en.insert(TranslationKey::PresenceHelp, "Use subcommands to manage the bot's presence:\n├ `/presence status` — Set online status\n├ `/presence activity` — Set Rich Presence\n└ `/presence clear` — Clear activity");
     en.insert(TranslationKey::PresenceStatusTitle, "**Status Updated**");
@@ -574,6 +578,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::TimezoneInvalid,
         "Hãy dùng múi giờ IANA hợp lệ, ví dụ `Asia/Bangkok`.",
     );
+    vi.insert(TranslationKey::OnboardingMessage, "Cảm ơn bạn đã cài đặt bot! Hãy bắt đầu với `/settings`, rồi chọn ngôn ngữ và múi giờ. Các tự động hóa đều là tùy chọn.");
     vi.insert(TranslationKey::PresenceTitle, "**Quản Lý Trạng Thái Bot**");
     vi.insert(TranslationKey::PresenceHelp, "Sử dụng lệnh con để quản lý trạng thái bot:\n├ `/presence status` — Đặt trạng thái trực tuyến\n├ `/presence activity` — Đặt Rich Presence\n└ `/presence clear` — Xóa hoạt động");
     vi.insert(
@@ -842,6 +847,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::TimezoneInvalid,
         "`Asia/Bangkok`などの有効なIANAタイムゾーンを指定してください。",
     );
+    ja.insert(TranslationKey::OnboardingMessage, "導入ありがとうございます！まず`/settings`を開き、言語とタイムゾーンを設定してください。自動化はすべてオプトインです。");
     ja.insert(TranslationKey::PresenceTitle, "**ボットプレゼンス管理**");
     ja.insert(TranslationKey::PresenceHelp, "サブコマンドでボットのプレゼンスを管理します：\n├ `/presence status` — オンラインステータスを設定\n├ `/presence activity` — リッチプレゼンスを設定\n└ `/presence clear` — アクティビティをクリア");
     ja.insert(TranslationKey::PresenceStatusTitle, "**ステータス更新**");
