@@ -165,7 +165,7 @@ fn qr_extension(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-fn owned_qr_path(data_directory: &Path, filename: &str) -> Option<PathBuf> {
+pub(crate) fn owned_qr_path(data_directory: &Path, filename: &str) -> Option<PathBuf> {
     if filename.starts_with("donation-qr-")
         && matches!(
             Path::new(filename)

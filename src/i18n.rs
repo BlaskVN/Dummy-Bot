@@ -57,6 +57,7 @@ pub enum TranslationKey {
     BotInfoServers,
     BotInfoLanguage,
     BotInfoFramework,
+    BotInfoDonate,
 
     // Server info command
     ServerInfoTitle,
@@ -150,6 +151,7 @@ pub enum TranslationKey {
     DonationInvalidUpdate,
     DonationInvalidUrl,
     DonationInvalidImage,
+    DonateNotConfigured,
 
     // Presence commands
     PresenceTitle,
@@ -198,6 +200,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(
         TranslationKey::BotInfoFramework,
         "**Framework:** Poise + Serenity",
+    );
+    en.insert(
+        TranslationKey::BotInfoDonate,
+        "Donation information: `/donate`",
     );
     en.insert(TranslationKey::ServerInfoTitle, "**Server Information**");
     en.insert(TranslationKey::ServerInfoName, "**Name:** {}");
@@ -361,6 +367,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::DonationInvalidImage,
         "QR image must be a PNG or JPEG within the attachment size limit.",
     );
+    en.insert(
+        TranslationKey::DonateNotConfigured,
+        "Donation information is not configured.",
+    );
     en.insert(TranslationKey::PresenceTitle, "**Bot Presence Management**");
     en.insert(TranslationKey::PresenceHelp, "Use subcommands to manage the bot's presence:\n├ `/presence status` — Set online status\n├ `/presence activity` — Set Rich Presence\n└ `/presence clear` — Clear activity");
     en.insert(TranslationKey::PresenceStatusTitle, "**Status Updated**");
@@ -458,6 +468,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::BotInfoFramework,
         "**Framework:** Poise + Serenity",
     );
+    vi.insert(TranslationKey::BotInfoDonate, "Thông tin ủng hộ: `/donate`");
     vi.insert(TranslationKey::ServerInfoTitle, "**Thông Tin Máy Chủ**");
     vi.insert(TranslationKey::ServerInfoName, "**Tên:** {}");
     vi.insert(TranslationKey::ServerInfoMembers, "**Thành viên:** {}");
@@ -617,6 +628,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::DonationInvalidImage,
         "Ảnh QR phải là PNG hoặc JPEG và không vượt quá giới hạn tệp đính kèm.",
     );
+    vi.insert(
+        TranslationKey::DonateNotConfigured,
+        "Thông tin ủng hộ chưa được thiết lập.",
+    );
     vi.insert(TranslationKey::PresenceTitle, "**Quản Lý Trạng Thái Bot**");
     vi.insert(TranslationKey::PresenceHelp, "Sử dụng lệnh con để quản lý trạng thái bot:\n├ `/presence status` — Đặt trạng thái trực tuyến\n├ `/presence activity` — Đặt Rich Presence\n└ `/presence clear` — Xóa hoạt động");
     vi.insert(
@@ -717,6 +732,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::BotInfoFramework,
         "**フレームワーク：** Poise + Serenity",
     );
+    ja.insert(TranslationKey::BotInfoDonate, "寄付情報：`/donate`");
     ja.insert(TranslationKey::ServerInfoTitle, "**サーバー情報**");
     ja.insert(TranslationKey::ServerInfoName, "**名前：** {}");
     ja.insert(TranslationKey::ServerInfoMembers, "**メンバー数：** {}");
@@ -902,6 +918,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::DonationInvalidImage,
         "QR画像は添付ファイル上限内のPNGまたはJPEGである必要があります。",
+    );
+    ja.insert(
+        TranslationKey::DonateNotConfigured,
+        "寄付情報は未設定です。",
     );
     ja.insert(TranslationKey::PresenceTitle, "**ボットプレゼンス管理**");
     ja.insert(TranslationKey::PresenceHelp, "サブコマンドでボットのプレゼンスを管理します：\n├ `/presence status` — オンラインステータスを設定\n├ `/presence activity` — リッチプレゼンスを設定\n└ `/presence clear` — アクティビティをクリア");

@@ -1,3 +1,4 @@
+use crate::database::load_donation_config;
 use crate::i18n::{TranslationKey, t, tf};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -26,10 +27,31 @@ pub async fn botinfo(ctx: Context<'_>) -> Result<(), Error> {
     let language_text = t(lang, TranslationKey::BotInfoLanguage);
     let framework_text = t(lang, TranslationKey::BotInfoFramework);
 
-    let description = format!(
-        "├ {}\n├ {}\n├ {}\n└ {}",
-        uptime_text, servers_text, language_text, framework_text
-    );
+    let mut details = vec![
+        uptime_text,
+        servers_text,
+        language_text.to_string(),
+        framework_text.to_string(),
+    ];
+    if load_donation_config(&ctx.data().db_pool).await?.is_some() {
+        details.push(t(lang, TranslationKey::BotInfoDonate).to_string());
+    }
+    let description = details
+        .iter()
+        .enumerate()
+        .map(|(index, detail)| {
+            format!(
+                "{} {}",
+                if index + 1 == details.len() {
+                    "└"
+                } else {
+                    "├"
+                },
+                detail
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     let embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::BotInfoTitle))
