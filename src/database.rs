@@ -9,6 +9,59 @@ pub struct BotPresenceRecord {
     pub activity_text: Option<String>,
 }
 
+pub struct DonationConfig {
+    pub message: Option<String>,
+    pub url: Option<String>,
+    pub qr_filename: Option<String>,
+}
+
+pub async fn load_donation_config(pool: &SqlitePool) -> Result<Option<DonationConfig>> {
+    Ok(
+        sqlx::query_as::<_, (Option<String>, Option<String>, Option<String>)>(
+            "SELECT message, url, qr_filename FROM donation_config WHERE id = 1",
+        )
+        .fetch_optional(pool)
+        .await?
+        .map(|(message, url, qr_filename)| DonationConfig {
+            message,
+            url,
+            qr_filename,
+        }),
+    )
+}
+
+pub async fn save_donation_config(
+    pool: &SqlitePool,
+    message: Option<&str>,
+    url: Option<&str>,
+    qr_filename: Option<&str>,
+) -> Result<Option<String>> {
+    let old = sqlx::query_scalar("SELECT qr_filename FROM donation_config WHERE id = 1")
+        .fetch_optional(pool)
+        .await?
+        .flatten();
+    sqlx::query(
+        "INSERT INTO donation_config (id, message, url, qr_filename) VALUES (1, ?, ?, ?)\n         ON CONFLICT(id) DO UPDATE SET message = excluded.message, url = excluded.url, qr_filename = excluded.qr_filename, updated_at = CURRENT_TIMESTAMP",
+    )
+    .bind(message)
+    .bind(url)
+    .bind(qr_filename)
+    .execute(pool)
+    .await?;
+    Ok(old)
+}
+
+pub async fn clear_donation_config(pool: &SqlitePool) -> Result<Option<String>> {
+    let old = sqlx::query_scalar("SELECT qr_filename FROM donation_config WHERE id = 1")
+        .fetch_optional(pool)
+        .await?
+        .flatten();
+    sqlx::query("DELETE FROM donation_config WHERE id = 1")
+        .execute(pool)
+        .await?;
+    Ok(old)
+}
+
 /// Upsert the bot's persistent presence into the database.
 /// Only call this when duration is permanent (0 or unset).
 pub async fn save_bot_presence(

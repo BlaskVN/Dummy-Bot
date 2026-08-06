@@ -144,6 +144,13 @@ pub enum TranslationKey {
     // Installation onboarding
     OnboardingMessage,
 
+    // Donation configuration
+    DonationSaved,
+    DonationCleared,
+    DonationInvalidUpdate,
+    DonationInvalidUrl,
+    DonationInvalidImage,
+
     // Presence commands
     PresenceTitle,
     PresenceHelp,
@@ -337,6 +344,23 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Use a valid IANA time zone, such as `Asia/Bangkok`.",
     );
     en.insert(TranslationKey::OnboardingMessage, "Thanks for installing me! Start with `/settings`, then choose a language and time zone. Automations are opt-in.");
+    en.insert(TranslationKey::DonationSaved, "Donation information saved.");
+    en.insert(
+        TranslationKey::DonationCleared,
+        "Donation information cleared.",
+    );
+    en.insert(
+        TranslationKey::DonationInvalidUpdate,
+        "Provide a message, HTTPS URL, or PNG/JPEG QR image.",
+    );
+    en.insert(
+        TranslationKey::DonationInvalidUrl,
+        "Donation URL must use HTTPS.",
+    );
+    en.insert(
+        TranslationKey::DonationInvalidImage,
+        "QR image must be a PNG or JPEG within the attachment size limit.",
+    );
     en.insert(TranslationKey::PresenceTitle, "**Bot Presence Management**");
     en.insert(TranslationKey::PresenceHelp, "Use subcommands to manage the bot's presence:\n├ `/presence status` — Set online status\n├ `/presence activity` — Set Rich Presence\n└ `/presence clear` — Clear activity");
     en.insert(TranslationKey::PresenceStatusTitle, "**Status Updated**");
@@ -579,6 +603,20 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Hãy dùng múi giờ IANA hợp lệ, ví dụ `Asia/Bangkok`.",
     );
     vi.insert(TranslationKey::OnboardingMessage, "Cảm ơn bạn đã cài đặt bot! Hãy bắt đầu với `/settings`, rồi chọn ngôn ngữ và múi giờ. Các tự động hóa đều là tùy chọn.");
+    vi.insert(TranslationKey::DonationSaved, "Đã lưu thông tin ủng hộ.");
+    vi.insert(TranslationKey::DonationCleared, "Đã xóa thông tin ủng hộ.");
+    vi.insert(
+        TranslationKey::DonationInvalidUpdate,
+        "Hãy cung cấp tin nhắn, URL HTTPS hoặc ảnh QR PNG/JPEG.",
+    );
+    vi.insert(
+        TranslationKey::DonationInvalidUrl,
+        "URL ủng hộ phải dùng HTTPS.",
+    );
+    vi.insert(
+        TranslationKey::DonationInvalidImage,
+        "Ảnh QR phải là PNG hoặc JPEG và không vượt quá giới hạn tệp đính kèm.",
+    );
     vi.insert(TranslationKey::PresenceTitle, "**Quản Lý Trạng Thái Bot**");
     vi.insert(TranslationKey::PresenceHelp, "Sử dụng lệnh con để quản lý trạng thái bot:\n├ `/presence status` — Đặt trạng thái trực tuyến\n├ `/presence activity` — Đặt Rich Presence\n└ `/presence clear` — Xóa hoạt động");
     vi.insert(
@@ -848,6 +886,23 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "`Asia/Bangkok`などの有効なIANAタイムゾーンを指定してください。",
     );
     ja.insert(TranslationKey::OnboardingMessage, "導入ありがとうございます！まず`/settings`を開き、言語とタイムゾーンを設定してください。自動化はすべてオプトインです。");
+    ja.insert(TranslationKey::DonationSaved, "寄付情報を保存しました。");
+    ja.insert(
+        TranslationKey::DonationCleared,
+        "寄付情報をクリアしました。",
+    );
+    ja.insert(
+        TranslationKey::DonationInvalidUpdate,
+        "メッセージ、HTTPS URL、またはPNG/JPEGのQR画像を指定してください。",
+    );
+    ja.insert(
+        TranslationKey::DonationInvalidUrl,
+        "寄付URLはHTTPSである必要があります。",
+    );
+    ja.insert(
+        TranslationKey::DonationInvalidImage,
+        "QR画像は添付ファイル上限内のPNGまたはJPEGである必要があります。",
+    );
     ja.insert(TranslationKey::PresenceTitle, "**ボットプレゼンス管理**");
     ja.insert(TranslationKey::PresenceHelp, "サブコマンドでボットのプレゼンスを管理します：\n├ `/presence status` — オンラインステータスを設定\n├ `/presence activity` — リッチプレゼンスを設定\n└ `/presence clear` — アクティビティをクリア");
     ja.insert(TranslationKey::PresenceStatusTitle, "**ステータス更新**");
