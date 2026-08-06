@@ -129,9 +129,17 @@ pub enum TranslationKey {
     SettingsTitle,
     SettingsPrefix,
     SettingsLogChannel,
+    SettingsTimezone,
     SettingsNotConfigured,
     PrefixChanged,
     PrefixInvalidLength,
+
+    // Time zone commands
+    TimezoneSet,
+    TimezoneCurrent,
+    TimezoneNotConfigured,
+    TimezoneCleared,
+    TimezoneInvalid,
 
     // Presence commands
     PresenceTitle,
@@ -307,11 +315,23 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     en.insert(TranslationKey::SettingsLogChannel, "**Log Channel:** {}");
+    en.insert(TranslationKey::SettingsTimezone, "**Time zone:** {}");
     en.insert(TranslationKey::SettingsNotConfigured, "Not configured");
     en.insert(TranslationKey::PrefixChanged, "Prefix changed to `{}`");
     en.insert(
         TranslationKey::PrefixInvalidLength,
         "Prefix must contain 1 to {} characters.",
+    );
+    en.insert(TranslationKey::TimezoneSet, "Time zone set to `{}`.");
+    en.insert(TranslationKey::TimezoneCurrent, "**Time zone:** `{}`");
+    en.insert(
+        TranslationKey::TimezoneNotConfigured,
+        "Time zone is not configured.",
+    );
+    en.insert(TranslationKey::TimezoneCleared, "Time zone cleared.");
+    en.insert(
+        TranslationKey::TimezoneInvalid,
+        "Use a valid IANA time zone, such as `Asia/Bangkok`.",
     );
     en.insert(TranslationKey::PresenceTitle, "**Bot Presence Management**");
     en.insert(TranslationKey::PresenceHelp, "Use subcommands to manage the bot's presence:\n├ `/presence status` — Set online status\n├ `/presence activity` — Set Rich Presence\n└ `/presence clear` — Clear activity");
@@ -536,11 +556,23 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     vi.insert(TranslationKey::SettingsLogChannel, "**Kênh Log:** {}");
+    vi.insert(TranslationKey::SettingsTimezone, "**Múi giờ:** {}");
     vi.insert(TranslationKey::SettingsNotConfigured, "Chưa thiết lập");
     vi.insert(TranslationKey::PrefixChanged, "Đã đổi prefix thành `{}`");
     vi.insert(
         TranslationKey::PrefixInvalidLength,
         "Prefix phải có từ 1 đến {} ký tự.",
+    );
+    vi.insert(TranslationKey::TimezoneSet, "Đã đặt múi giờ thành `{}`.");
+    vi.insert(TranslationKey::TimezoneCurrent, "**Múi giờ:** `{}`");
+    vi.insert(
+        TranslationKey::TimezoneNotConfigured,
+        "Múi giờ chưa được thiết lập.",
+    );
+    vi.insert(TranslationKey::TimezoneCleared, "Đã xóa múi giờ.");
+    vi.insert(
+        TranslationKey::TimezoneInvalid,
+        "Hãy dùng múi giờ IANA hợp lệ, ví dụ `Asia/Bangkok`.",
     );
     vi.insert(TranslationKey::PresenceTitle, "**Quản Lý Trạng Thái Bot**");
     vi.insert(TranslationKey::PresenceHelp, "Sử dụng lệnh con để quản lý trạng thái bot:\n├ `/presence status` — Đặt trạng thái trực tuyến\n├ `/presence activity` — Đặt Rich Presence\n└ `/presence clear` — Xóa hoạt động");
@@ -783,6 +815,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::SettingsLogChannel,
         "**ログチャンネル：** {}",
     );
+    ja.insert(TranslationKey::SettingsTimezone, "**タイムゾーン：** {}");
     ja.insert(TranslationKey::SettingsNotConfigured, "未設定");
     ja.insert(
         TranslationKey::PrefixChanged,
@@ -791,6 +824,23 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::PrefixInvalidLength,
         "プレフィックスは1から{}文字で指定してください。",
+    );
+    ja.insert(
+        TranslationKey::TimezoneSet,
+        "タイムゾーンを`{}`に設定しました。",
+    );
+    ja.insert(TranslationKey::TimezoneCurrent, "**タイムゾーン：** `{}`");
+    ja.insert(
+        TranslationKey::TimezoneNotConfigured,
+        "タイムゾーンは未設定です。",
+    );
+    ja.insert(
+        TranslationKey::TimezoneCleared,
+        "タイムゾーンをクリアしました。",
+    );
+    ja.insert(
+        TranslationKey::TimezoneInvalid,
+        "`Asia/Bangkok`などの有効なIANAタイムゾーンを指定してください。",
     );
     ja.insert(TranslationKey::PresenceTitle, "**ボットプレゼンス管理**");
     ja.insert(TranslationKey::PresenceHelp, "サブコマンドでボットのプレゼンスを管理します：\n├ `/presence status` — オンラインステータスを設定\n├ `/presence activity` — リッチプレゼンスを設定\n└ `/presence clear` — アクティビティをクリア");
