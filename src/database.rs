@@ -151,4 +151,44 @@ mod tests {
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }
+
+    #[tokio::test]
+    async fn guild_timezones_are_isolated() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-timezone-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let url = format!("sqlite:{}/bot.db?mode=rwc", directory.display());
+        let pool = init_db(&url, &directory).await.unwrap();
+        sqlx::query("INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('1', 'Asia/Bangkok'), ('2', 'America/New_York')")
+            .execute(&pool).await.unwrap();
+        let first: String =
+            sqlx::query_scalar("SELECT iana_name FROM guild_timezone WHERE guild_id = '1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(first, "Asia/Bangkok");
+        let second: String =
+            sqlx::query_scalar("SELECT iana_name FROM guild_timezone WHERE guild_id = '2'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(second, "America/New_York");
+        sqlx::query("UPDATE guild_timezone SET iana_name = NULL WHERE guild_id = '1'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let cleared: Option<String> =
+            sqlx::query_scalar("SELECT iana_name FROM guild_timezone WHERE guild_id = '1'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(cleared.is_none());
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }

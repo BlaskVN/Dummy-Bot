@@ -43,6 +43,14 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         ),
         None => t(lang, TranslationKey::SettingsNotConfigured).to_string(),
     };
+    let timezone = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT iana_name FROM guild_timezone WHERE guild_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .fetch_optional(&ctx.data().db_pool)
+    .await?
+    .flatten()
+    .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
 
     let prefix_text = tf(lang, TranslationKey::SettingsPrefix, &[&prefix]);
     let log_channel_text = tf(
@@ -50,8 +58,12 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         TranslationKey::SettingsLogChannel,
         &[&log_channel_display],
     );
+    let timezone_text = tf(lang, TranslationKey::SettingsTimezone, &[&timezone]);
 
-    let description = format!("├ {}\n└ {}", prefix_text, log_channel_text);
+    let description = format!(
+        "├ {}\n├ {}\n└ {}",
+        prefix_text, log_channel_text, timezone_text
+    );
 
     let embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::SettingsTitle))

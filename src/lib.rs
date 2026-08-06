@@ -7,6 +7,7 @@ pub mod handlers;
 pub mod i18n;
 pub mod permissions;
 pub mod state;
+pub mod timezone;
 
 pub use app::run;
 pub use state::{Data, VoiceConnectionInfo};
