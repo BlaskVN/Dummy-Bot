@@ -5,6 +5,7 @@ pub mod database;
 pub mod error;
 pub mod handlers;
 pub mod i18n;
+pub mod moderation_cases;
 pub mod permissions;
 pub mod state;
 pub mod timezone;
