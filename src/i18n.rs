@@ -134,6 +134,8 @@ pub enum TranslationKey {
     ModerationInvalidEvidence,
     ModerationTimeoutRange,
     ModerationActionWarn,
+    ModerationActionKick,
+    ModerationActionBan,
     ModerationActionTimeout,
     ModerationCaseSummary,
     ModerationActionCaseFailed,
@@ -374,6 +376,8 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Timeout must be between 1 and 40,320 minutes.",
     );
     en.insert(TranslationKey::ModerationActionWarn, "Warning");
+    en.insert(TranslationKey::ModerationActionKick, "Kick");
+    en.insert(TranslationKey::ModerationActionBan, "Ban");
     en.insert(TranslationKey::ModerationActionTimeout, "Timeout");
     en.insert(
         TranslationKey::ModerationCaseSummary,
@@ -681,6 +685,8 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Thời gian timeout phải từ 1 đến 40.320 phút.",
     );
     vi.insert(TranslationKey::ModerationActionWarn, "Cảnh cáo");
+    vi.insert(TranslationKey::ModerationActionKick, "Kick");
+    vi.insert(TranslationKey::ModerationActionBan, "Ban");
     vi.insert(TranslationKey::ModerationActionTimeout, "Timeout");
     vi.insert(
         TranslationKey::ModerationCaseSummary,
@@ -997,6 +1003,8 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "タイムアウトは1分から40,320分の範囲で指定してください。",
     );
     ja.insert(TranslationKey::ModerationActionWarn, "警告");
+    ja.insert(TranslationKey::ModerationActionKick, "キック");
+    ja.insert(TranslationKey::ModerationActionBan, "BAN");
     ja.insert(TranslationKey::ModerationActionTimeout, "タイムアウト");
     ja.insert(
         TranslationKey::ModerationCaseSummary,

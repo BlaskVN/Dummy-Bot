@@ -1,5 +1,7 @@
+use super::{case_summary, denial_translation, send_case_summary};
 use crate::i18n::{TranslationKey, t, tf};
-use crate::permissions::{ModerationDenial, moderation_denial};
+use crate::moderation_cases::{ModerationAction, create_case, valid_evidence_url};
+use crate::permissions::moderation_denial;
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -18,6 +20,7 @@ pub async fn ban(
     #[description = "Days of messages to delete"]
     #[max = 7]
     delete_days: Option<u8>,
+    #[description = "Discord message link containing evidence"] evidence: Option<String>,
     #[description = "Reason for ban"]
     #[rest]
     reason: Option<String>,
@@ -28,12 +31,15 @@ pub async fn ban(
     let lang = ctx.data().language(guild_id).await;
 
     if let Some(denial) = moderation_denial(ctx, member.user.id)? {
-        let key = match denial {
-            ModerationDenial::SelfTarget => TranslationKey::ModerationCannotTargetSelf,
-            ModerationDenial::UserHierarchy => TranslationKey::ModerationUserHierarchy,
-            ModerationDenial::BotHierarchy => TranslationKey::ModerationBotHierarchy,
-        };
-        ctx.say(t(lang, key)).await?;
+        ctx.say(t(lang, denial_translation(denial))).await?;
+        return Ok(());
+    }
+    if evidence
+        .as_deref()
+        .is_some_and(|url| !valid_evidence_url(url, guild_id))
+    {
+        ctx.say(t(lang, TranslationKey::ModerationInvalidEvidence))
+            .await?;
         return Ok(());
     }
 
@@ -48,31 +54,46 @@ pub async fn ban(
         ctx.say(message).await?;
         return Ok(());
     }
-    let member_name = member.user.name.clone();
-
     member
         .ban_with_reason(&ctx.http(), delete_days, &reason)
         .await?;
 
-    tracing::info!(
-        moderator = %ctx.author().name,
-        target = %member_name,
-        reason = %reason,
-        delete_days = delete_days,
-        "Member banned"
-    );
-
-    let message = tf(
+    let case_number = match create_case(
+        &ctx.data().db_pool,
+        guild_id,
+        ModerationAction::Ban,
+        member.user.id,
+        ctx.author().id,
+        &reason,
+        evidence.as_deref(),
+    )
+    .await
+    {
+        Ok(number) => number,
+        Err(error) => {
+            tracing::error!(%guild_id, target = %member.user.id, moderator = %ctx.author().id, %error, "Discord ban succeeded but moderation case creation failed");
+            ctx.say(t(lang, TranslationKey::ModerationActionCaseFailed))
+                .await?;
+            return Ok(());
+        }
+    };
+    let summary = case_summary(
         lang,
-        TranslationKey::ModerationBanned,
-        &[&member_name, &reason],
+        case_number,
+        TranslationKey::ModerationActionBan,
+        member.user.id,
+        ctx.author().id,
+        &reason,
     );
-
-    let embed = serenity::CreateEmbed::new()
-        .description(message)
-        .color(ctx.data().config.colors.error);
-
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(
+        poise::CreateReply::default()
+            .content(&summary)
+            .allowed_mentions(serenity::CreateAllowedMentions::new()),
+    )
+    .await?;
+    if let Err(error) = send_case_summary(ctx, guild_id, &summary).await {
+        tracing::warn!(%guild_id, case_number, %error, "Failed to send moderation case summary");
+    }
 
     Ok(())
 }
