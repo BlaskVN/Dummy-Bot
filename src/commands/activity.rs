@@ -243,6 +243,8 @@ pub async fn update(
             return Ok(());
         }
     }
+    let has_native_update =
+        name.is_some() || start.is_some() || description.is_some() || next_status.is_some();
     let mut builder = serenity::EditScheduledEvent::new();
     if let Some(name) = name {
         builder = builder.name(name);
@@ -256,17 +258,36 @@ pub async fn update(
     if let Some(status) = next_status {
         builder = builder.status(status);
     }
-    guild_id
-        .edit_scheduled_event(ctx.http(), event_id, builder)
-        .await?;
+    if has_native_update {
+        guild_id
+            .edit_scheduled_event(ctx.http(), event_id, builder)
+            .await?;
+    }
     crate::community::update_activity_extension(
         &ctx.data().db_pool,
         guild_id,
         event_id,
-        capacity,
+        None,
         next_status.map(activity_state),
     )
     .await?;
+    if capacity.is_some() {
+        let promoted = crate::community::set_activity_capacity(
+            &ctx.data().db_pool,
+            guild_id,
+            event_id,
+            capacity,
+        )
+        .await?;
+        crate::handlers::community::notify_promotions(
+            ctx.serenity_context(),
+            ctx.data(),
+            guild_id,
+            event_id,
+            &promoted,
+        )
+        .await;
+    }
     ctx.say(format!(
         "Activity updated: {}",
         event_url(guild_id, event_id)

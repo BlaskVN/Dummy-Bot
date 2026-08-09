@@ -1,4 +1,5 @@
 pub mod automod;
+pub mod community;
 pub mod guild_lifecycle;
 pub mod message_log;
 pub mod onboarding;
@@ -64,6 +65,9 @@ pub async fn dispatch(
         serenity::FullEvent::AutoModRuleUpdate { rule } => {
             automod::handle_rule_update(rule, data).await;
         }
+        serenity::FullEvent::InteractionCreate {
+            interaction: serenity::Interaction::Component(interaction),
+        } => community::handle_component(ctx, interaction, data).await?,
         serenity::FullEvent::Resume { .. } => reconnect::handle_resume(ctx, data).await,
         serenity::FullEvent::Ready { .. } => reconnect::handle_ready_reconnect(ctx, data).await,
         _ => {}
