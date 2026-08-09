@@ -66,6 +66,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     voice_connections: Arc::new(RwLock::new(HashMap::new())),
                     game_session_creation: Arc::new(Mutex::new(())),
                     game_expiry_wakeup: Arc::new(Notify::new()),
+                    automatic_beacons: Arc::new(RwLock::new(HashSet::new())),
                 };
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
                 handlers::community::reconcile_all(ctx, &data).await;

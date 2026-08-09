@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::i18n::{Language, get_guild_language};
 use poise::serenity_prelude as serenity;
 use sqlx::SqlitePool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify, RwLock, Semaphore};
 
@@ -22,6 +22,8 @@ pub struct Data {
     /// ponytail: one lock serializes rare session creation; shard by Guild if this becomes hot.
     pub game_session_creation: Arc<Mutex<()>>,
     pub game_expiry_wakeup: Arc<Notify>,
+    pub automatic_beacons:
+        Arc<RwLock<HashSet<(serenity::GuildId, serenity::ChannelId, serenity::UserId)>>>,
 }
 
 impl Data {
