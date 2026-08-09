@@ -18,6 +18,16 @@ pub async fn handle_native_update(data: &Data, event: &serenity::ScheduledEvent)
         tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not mirror scheduled event state");
     }
     if matches!(state, "completed" | "canceled") {
+        if let Err(error) = crate::attendance::pause_session(
+            &data.db_pool,
+            event.guild_id,
+            event.id,
+            chrono::Utc::now().timestamp(),
+        )
+        .await
+        {
+            tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not pause terminal activity attendance");
+        }
         super::activity_presence::clear_session(data, event.guild_id, event.id).await;
     }
 }
@@ -27,6 +37,16 @@ pub async fn handle_native_delete(
     data: &Data,
     event: &serenity::ScheduledEvent,
 ) {
+    if let Err(error) = crate::attendance::pause_session(
+        &data.db_pool,
+        event.guild_id,
+        event.id,
+        chrono::Utc::now().timestamp(),
+    )
+    .await
+    {
+        tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not pause deleted activity attendance");
+    }
     super::activity_presence::clear_session(data, event.guild_id, event.id).await;
     notify_deleted(ctx, data, event.guild_id, event.id).await;
 }

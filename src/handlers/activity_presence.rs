@@ -49,10 +49,14 @@ pub async fn handle_presence_update(
         channel_id.filter(|channel| pool.contains(channel) && matched),
     )
     .await;
+    if let Some(channel_id) = channel_id {
+        reconcile_channel(ctx, data, guild_id, channel_id).await;
+    }
 }
 
 pub async fn handle_voice_change(
     ctx: &serenity::Context,
+    old: Option<&serenity::VoiceState>,
     voice: &serenity::VoiceState,
     data: &Data,
 ) {
@@ -98,6 +102,15 @@ pub async fn handle_voice_change(
             .filter(|channel| pool.contains(channel) && matched),
     )
     .await;
+    let old_channel = old.and_then(|state| state.channel_id);
+    if let Some(channel) = old_channel
+        && Some(channel) != voice.channel_id
+    {
+        reconcile_channel(ctx, data, guild_id, channel).await;
+    }
+    if let Some(channel) = voice.channel_id {
+        reconcile_channel(ctx, data, guild_id, channel).await;
+    }
 }
 
 pub async fn remove_member(data: &Data, guild_id: serenity::GuildId, user_id: serenity::UserId) {
@@ -105,6 +118,16 @@ pub async fn remove_member(data: &Data, guild_id: serenity::GuildId, user_id: se
     update_source(&mut beacons, guild_id, user_id, None);
     drop(beacons);
     clear_manual_member(data, guild_id, user_id).await;
+    if let Err(error) = crate::attendance::pause_member(
+        &data.db_pool,
+        guild_id,
+        user_id,
+        chrono::Utc::now().timestamp(),
+    )
+    .await
+    {
+        tracing::error!(%guild_id, %user_id, %error, "Could not pause removed member attendance");
+    }
 }
 
 pub async fn beacon_active(
@@ -134,20 +157,36 @@ pub async fn find_session(
     guild_id: serenity::GuildId,
     channel_id: serenity::ChannelId,
 ) -> Option<serenity::ScheduledEventId> {
+    find_sessions(ctx, data, guild_id, channel_id)
+        .await
+        .into_iter()
+        .next()
+}
+
+async fn find_sessions(
+    ctx: &serenity::Context,
+    data: &Data,
+    guild_id: serenity::GuildId,
+    channel_id: serenity::ChannelId,
+) -> Vec<serenity::ScheduledEventId> {
     let activities = crate::community::guild_nonterminal_activities(&data.db_pool, guild_id, 100)
         .await
-        .ok()?;
+        .unwrap_or_default();
+    let mut events = Vec::new();
     for activity in activities {
-        let event_id = serenity::ScheduledEventId::new(activity.scheduled_event_id.parse().ok()?);
+        let Ok(raw_id) = activity.scheduled_event_id.parse() else {
+            continue;
+        };
+        let event_id = serenity::ScheduledEventId::new(raw_id);
         if guild_id
             .scheduled_event(&ctx.http, event_id, false)
             .await
             .is_ok_and(|event| event.channel_id == Some(channel_id))
         {
-            return Some(event_id);
+            events.push(event_id);
         }
     }
-    None
+    events
 }
 
 pub async fn manual_check_in(
@@ -168,6 +207,81 @@ pub async fn clear_session(
 ) {
     let mut checkins = data.manual_checkins.write().await;
     clear_session_checkins(&mut checkins, guild_id, event_id);
+}
+
+pub async fn reconcile_channel(
+    ctx: &serenity::Context,
+    data: &Data,
+    guild_id: serenity::GuildId,
+    channel_id: serenity::ChannelId,
+) {
+    let sessions = find_sessions(ctx, data, guild_id, channel_id).await;
+    if sessions.is_empty() {
+        return;
+    }
+    let members = ctx.cache.guild(guild_id).map_or_else(Vec::new, |guild| {
+        guild
+            .voice_states
+            .iter()
+            .filter(|(_, state)| state.channel_id == Some(channel_id))
+            .filter_map(|(user, _)| {
+                guild
+                    .members
+                    .get(user)
+                    .is_some_and(|member| !member.user.bot)
+                    .then_some(*user)
+            })
+            .collect::<Vec<_>>()
+    });
+    let automatic = data
+        .automatic_beacons
+        .read()
+        .await
+        .iter()
+        .any(|(guild, channel, _)| *guild == guild_id && *channel == channel_id);
+    let manual = data.manual_checkins.read().await.clone();
+    let now = chrono::Utc::now().timestamp();
+    for event_id in sessions {
+        let manual_active = manual.iter().any(|(guild, event, channel, _)| {
+            *guild == guild_id && *event == event_id && *channel == channel_id
+        });
+        let eligible = if automatic || manual_active {
+            members.as_slice()
+        } else {
+            &[]
+        };
+        if let Err(error) = crate::attendance::reconcile_attendance(
+            &data.db_pool,
+            guild_id,
+            event_id,
+            eligible,
+            now,
+        )
+        .await
+        {
+            tracing::error!(%guild_id, %event_id, %error, "Could not reconcile channel attendance");
+        }
+    }
+}
+
+pub async fn reconcile_known_channels(ctx: &serenity::Context, data: &Data) {
+    let mut channels = data
+        .automatic_beacons
+        .read()
+        .await
+        .iter()
+        .map(|(guild, channel, _)| (*guild, *channel))
+        .collect::<HashSet<_>>();
+    channels.extend(
+        data.manual_checkins
+            .read()
+            .await
+            .iter()
+            .map(|(guild, _, channel, _)| (*guild, *channel)),
+    );
+    for (guild, channel) in channels {
+        reconcile_channel(ctx, data, guild, channel).await;
+    }
 }
 
 async fn clear_manual_member(data: &Data, guild_id: serenity::GuildId, user_id: serenity::UserId) {

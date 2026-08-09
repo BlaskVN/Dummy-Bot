@@ -1,4 +1,5 @@
 pub mod app;
+pub mod attendance;
 pub mod automod;
 pub mod commands;
 pub mod community;

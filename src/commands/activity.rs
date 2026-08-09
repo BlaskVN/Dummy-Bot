@@ -70,6 +70,13 @@ pub async fn check_in(ctx: Context<'_>) -> Result<(), Error> {
         ctx.author().id,
     )
     .await;
+    crate::handlers::activity_presence::reconcile_channel(
+        ctx.serenity_context(),
+        ctx.data(),
+        guild_id,
+        channel_id,
+    )
+    .await;
     ctx.send(
         poise::CreateReply::default()
             .content(check_in_response(language, true))

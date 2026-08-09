@@ -14,6 +14,10 @@ use tokio::sync::RwLock;
 pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
     tracing::info!("Gateway resumed — restoring bot state");
     restore_presence(ctx, &data.db_pool).await;
+    if let Err(error) = crate::attendance::clear_stale_active_starts(&data.db_pool).await {
+        tracing::error!(%error, "Could not clear stale attendance starts after resume");
+    }
+    super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
     super::game_session::wake_expiry(data);
     spawn_voice_reconnect(
@@ -30,6 +34,10 @@ pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
 pub async fn handle_ready_reconnect(ctx: &serenity::Context, data: &Data) {
     tracing::info!("Shard restarted (new Ready) — restoring bot state");
     restore_presence(ctx, &data.db_pool).await;
+    if let Err(error) = crate::attendance::clear_stale_active_starts(&data.db_pool).await {
+        tracing::error!(%error, "Could not clear stale attendance starts after ready");
+    }
+    super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
     super::game_session::wake_expiry(data);
     spawn_voice_reconnect(

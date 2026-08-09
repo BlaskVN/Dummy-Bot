@@ -60,7 +60,7 @@ pub async fn dispatch(
         }
         serenity::FullEvent::VoiceStateUpdate { old, new, .. } => {
             voice::handle_voice_state_update(ctx, old, new, data).await;
-            activity_presence::handle_voice_change(ctx, new, data).await;
+            activity_presence::handle_voice_change(ctx, old.as_ref(), new, data).await;
         }
         serenity::FullEvent::GuildMemberRemoval { guild_id, user, .. } => {
             activity_presence::remove_member(data, *guild_id, user.id).await;

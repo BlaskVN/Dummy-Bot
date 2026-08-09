@@ -69,6 +69,11 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     automatic_beacons: Arc::new(RwLock::new(HashSet::new())),
                     manual_checkins: Arc::new(RwLock::new(HashSet::new())),
                 };
+                if let Err(error) =
+                    crate::attendance::clear_stale_active_starts(&data.db_pool).await
+                {
+                    tracing::error!(%error, "Could not clear stale attendance starts");
+                }
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
                 handlers::community::reconcile_all(ctx, &data).await;
                 handlers::game_session::spawn_expiry_worker(
