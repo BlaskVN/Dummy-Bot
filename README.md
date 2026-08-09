@@ -20,6 +20,10 @@ Install the stable Rust toolchain and create a bot in the Discord Developer
 Portal. Enable the Message Content and Server Members privileged intents; voice
 commands also require the Voice States intent.
 
+Set `MESSAGE_CONTENT_ENABLED=false` when Message Content is not enabled in the
+Developer Portal. The bot will start normally and mark enabled Message Logs as
+degraded; keep it `true` for existing deployments that already have access.
+
 ```bash
 cp .env.example .env
 # Set DISCORD_TOKEN in .env. Non-secret defaults are in config.env.
@@ -73,7 +77,7 @@ error.
 | Ownership/defaults | `OWNER_IDS`, `DEFAULT_PREFIX`, `DEFAULT_LANGUAGE` |
 | Command limits | `PREFIX_MAX_CHARS`, `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
 | Runtime/recovery | `CACHE_MAX_MESSAGES`, `GATEWAY_RESUME_DELAY_SECONDS`, `GATEWAY_READY_DELAY_SECONDS` |
-| Message logging | `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
+| Message logging | `MESSAGE_CONTENT_ENABLED`, `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
 | Appearance | all `EMBED_COLOR_*` variables |
 
 `OWNER_IDS` is a comma-separated list of Discord user IDs. Leave it empty to

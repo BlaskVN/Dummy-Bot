@@ -77,6 +77,11 @@ pub enum TranslationKey {
     MessageLogStatusDisabled,
     MessageLogChannel,
     MessageLogUseEnable,
+    MessageLogHealth,
+    MessageLogHealthDisabled,
+    MessageLogHealthHealthy,
+    MessageLogHealthDegraded,
+    MessageLogDegradedWarning,
 
     // Message log handlers
     MessageDeleted,
@@ -272,6 +277,11 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::MessageLogUseEnable,
         "Message logging not configured. Use `/messagelog enable` to enable.",
     );
+    en.insert(TranslationKey::MessageLogHealth, "**Health:** {}");
+    en.insert(TranslationKey::MessageLogHealthDisabled, "Disabled");
+    en.insert(TranslationKey::MessageLogHealthHealthy, "Healthy");
+    en.insert(TranslationKey::MessageLogHealthDegraded, "Degraded");
+    en.insert(TranslationKey::MessageLogDegradedWarning, "Message Log is degraded because Message Content access is disabled. Metadata will still be logged, but message text and attachments may be unavailable.");
     en.insert(TranslationKey::MessageDeleted, "Message Deleted");
     en.insert(TranslationKey::MessageEditedTitle, "Message Edited");
     en.insert(
@@ -651,6 +661,11 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::MessageLogUseEnable,
         "Message logging chưa được thiết lập. Sử dụng `/messagelog enable` để bật.",
     );
+    vi.insert(TranslationKey::MessageLogHealth, "**Tình trạng:** {}");
+    vi.insert(TranslationKey::MessageLogHealthDisabled, "Đã tắt");
+    vi.insert(TranslationKey::MessageLogHealthHealthy, "Bình thường");
+    vi.insert(TranslationKey::MessageLogHealthDegraded, "Suy giảm");
+    vi.insert(TranslationKey::MessageLogDegradedWarning, "Message Log đang suy giảm vì quyền truy cập Message Content bị tắt. Bot vẫn ghi metadata nhưng có thể không có nội dung và tệp đính kèm.");
     vi.insert(TranslationKey::MessageDeleted, "Tin Nhắn Đã Xóa");
     vi.insert(TranslationKey::MessageEditedTitle, "Tin Nhắn Đã Chỉnh Sửa");
     vi.insert(
@@ -1042,6 +1057,11 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::MessageLogUseEnable,
         "メッセージログは設定されていません。`/messagelog enable`で有効にしてください。",
     );
+    ja.insert(TranslationKey::MessageLogHealth, "**状態：** {}");
+    ja.insert(TranslationKey::MessageLogHealthDisabled, "無効");
+    ja.insert(TranslationKey::MessageLogHealthHealthy, "正常");
+    ja.insert(TranslationKey::MessageLogHealthDegraded, "制限あり");
+    ja.insert(TranslationKey::MessageLogDegradedWarning, "Message Contentへのアクセスが無効なため、メッセージログは制限状態です。メタデータは記録されますが、本文や添付ファイルを取得できない場合があります。");
     ja.insert(TranslationKey::MessageDeleted, "メッセージが削除されました");
     ja.insert(
         TranslationKey::MessageEditedTitle,

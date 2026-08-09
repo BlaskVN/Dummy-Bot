@@ -57,19 +57,21 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 commands::presence::restore_presence(ctx, &setup_pool).await;
 
-                Ok(Data {
+                let data = Data {
                     config: setup_config,
                     db_pool: setup_pool,
                     start_time: Instant::now(),
                     attachment_client,
                     attachment_downloads: Arc::new(Semaphore::new(2)),
                     voice_connections: Arc::new(RwLock::new(HashMap::new())),
-                })
+                };
+                handlers::message_log::reconcile_all_health(ctx, &data).await;
+                Ok(data)
             })
         })
         .build();
 
-    let intents = gateway_intents();
+    let intents = gateway_intents(config.message_content_enabled);
     let cache_settings = {
         let mut settings = serenity::cache::Settings::default();
         settings.max_messages = config.cache_max_messages;
@@ -84,11 +86,14 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn gateway_intents() -> serenity::GatewayIntents {
-    serenity::GatewayIntents::non_privileged()
-        | serenity::GatewayIntents::MESSAGE_CONTENT
+fn gateway_intents(message_content_enabled: bool) -> serenity::GatewayIntents {
+    let mut intents = serenity::GatewayIntents::non_privileged()
         | serenity::GatewayIntents::GUILD_MEMBERS
-        | serenity::GatewayIntents::GUILD_VOICE_STATES
+        | serenity::GatewayIntents::GUILD_VOICE_STATES;
+    if message_content_enabled {
+        intents |= serenity::GatewayIntents::MESSAGE_CONTENT;
+    }
+    intents
 }
 
 fn dynamic_prefix(
@@ -139,8 +144,10 @@ mod tests {
 
     #[test]
     fn requests_both_automod_intents() {
-        let intents = gateway_intents();
+        let intents = gateway_intents(true);
         assert!(intents.contains(GatewayIntents::AUTO_MODERATION_EXECUTION));
         assert!(intents.contains(GatewayIntents::AUTO_MODERATION_CONFIGURATION));
+        assert!(intents.contains(GatewayIntents::MESSAGE_CONTENT));
+        assert!(!gateway_intents(false).contains(GatewayIntents::MESSAGE_CONTENT));
     }
 }

@@ -1,4 +1,5 @@
 use crate::i18n::{TranslationKey, t, tf};
+use crate::message_log_health::MessageLogHealth;
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -27,21 +28,27 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
             .unwrap_or_else(|| ctx.data().config.default_prefix.clone());
 
     // Get log channel from message_log_config
-    let log_channel = sqlx::query_as::<_, (String, i64)>(
-        "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
+    let log_channel = sqlx::query_as::<_, (String, i64, String)>(
+        "SELECT log_channel_id, enabled, health FROM message_log_config WHERE guild_id = ?",
     )
     .bind(guild_id.to_string())
     .fetch_optional(&ctx.data().db_pool)
     .await?;
 
-    let log_channel_display = match log_channel {
-        Some((id, 1)) => format!("<#{}>", id),
-        Some((id, _)) => format!(
-            "<#{}> ({})",
-            id,
-            t(lang, TranslationKey::MessageLogStatusDisabled)
+    let (log_channel_display, log_health) = match log_channel {
+        Some((id, 1, health)) => (format!("<#{}>", id), health),
+        Some((id, _, health)) => (
+            format!(
+                "<#{}> ({})",
+                id,
+                t(lang, TranslationKey::MessageLogStatusDisabled)
+            ),
+            health,
         ),
-        None => t(lang, TranslationKey::SettingsNotConfigured).to_string(),
+        None => (
+            t(lang, TranslationKey::SettingsNotConfigured).to_string(),
+            "disabled".to_owned(),
+        ),
     };
     let timezone = sqlx::query_scalar::<_, Option<String>>(
         "SELECT iana_name FROM guild_timezone WHERE guild_id = ?",
@@ -66,6 +73,15 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         TranslationKey::SettingsLogChannel,
         &[&log_channel_display],
     );
+    let log_health = t(
+        lang,
+        match MessageLogHealth::parse(&log_health) {
+            MessageLogHealth::Disabled => TranslationKey::MessageLogHealthDisabled,
+            MessageLogHealth::Healthy => TranslationKey::MessageLogHealthHealthy,
+            MessageLogHealth::Degraded => TranslationKey::MessageLogHealthDegraded,
+        },
+    );
+    let log_health_text = tf(lang, TranslationKey::MessageLogHealth, &[&log_health]);
     let timezone_text = tf(lang, TranslationKey::SettingsTimezone, &[&timezone]);
     let moderation_channel_text = tf(
         lang,
@@ -74,8 +90,8 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
     );
 
     let description = format!(
-        "├ {}\n├ {}\n├ {}\n└ {}",
-        prefix_text, log_channel_text, moderation_channel_text, timezone_text
+        "├ {}\n├ {}\n├ {}\n├ {}\n└ {}",
+        prefix_text, log_channel_text, log_health_text, moderation_channel_text, timezone_text
     );
 
     let embed = serenity::CreateEmbed::new()

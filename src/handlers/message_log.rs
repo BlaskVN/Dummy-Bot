@@ -2,9 +2,54 @@ use crate::Data;
 use crate::config::discord_limits;
 use crate::database;
 use crate::i18n::{TranslationKey, t, tf};
+use crate::message_log_health::{MessageLogHealth, current_health, mark_warning_sent, reconcile};
 use chrono::DateTime;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
+
+pub async fn reconcile_all_health(ctx: &Context, data: &Data) {
+    let rows = match sqlx::query_as::<_, (String, String)>(
+        "SELECT guild_id, log_channel_id FROM message_log_config WHERE enabled = 1",
+    )
+    .fetch_all(&data.db_pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(error) => {
+            tracing::error!(%error, "Failed to load Message Log health");
+            return;
+        }
+    };
+    for (guild, channel) in rows {
+        let (Ok(guild_id), Ok(channel_id)) = (guild.parse(), channel.parse()) else {
+            tracing::error!(guild, channel, "Invalid stored Message Log identifiers");
+            continue;
+        };
+        let guild_id = serenity::GuildId::new(guild_id);
+        match reconcile(&data.db_pool, guild_id, data.config.message_content_enabled).await {
+            Ok((_, true)) => {
+                let language = data.language(guild_id).await;
+                let result = serenity::ChannelId::new(channel_id)
+                    .send_message(
+                        &ctx.http,
+                        serenity::CreateMessage::new()
+                            .content(t(language, TranslationKey::MessageLogDegradedWarning))
+                            .allowed_mentions(serenity::CreateAllowedMentions::new()),
+                    )
+                    .await;
+                if result.is_ok()
+                    && let Err(error) = mark_warning_sent(&data.db_pool, guild_id).await
+                {
+                    tracing::error!(%guild_id, %error, "Failed to persist Message Log warning state");
+                }
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::error!(%guild_id, %error, "Failed to reconcile Message Log health")
+            }
+        }
+    }
+}
 
 /// Handle message deletion events.
 ///
@@ -27,15 +72,21 @@ pub async fn handle_message_delete(
     let lang = data.language(guild_id).await;
 
     // Try to fetch the message from cache
-    let message = match ctx.cache.message(channel_id, deleted_message_id) {
-        Some(msg) => msg.clone(),
-        None => {
-            tracing::debug!(
-                "Message {} not in cache, cannot log deletion",
-                deleted_message_id
-            );
-            return;
-        }
+    let message = ctx
+        .cache
+        .message(channel_id, deleted_message_id)
+        .map(|message| message.clone());
+    let Some(message) = message else {
+        send_metadata_log(
+            ctx,
+            data,
+            guild_id,
+            channel_id,
+            deleted_message_id,
+            TranslationKey::MessageDeleted,
+        )
+        .await;
+        return;
     };
 
     // Skip bot messages to avoid spam
@@ -197,7 +248,18 @@ pub async fn handle_message_update(
     // Serenity snapshots this before applying the update to its cache.
     let old_message = match old_message {
         Some(message) => message,
-        None => return, // Not in cache, can't compare
+        None => {
+            send_metadata_log(
+                ctx,
+                data,
+                guild_id,
+                event.channel_id,
+                event.id,
+                TranslationKey::MessageEditedTitle,
+            )
+            .await;
+            return;
+        }
     };
 
     // Skip bot messages
@@ -208,7 +270,22 @@ pub async fn handle_message_update(
     // Only log if content actually changed
     let new_content = match &event.content {
         Some(content) => content,
-        None => return, // No content change
+        None => {
+            if current_health(&data.db_pool, guild_id).await.ok()
+                == Some(MessageLogHealth::Degraded)
+            {
+                send_metadata_log(
+                    ctx,
+                    data,
+                    guild_id,
+                    event.channel_id,
+                    event.id,
+                    TranslationKey::MessageEditedTitle,
+                )
+                .await;
+            }
+            return;
+        }
     };
 
     if old_message.content == *new_content {
@@ -261,6 +338,45 @@ pub async fn handle_message_update(
 
     if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
         tracing::error!("Failed to send edit log: {}", e);
+    }
+}
+
+async fn send_metadata_log(
+    ctx: &Context,
+    data: &Data,
+    guild_id: serenity::GuildId,
+    channel_id: ChannelId,
+    message_id: MessageId,
+    title: TranslationKey,
+) {
+    let Ok(Some(log_channel)) = database::message_log_channel(&data.db_pool, guild_id).await else {
+        return;
+    };
+    let language = data.language(guild_id).await;
+    let embed = serenity::CreateEmbed::new()
+        .title(t(language, title))
+        .description(t(language, TranslationKey::MessageNoCached))
+        .field(
+            t(language, TranslationKey::MessageChannelLabel),
+            format!("<#{channel_id}>"),
+            true,
+        )
+        .field(
+            t(language, TranslationKey::MessageId),
+            message_id.to_string(),
+            true,
+        )
+        .color(data.config.colors.warning);
+    if let Err(error) = log_channel
+        .send_message(
+            &ctx.http,
+            serenity::CreateMessage::new()
+                .embed(embed)
+                .allowed_mentions(serenity::CreateAllowedMentions::new()),
+        )
+        .await
+    {
+        tracing::warn!(%guild_id, %message_id, %error, "Failed to send metadata-only Message Log entry");
     }
 }
 

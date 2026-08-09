@@ -20,6 +20,10 @@ Cài Rust stable và tạo bot trong Discord Developer Portal. Bật hai privile
 intent Message Content và Server Members; lệnh voice cũng cần Voice States
 intent.
 
+Đặt `MESSAGE_CONTENT_ENABLED=false` khi chưa bật Message Content trong
+Developer Portal. Bot vẫn khởi động và đánh dấu Message Log đang bật là suy
+giảm; giữ `true` cho deployment hiện có đã được cấp quyền.
+
 ```bash
 cp .env.example .env
 # Đặt DISCORD_TOKEN trong .env. Giá trị không nhạy cảm nằm trong config.env.
@@ -72,7 +76,7 @@ permission flags, không dựa trên tên role.
 | Owner/mặc định | `OWNER_IDS`, `DEFAULT_PREFIX`, `DEFAULT_LANGUAGE` |
 | Giới hạn command | `PREFIX_MAX_CHARS`, `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
 | Runtime/recovery | `CACHE_MAX_MESSAGES`, `GATEWAY_RESUME_DELAY_SECONDS`, `GATEWAY_READY_DELAY_SECONDS` |
-| Message log | `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
+| Message log | `MESSAGE_CONTENT_ENABLED`, `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
 | Giao diện | toàn bộ biến `EMBED_COLOR_*` |
 
 `OWNER_IDS` nhận danh sách Discord user ID phân tách bằng dấu phẩy. Để trống để

@@ -1,4 +1,5 @@
 use crate::i18n::{TranslationKey, t, tf};
+use crate::message_log_health::{MessageLogHealth, mark_warning_sent, reconcile};
 use crate::permissions::missing_channel_permissions;
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -54,6 +55,27 @@ pub async fn enable(
     .execute(&ctx.data().db_pool)
     .await?;
 
+    let (_, warn) = reconcile(
+        &ctx.data().db_pool,
+        guild_id,
+        ctx.data().config.message_content_enabled,
+    )
+    .await?;
+    if warn
+        && log_channel
+            .id
+            .send_message(
+                ctx.http(),
+                serenity::CreateMessage::new()
+                    .content(t(lang, TranslationKey::MessageLogDegradedWarning))
+                    .allowed_mentions(serenity::CreateAllowedMentions::new()),
+            )
+            .await
+            .is_ok()
+    {
+        mark_warning_sent(&ctx.data().db_pool, guild_id).await?;
+    }
+
     tracing::info!(
         guild = %guild_id,
         channel = %log_channel.id,
@@ -94,6 +116,12 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         ctx.send(poise::CreateReply::default().embed(embed)).await?;
         return Ok(());
     }
+    reconcile(
+        &ctx.data().db_pool,
+        guild_id,
+        ctx.data().config.message_content_enabled,
+    )
+    .await?;
 
     tracing::info!(
         guild = %guild_id,
@@ -119,15 +147,15 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 
     let lang = ctx.data().language(guild_id).await;
 
-    let config = sqlx::query_as::<_, (String, i64)>(
-        "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
+    let config = sqlx::query_as::<_, (String, i64, String)>(
+        "SELECT log_channel_id, enabled, health FROM message_log_config WHERE guild_id = ?",
     )
     .bind(guild_id.to_string())
     .fetch_optional(&ctx.data().db_pool)
     .await?;
 
     match config {
-        Some((channel_id, enabled)) => {
+        Some((channel_id, enabled, health)) => {
             let status = if enabled == 1 {
                 t(lang, TranslationKey::MessageLogStatusEnabled)
             } else {
@@ -136,8 +164,20 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 
             let status_label = t(lang, TranslationKey::MessageLogStatus);
             let channel_text = tf(lang, TranslationKey::MessageLogChannel, &[&channel_id]);
+            let health = t(
+                lang,
+                match MessageLogHealth::parse(&health) {
+                    MessageLogHealth::Disabled => TranslationKey::MessageLogHealthDisabled,
+                    MessageLogHealth::Healthy => TranslationKey::MessageLogHealthHealthy,
+                    MessageLogHealth::Degraded => TranslationKey::MessageLogHealthDegraded,
+                },
+            );
+            let health_text = tf(lang, TranslationKey::MessageLogHealth, &[&health]);
 
-            let description = format!("├ {} {}\n└ {}", status_label, status, channel_text);
+            let description = format!(
+                "├ {} {}\n├ {}\n└ {}",
+                status_label, status, channel_text, health_text
+            );
 
             let embed = serenity::CreateEmbed::new()
                 .title(t(lang, TranslationKey::MessageLogStatusTitle))
