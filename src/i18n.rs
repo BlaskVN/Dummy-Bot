@@ -139,6 +139,17 @@ pub enum TranslationKey {
     ModerationActionTimeout,
     ModerationCaseSummary,
     ModerationActionCaseFailed,
+    ModerationActionUnknown,
+    ModerationCaseNotFound,
+    ModerationCaseListEmpty,
+    ModerationCaseList,
+    ModerationCaseListRow,
+    ModerationCaseView,
+    ModerationCaseStatusActive,
+    ModerationCaseStatusVoided,
+    ModerationCaseVoidDetails,
+    ModerationCaseAlreadyVoided,
+    ModerationCaseVoided,
 
     // Settings
     SettingsTitle,
@@ -384,6 +395,38 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Case #{} — {}\nTarget: <@{}>\nModerator: <@{}>\nReason: {}",
     );
     en.insert(TranslationKey::ModerationActionCaseFailed, "Discord action succeeded, but its moderation case could not be recorded. Contact the Bot Owner.");
+    en.insert(TranslationKey::ModerationActionUnknown, "Unknown action");
+    en.insert(
+        TranslationKey::ModerationCaseNotFound,
+        "Moderation case not found.",
+    );
+    en.insert(
+        TranslationKey::ModerationCaseListEmpty,
+        "No moderation cases on this page.",
+    );
+    en.insert(
+        TranslationKey::ModerationCaseList,
+        "**Moderation cases — page {}**\n{}",
+    );
+    en.insert(
+        TranslationKey::ModerationCaseListRow,
+        "#{} — {} — <@{}> — {}",
+    );
+    en.insert(TranslationKey::ModerationCaseView, "**Case #{} — {}**\nTarget: <@{}>\nModerator: <@{}>\nReason: {}\nCreated: {}\nEvidence: {}\nStatus: {}");
+    en.insert(TranslationKey::ModerationCaseStatusActive, "Active");
+    en.insert(TranslationKey::ModerationCaseStatusVoided, "Voided");
+    en.insert(
+        TranslationKey::ModerationCaseVoidDetails,
+        "\nVoided by: <@{}>\nVoid reason: {}\nVoided at: {}",
+    );
+    en.insert(
+        TranslationKey::ModerationCaseAlreadyVoided,
+        "Moderation case is already voided.",
+    );
+    en.insert(
+        TranslationKey::ModerationCaseVoided,
+        "Moderation case #{} voided.",
+    );
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     en.insert(TranslationKey::SettingsLogChannel, "**Log Channel:** {}");
@@ -693,6 +736,41 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Vụ việc #{} — {}\nThành viên: <@{}>\nNgười kiểm duyệt: <@{}>\nLý do: {}",
     );
     vi.insert(TranslationKey::ModerationActionCaseFailed, "Thao tác Discord đã thành công nhưng không thể ghi vụ việc kiểm duyệt. Hãy liên hệ Chủ Bot.");
+    vi.insert(
+        TranslationKey::ModerationActionUnknown,
+        "Thao tác không xác định",
+    );
+    vi.insert(
+        TranslationKey::ModerationCaseNotFound,
+        "Không tìm thấy vụ việc kiểm duyệt.",
+    );
+    vi.insert(
+        TranslationKey::ModerationCaseListEmpty,
+        "Trang này không có vụ việc kiểm duyệt.",
+    );
+    vi.insert(
+        TranslationKey::ModerationCaseList,
+        "**Các vụ việc kiểm duyệt — trang {}**\n{}",
+    );
+    vi.insert(
+        TranslationKey::ModerationCaseListRow,
+        "#{} — {} — <@{}> — {}",
+    );
+    vi.insert(TranslationKey::ModerationCaseView, "**Vụ việc #{} — {}**\nThành viên: <@{}>\nNgười kiểm duyệt: <@{}>\nLý do: {}\nTạo lúc: {}\nBằng chứng: {}\nTrạng thái: {}");
+    vi.insert(TranslationKey::ModerationCaseStatusActive, "Đang hiệu lực");
+    vi.insert(TranslationKey::ModerationCaseStatusVoided, "Đã vô hiệu");
+    vi.insert(
+        TranslationKey::ModerationCaseVoidDetails,
+        "\nNgười vô hiệu: <@{}>\nLý do vô hiệu: {}\nVô hiệu lúc: {}",
+    );
+    vi.insert(
+        TranslationKey::ModerationCaseAlreadyVoided,
+        "Vụ việc kiểm duyệt đã bị vô hiệu.",
+    );
+    vi.insert(
+        TranslationKey::ModerationCaseVoided,
+        "Đã vô hiệu vụ việc kiểm duyệt #{}.",
+    );
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     vi.insert(TranslationKey::SettingsLogChannel, "**Kênh Log:** {}");
@@ -1011,6 +1089,38 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "ケース#{} — {}\n対象：<@{}>\nモデレーター：<@{}>\n理由：{}",
     );
     ja.insert(TranslationKey::ModerationActionCaseFailed, "Discordでの操作は成功しましたが、モデレーションケースを記録できませんでした。Bot所有者に連絡してください。");
+    ja.insert(TranslationKey::ModerationActionUnknown, "不明な操作");
+    ja.insert(
+        TranslationKey::ModerationCaseNotFound,
+        "モデレーションケースが見つかりません。",
+    );
+    ja.insert(
+        TranslationKey::ModerationCaseListEmpty,
+        "このページにモデレーションケースはありません。",
+    );
+    ja.insert(
+        TranslationKey::ModerationCaseList,
+        "**モデレーションケース — ページ{}**\n{}",
+    );
+    ja.insert(
+        TranslationKey::ModerationCaseListRow,
+        "#{} — {} — <@{}> — {}",
+    );
+    ja.insert(TranslationKey::ModerationCaseView, "**ケース#{} — {}**\n対象：<@{}>\nモデレーター：<@{}>\n理由：{}\n作成日時：{}\n証拠：{}\n状態：{}");
+    ja.insert(TranslationKey::ModerationCaseStatusActive, "有効");
+    ja.insert(TranslationKey::ModerationCaseStatusVoided, "無効");
+    ja.insert(
+        TranslationKey::ModerationCaseVoidDetails,
+        "\n無効化したユーザー：<@{}>\n無効化の理由：{}\n無効化日時：{}",
+    );
+    ja.insert(
+        TranslationKey::ModerationCaseAlreadyVoided,
+        "モデレーションケースは既に無効です。",
+    );
+    ja.insert(
+        TranslationKey::ModerationCaseVoided,
+        "モデレーションケース#{}を無効にしました。",
+    );
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
     ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");
     ja.insert(

@@ -1,4 +1,5 @@
 pub mod ban;
+pub mod case;
 pub mod kick;
 pub mod purge;
 pub mod timeout;
@@ -16,6 +17,7 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
         purge::purge(),
         warn::warn(),
         timeout::timeout(),
+        case::cases(),
     ]
 }
 

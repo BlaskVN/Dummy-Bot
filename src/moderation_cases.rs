@@ -10,6 +10,21 @@ pub enum ModerationAction {
     Timeout,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ModerationCaseRecord {
+    pub case_number: i64,
+    pub action: String,
+    pub target_user_id: String,
+    pub moderator_user_id: String,
+    pub reason: String,
+    pub evidence_url: Option<String>,
+    pub status: String,
+    pub created_at: String,
+    pub void_actor_user_id: Option<String>,
+    pub void_reason: Option<String>,
+    pub voided_at: Option<String>,
+}
+
 impl ModerationAction {
     fn as_str(self) -> &'static str {
         match self {
@@ -94,9 +109,53 @@ pub async fn void_case(
         == 1)
 }
 
+pub async fn get_case(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    case_number: i64,
+) -> Result<Option<ModerationCaseRecord>> {
+    Ok(sqlx::query_as::<_, ModerationCaseRecord>(
+        "SELECT case_number, action, target_user_id, moderator_user_id, reason, evidence_url, status, created_at, void_actor_user_id, void_reason, voided_at FROM moderation_case WHERE guild_id = ? AND case_number = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(case_number)
+    .fetch_optional(pool)
+    .await?)
+}
+
+pub async fn list_cases(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    target: Option<UserId>,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<ModerationCaseRecord>> {
+    if let Some(target) = target {
+        return Ok(sqlx::query_as::<_, ModerationCaseRecord>(
+            "SELECT case_number, action, target_user_id, moderator_user_id, reason, evidence_url, status, created_at, void_actor_user_id, void_reason, voided_at FROM moderation_case WHERE guild_id = ? AND target_user_id = ? ORDER BY case_number DESC LIMIT ? OFFSET ?",
+        )
+        .bind(guild_id.to_string())
+        .bind(target.to_string())
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?);
+    }
+    Ok(sqlx::query_as::<_, ModerationCaseRecord>(
+        "SELECT case_number, action, target_user_id, moderator_user_id, reason, evidence_url, status, created_at, void_actor_user_id, void_reason, voided_at FROM moderation_case WHERE guild_id = ? ORDER BY case_number DESC LIMIT ? OFFSET ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ModerationAction, create_case, valid_evidence_url, void_case};
+    use super::{
+        ModerationAction, create_case, get_case, list_cases, valid_evidence_url, void_case,
+    };
     use crate::database::init_db;
     use poise::serenity_prelude::{GuildId, UserId};
 
@@ -152,6 +211,8 @@ mod tests {
             .unwrap(),
             1
         );
+        assert!(get_case(&pool, guild, 1).await.unwrap().is_some());
+        assert!(get_case(&pool, GuildId::new(9), 2).await.unwrap().is_none());
         assert_eq!(
             create_case(
                 &pool,
@@ -243,6 +304,24 @@ mod tests {
         }
         numbers.sort_unstable();
         assert_eq!(numbers, (1..=8).collect::<Vec<_>>());
+        assert_eq!(
+            list_cases(&pool, GuildId::new(1), None, 0, 3)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|record| record.case_number)
+                .collect::<Vec<_>>(),
+            vec![8, 7, 6]
+        );
+        assert_eq!(
+            list_cases(&pool, GuildId::new(1), None, 3, 3)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|record| record.case_number)
+                .collect::<Vec<_>>(),
+            vec![5, 4, 3]
+        );
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }
