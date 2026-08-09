@@ -5,6 +5,7 @@ pub mod community;
 pub mod config;
 pub mod database;
 pub mod error;
+pub mod game_config;
 pub mod handlers;
 pub mod i18n;
 pub mod message_log_health;

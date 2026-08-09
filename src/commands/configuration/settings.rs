@@ -66,6 +66,7 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
     .await?
     .map(|id| format!("<#{id}>"))
     .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
+    let game = crate::game_config::game_config(&ctx.data().db_pool, guild_id).await?;
 
     let prefix_text = tf(lang, TranslationKey::SettingsPrefix, &[&prefix]);
     let log_channel_text = tf(
@@ -89,9 +90,29 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         &[&moderation_channel],
     );
 
+    let game_text = game.map_or_else(
+        || "Game: not configured".to_owned(),
+        |(config, pool)| {
+            let pool = pool.iter().map(|id| format!("<#{id}>")).collect::<Vec<_>>().join(", ");
+            let status = if timezone == t(lang, TranslationKey::SettingsNotConfigured) {
+                "disabled: time zone not configured"
+            } else {
+                "enabled"
+            };
+            format!("Game: {} (`{}`) — {status}\n  Role: <@&{}> | Channel: <#{}>\n  Primary: <#{}> | Pool: {}\n  Activity: {}{}",
+                config.display_name, config.game_key, config.role_id, config.game_channel_id,
+                config.primary_voice_channel_id, pool, config.activity_name,
+                config.activity_application_id.map_or_else(String::new, |id| format!(" (app `{id}`)")))
+        },
+    );
     let description = format!(
-        "├ {}\n├ {}\n├ {}\n├ {}\n└ {}",
-        prefix_text, log_channel_text, log_health_text, moderation_channel_text, timezone_text
+        "├ {}\n├ {}\n├ {}\n├ {}\n├ {}\n└ {}",
+        prefix_text,
+        log_channel_text,
+        log_health_text,
+        moderation_channel_text,
+        timezone_text,
+        game_text
     );
 
     let embed = serenity::CreateEmbed::new()
