@@ -105,13 +105,17 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
                 config.activity_application_id.map_or_else(String::new, |id| format!(" (app `{id}`)")))
         },
     );
+    let detection = crate::handlers::activity_presence::detection_status(
+        ctx.data().config.guild_presences_enabled,
+    );
     let description = format!(
-        "├ {}\n├ {}\n├ {}\n├ {}\n├ {}\n└ {}",
+        "├ {}\n├ {}\n├ {}\n├ {}\n├ {}\n├ Activity Detection: {}\n└ {}",
         prefix_text,
         log_channel_text,
         log_health_text,
         moderation_channel_text,
         timezone_text,
+        detection,
         game_text
     );
 

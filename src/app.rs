@@ -79,7 +79,10 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         })
         .build();
 
-    let intents = gateway_intents(config.message_content_enabled);
+    let intents = gateway_intents(
+        config.message_content_enabled,
+        config.guild_presences_enabled,
+    );
     let cache_settings = {
         let mut settings = serenity::cache::Settings::default();
         settings.max_messages = config.cache_max_messages;
@@ -94,12 +97,18 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn gateway_intents(message_content_enabled: bool) -> serenity::GatewayIntents {
+fn gateway_intents(
+    message_content_enabled: bool,
+    guild_presences_enabled: bool,
+) -> serenity::GatewayIntents {
     let mut intents = serenity::GatewayIntents::non_privileged()
         | serenity::GatewayIntents::GUILD_MEMBERS
         | serenity::GatewayIntents::GUILD_VOICE_STATES;
     if message_content_enabled {
         intents |= serenity::GatewayIntents::MESSAGE_CONTENT;
+    }
+    if guild_presences_enabled {
+        intents |= serenity::GatewayIntents::GUILD_PRESENCES;
     }
     intents
 }
@@ -152,11 +161,14 @@ mod tests {
 
     #[test]
     fn requests_both_automod_intents() {
-        let intents = gateway_intents(true);
+        let intents = gateway_intents(true, true);
         assert!(intents.contains(GatewayIntents::AUTO_MODERATION_EXECUTION));
         assert!(intents.contains(GatewayIntents::AUTO_MODERATION_CONFIGURATION));
         assert!(intents.contains(GatewayIntents::GUILD_SCHEDULED_EVENTS));
         assert!(intents.contains(GatewayIntents::MESSAGE_CONTENT));
-        assert!(!gateway_intents(false).contains(GatewayIntents::MESSAGE_CONTENT));
+        let degraded = gateway_intents(false, false);
+        assert!(!degraded.contains(GatewayIntents::MESSAGE_CONTENT));
+        assert!(!degraded.contains(GatewayIntents::GUILD_PRESENCES));
+        assert!(intents.contains(GatewayIntents::GUILD_PRESENCES));
     }
 }

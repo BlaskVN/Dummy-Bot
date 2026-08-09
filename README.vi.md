@@ -28,6 +28,10 @@ intent.
 Developer Portal. Bot vẫn khởi động và đánh dấu Message Log đang bật là suy
 giảm; giữ `true` cho deployment hiện có đã được cấp quyền.
 
+Chỉ đặt `GUILD_PRESENCES_ENABLED=true` sau khi bật Presence Intent trong
+Developer Portal (và hoàn tất xét duyệt Discord nếu cần). Giữ `false` để bot
+khởi động với Activity Detection suy giảm; check-in thủ công vẫn hoạt động.
+
 ```bash
 cp .env.example .env
 # Đặt DISCORD_TOKEN trong .env. Giá trị không nhạy cảm nằm trong config.env.
@@ -79,7 +83,7 @@ permission flags, không dựa trên tên role.
 | Kết nối | `DATABASE_URL`, `DATA_DIRECTORY`, `RUST_LOG` |
 | Owner/mặc định | `OWNER_IDS`, `DEFAULT_PREFIX`, `DEFAULT_LANGUAGE` |
 | Giới hạn command | `PREFIX_MAX_CHARS`, `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
-| Runtime/recovery | `CACHE_MAX_MESSAGES`, `GATEWAY_RESUME_DELAY_SECONDS`, `GATEWAY_READY_DELAY_SECONDS` |
+| Runtime/recovery | `CACHE_MAX_MESSAGES`, `GATEWAY_RESUME_DELAY_SECONDS`, `GATEWAY_READY_DELAY_SECONDS`, `GUILD_PRESENCES_ENABLED` |
 | Message log | `MESSAGE_CONTENT_ENABLED`, `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
 | Giao diện | toàn bộ biến `EMBED_COLOR_*` |
 

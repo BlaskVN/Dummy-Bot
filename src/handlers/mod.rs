@@ -1,3 +1,4 @@
+pub mod activity_presence;
 pub mod automod;
 pub mod community;
 pub mod game_session;
@@ -16,6 +17,9 @@ pub async fn dispatch(
     data: &Data,
 ) -> Result<(), Error> {
     match event {
+        serenity::FullEvent::PresenceUpdate { new_data } => {
+            activity_presence::handle_presence_update(ctx, new_data, data).await;
+        }
         serenity::FullEvent::Message { new_message } => {
             game_session::handle_message(ctx, new_message, data).await?;
         }
