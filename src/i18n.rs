@@ -130,6 +130,13 @@ pub enum TranslationKey {
     ModerationChannelNotConfigured,
     ModerationChannelCleared,
     ModerationChannelInvalid,
+    ModerationReasonRequired,
+    ModerationInvalidEvidence,
+    ModerationTimeoutRange,
+    ModerationActionWarn,
+    ModerationActionTimeout,
+    ModerationCaseSummary,
+    ModerationActionCaseFailed,
 
     // Settings
     SettingsTitle,
@@ -354,6 +361,25 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ModerationChannelInvalid,
         "Choose a text channel from this server.",
     );
+    en.insert(
+        TranslationKey::ModerationReasonRequired,
+        "Reason is required.",
+    );
+    en.insert(
+        TranslationKey::ModerationInvalidEvidence,
+        "Evidence must be a Discord message link from this server.",
+    );
+    en.insert(
+        TranslationKey::ModerationTimeoutRange,
+        "Timeout must be between 1 and 40,320 minutes.",
+    );
+    en.insert(TranslationKey::ModerationActionWarn, "Warning");
+    en.insert(TranslationKey::ModerationActionTimeout, "Timeout");
+    en.insert(
+        TranslationKey::ModerationCaseSummary,
+        "Case #{} — {}\nTarget: <@{}>\nModerator: <@{}>\nReason: {}",
+    );
+    en.insert(TranslationKey::ModerationActionCaseFailed, "Discord action succeeded, but its moderation case could not be recorded. Contact the Bot Owner.");
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     en.insert(TranslationKey::SettingsLogChannel, "**Log Channel:** {}");
@@ -642,6 +668,25 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ModerationChannelInvalid,
         "Hãy chọn kênh văn bản trong server này.",
     );
+    vi.insert(
+        TranslationKey::ModerationReasonRequired,
+        "Bắt buộc phải có lý do.",
+    );
+    vi.insert(
+        TranslationKey::ModerationInvalidEvidence,
+        "Bằng chứng phải là liên kết tin nhắn Discord trong server này.",
+    );
+    vi.insert(
+        TranslationKey::ModerationTimeoutRange,
+        "Thời gian timeout phải từ 1 đến 40.320 phút.",
+    );
+    vi.insert(TranslationKey::ModerationActionWarn, "Cảnh cáo");
+    vi.insert(TranslationKey::ModerationActionTimeout, "Timeout");
+    vi.insert(
+        TranslationKey::ModerationCaseSummary,
+        "Vụ việc #{} — {}\nThành viên: <@{}>\nNgười kiểm duyệt: <@{}>\nLý do: {}",
+    );
+    vi.insert(TranslationKey::ModerationActionCaseFailed, "Thao tác Discord đã thành công nhưng không thể ghi vụ việc kiểm duyệt. Hãy liên hệ Chủ Bot.");
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     vi.insert(TranslationKey::SettingsLogChannel, "**Kênh Log:** {}");
@@ -942,6 +987,22 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ModerationChannelInvalid,
         "このサーバーのテキストチャンネルを選択してください。",
     );
+    ja.insert(TranslationKey::ModerationReasonRequired, "理由は必須です。");
+    ja.insert(
+        TranslationKey::ModerationInvalidEvidence,
+        "証拠にはこのサーバー内のDiscordメッセージリンクを指定してください。",
+    );
+    ja.insert(
+        TranslationKey::ModerationTimeoutRange,
+        "タイムアウトは1分から40,320分の範囲で指定してください。",
+    );
+    ja.insert(TranslationKey::ModerationActionWarn, "警告");
+    ja.insert(TranslationKey::ModerationActionTimeout, "タイムアウト");
+    ja.insert(
+        TranslationKey::ModerationCaseSummary,
+        "ケース#{} — {}\n対象：<@{}>\nモデレーター：<@{}>\n理由：{}",
+    );
+    ja.insert(TranslationKey::ModerationActionCaseFailed, "Discordでの操作は成功しましたが、モデレーションケースを記録できませんでした。Bot所有者に連絡してください。");
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
     ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");
     ja.insert(
