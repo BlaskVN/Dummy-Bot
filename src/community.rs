@@ -16,6 +16,12 @@ pub struct LeaveResult {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ManagedActivityId {
+    pub guild_id: String,
+    pub scheduled_event_id: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ActivityRecord {
     pub scheduled_event_id: String,
     pub host_user_id: Option<String>,
@@ -230,11 +236,64 @@ pub async fn finish_promotion_notification(
     Ok(())
 }
 
+pub async fn mirror_activity_state(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    event_id: ScheduledEventId,
+    state: &str,
+) -> Result<bool> {
+    update_activity_extension(pool, guild_id, event_id, None, Some(state)).await
+}
+
+pub async fn nonterminal_activities(
+    pool: &SqlitePool,
+    limit: i64,
+) -> Result<Vec<ManagedActivityId>> {
+    Ok(sqlx::query_as("SELECT guild_id, scheduled_event_id FROM community_activity WHERE state IN ('scheduled', 'active') ORDER BY updated_at LIMIT ?")
+        .bind(limit).fetch_all(pool).await?)
+}
+
+pub async fn claim_deleted_activity(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    event_id: ScheduledEventId,
+) -> Result<Option<Vec<UserId>>> {
+    let mut transaction = pool.begin().await?;
+    let claimed = sqlx::query("UPDATE community_activity SET state = 'deleted', notification_sent = 1, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND scheduled_event_id = ? AND notification_sent = 0")
+        .bind(guild_id.to_string()).bind(event_id.to_string())
+        .execute(&mut *transaction).await?.rows_affected();
+    if claimed == 0 {
+        let managed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM community_activity WHERE guild_id = ? AND scheduled_event_id = ?)")
+            .bind(guild_id.to_string()).bind(event_id.to_string())
+            .fetch_one(&mut *transaction).await?;
+        transaction.commit().await?;
+        return Ok(managed.then(Vec::new));
+    }
+    let users: Vec<String> = sqlx::query_scalar("SELECT user_id FROM community_activity_member WHERE guild_id = ? AND scheduled_event_id = ? ORDER BY sequence")
+        .bind(guild_id.to_string()).bind(event_id.to_string())
+        .fetch_all(&mut *transaction).await?;
+    sqlx::query(
+        "DELETE FROM community_activity_member WHERE guild_id = ? AND scheduled_event_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(event_id.to_string())
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(Some(
+        users
+            .into_iter()
+            .map(|id| Ok(UserId::new(id.parse()?)))
+            .collect::<Result<Vec<_>>>()?,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        MembershipState, activity, claim_promotion_notification, create_activity,
-        finish_promotion_notification, join_activity, leave_activity, set_activity_capacity,
+        MembershipState, activity, claim_deleted_activity, claim_promotion_notification,
+        create_activity, finish_promotion_notification, join_activity, leave_activity,
+        mirror_activity_state, nonterminal_activities, set_activity_capacity,
         update_activity_extension,
     };
     use crate::database::init_db;
@@ -575,6 +634,41 @@ mod tests {
             .unwrap(),
             MembershipState::Closed
         );
+        assert!(
+            mirror_activity_state(&pool, GuildId::new(1), ScheduledEventId::new(20), "active",)
+                .await
+                .unwrap()
+        );
+        assert!(
+            nonterminal_activities(&pool, 100)
+                .await
+                .unwrap()
+                .iter()
+                .any(|row| row.scheduled_event_id == "20")
+        );
+        assert_eq!(
+            claim_deleted_activity(&pool, GuildId::new(1), ScheduledEventId::new(40))
+                .await
+                .unwrap()
+                .unwrap(),
+            vec![UserId::new(12), UserId::new(13)]
+        );
+        assert!(
+            claim_deleted_activity(&pool, GuildId::new(1), ScheduledEventId::new(40))
+                .await
+                .unwrap()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            claim_deleted_activity(&pool, GuildId::new(1), ScheduledEventId::new(99))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM community_activity_member WHERE guild_id = '1' AND scheduled_event_id = '40'")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(remaining, 0);
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }

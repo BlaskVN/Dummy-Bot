@@ -65,6 +65,13 @@ pub async fn dispatch(
         serenity::FullEvent::AutoModRuleUpdate { rule } => {
             automod::handle_rule_update(rule, data).await;
         }
+        serenity::FullEvent::GuildScheduledEventCreate { event }
+        | serenity::FullEvent::GuildScheduledEventUpdate { event } => {
+            community::handle_native_update(data, event).await;
+        }
+        serenity::FullEvent::GuildScheduledEventDelete { event } => {
+            community::handle_native_delete(ctx, data, event).await;
+        }
         serenity::FullEvent::InteractionCreate {
             interaction: serenity::Interaction::Component(interaction),
         } => community::handle_component(ctx, interaction, data).await?,

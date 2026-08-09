@@ -66,6 +66,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     voice_connections: Arc::new(RwLock::new(HashMap::new())),
                 };
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
+                handlers::community::reconcile_all(ctx, &data).await;
                 Ok(data)
             })
         })
@@ -147,6 +148,7 @@ mod tests {
         let intents = gateway_intents(true);
         assert!(intents.contains(GatewayIntents::AUTO_MODERATION_EXECUTION));
         assert!(intents.contains(GatewayIntents::AUTO_MODERATION_CONFIGURATION));
+        assert!(intents.contains(GatewayIntents::GUILD_SCHEDULED_EVENTS));
         assert!(intents.contains(GatewayIntents::MESSAGE_CONTENT));
         assert!(!gateway_intents(false).contains(GatewayIntents::MESSAGE_CONTENT));
     }

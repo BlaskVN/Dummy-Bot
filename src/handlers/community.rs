@@ -1,10 +1,110 @@
 use crate::community::{
-    MembershipState, claim_promotion_notification, finish_promotion_notification, join_activity,
-    leave_activity,
+    MembershipState, claim_deleted_activity, claim_promotion_notification,
+    finish_promotion_notification, join_activity, leave_activity, mirror_activity_state,
+    nonterminal_activities,
 };
 use crate::i18n::Language;
 use crate::{Data, Error};
 use poise::serenity_prelude as serenity;
+
+const RECONCILE_LIMIT: i64 = 500;
+
+pub async fn handle_native_update(data: &Data, event: &serenity::ScheduledEvent) {
+    let Some(state) = native_state(event.status) else {
+        return;
+    };
+    if let Err(error) = mirror_activity_state(&data.db_pool, event.guild_id, event.id, state).await
+    {
+        tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not mirror scheduled event state");
+    }
+}
+
+pub async fn handle_native_delete(
+    ctx: &serenity::Context,
+    data: &Data,
+    event: &serenity::ScheduledEvent,
+) {
+    notify_deleted(ctx, data, event.guild_id, event.id).await;
+}
+
+pub async fn reconcile_all(ctx: &serenity::Context, data: &Data) {
+    let activities = match nonterminal_activities(&data.db_pool, RECONCILE_LIMIT).await {
+        Ok(activities) => activities,
+        Err(error) => {
+            tracing::error!(%error, "Could not load activities for reconciliation");
+            return;
+        }
+    };
+    for activity in activities {
+        let (Ok(guild), Ok(event)) = (
+            activity.guild_id.parse::<u64>(),
+            activity.scheduled_event_id.parse::<u64>(),
+        ) else {
+            tracing::error!(
+                guild_id = activity.guild_id,
+                event_id = activity.scheduled_event_id,
+                "Invalid stored activity identity"
+            );
+            continue;
+        };
+        let guild_id = serenity::GuildId::new(guild);
+        if guild_id.shard_id(&ctx.cache) != ctx.shard_id.get() {
+            continue;
+        }
+        let event_id = serenity::ScheduledEventId::new(event);
+        match guild_id.scheduled_event(&ctx.http, event_id, false).await {
+            Ok(event) => handle_native_update(data, &event).await,
+            Err(error) if is_not_found(&error) => {
+                notify_deleted(ctx, data, guild_id, event_id).await
+            }
+            Err(error) => {
+                tracing::warn!(%guild_id, %event_id, %error, "Scheduled event reconciliation failed")
+            }
+        }
+    }
+}
+
+async fn notify_deleted(
+    ctx: &serenity::Context,
+    data: &Data,
+    guild_id: serenity::GuildId,
+    event_id: serenity::ScheduledEventId,
+) {
+    let users = match claim_deleted_activity(&data.db_pool, guild_id, event_id).await {
+        Ok(Some(users)) => users,
+        Ok(None) => return,
+        Err(error) => {
+            tracing::error!(%guild_id, %event_id, %error, "Could not reconcile deleted activity");
+            return;
+        }
+    };
+    for user_id in users {
+        if let Err(error) = user_id
+            .direct_message(
+                ctx,
+                serenity::CreateMessage::new()
+                    .content("A Community Activity you joined was canceled or deleted."),
+            )
+            .await
+        {
+            tracing::debug!(%guild_id, %event_id, %user_id, %error, "Could not notify activity member");
+        }
+    }
+}
+
+fn native_state(status: serenity::ScheduledEventStatus) -> Option<&'static str> {
+    match status {
+        serenity::ScheduledEventStatus::Scheduled => Some("scheduled"),
+        serenity::ScheduledEventStatus::Active => Some("active"),
+        serenity::ScheduledEventStatus::Completed => Some("completed"),
+        serenity::ScheduledEventStatus::Canceled => Some("canceled"),
+        _ => None,
+    }
+}
+
+fn is_not_found(error: &serenity::Error) -> bool {
+    matches!(error, serenity::Error::Http(error) if error.status_code().is_some_and(|code| code.as_u16() == 404))
+}
 
 pub async fn handle_component(
     ctx: &serenity::Context,
@@ -139,7 +239,8 @@ fn response(language: Language, response: Response) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_custom_id;
+    use super::{native_state, parse_custom_id};
+    use poise::serenity_prelude::ScheduledEventStatus;
 
     #[test]
     fn accepts_only_owned_component_ids() {
@@ -147,5 +248,17 @@ mod tests {
         assert!(parse_custom_id("activity:join:42:extra").is_none());
         assert!(parse_custom_id("other:join:42").is_none());
         assert!(parse_custom_id("activity:delete:42").is_none());
+    }
+
+    #[test]
+    fn maps_only_known_native_states() {
+        assert_eq!(
+            native_state(ScheduledEventStatus::Scheduled),
+            Some("scheduled")
+        );
+        assert_eq!(
+            native_state(ScheduledEventStatus::Completed),
+            Some("completed")
+        );
     }
 }

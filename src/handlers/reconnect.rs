@@ -14,6 +14,7 @@ use tokio::sync::RwLock;
 pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
     tracing::info!("Gateway resumed — restoring bot state");
     restore_presence(ctx, &data.db_pool).await;
+    super::community::reconcile_all(ctx, data).await;
     spawn_voice_reconnect(
         ctx.clone(),
         data.voice_connections.clone(),
@@ -28,6 +29,7 @@ pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
 pub async fn handle_ready_reconnect(ctx: &serenity::Context, data: &Data) {
     tracing::info!("Shard restarted (new Ready) — restoring bot state");
     restore_presence(ctx, &data.db_pool).await;
+    super::community::reconcile_all(ctx, data).await;
     spawn_voice_reconnect(
         ctx.clone(),
         data.voice_connections.clone(),
