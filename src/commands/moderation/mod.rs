@@ -1,3 +1,4 @@
+pub mod automod_suggestion;
 pub mod ban;
 pub mod case;
 pub mod kick;
@@ -12,6 +13,7 @@ use poise::serenity_prelude as serenity;
 
 pub fn all() -> Vec<poise::Command<Data, Error>> {
     vec![
+        automod_suggestion::automod_suggestion(),
         kick::kick(),
         ban::ban(),
         purge::purge(),

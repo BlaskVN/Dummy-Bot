@@ -47,6 +47,89 @@ pub async fn record_execution(
     Ok(inserted)
 }
 
+pub async fn maybe_open_suggestion(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    user_id: u64,
+    rule_id: u64,
+    now: i64,
+) -> Result<Option<i64>> {
+    let mut transaction = pool.begin().await?;
+    let open: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM automod_suggestion WHERE guild_id = ? AND user_id = ? AND rule_id = ? AND status = 'open'",
+    )
+    .bind(guild_id.to_string()).bind(user_id.to_string()).bind(rule_id.to_string())
+    .fetch_optional(&mut *transaction).await?;
+    if open.is_some() {
+        return Ok(None);
+    }
+    let resolved_at: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(resolved_at) FROM automod_suggestion WHERE guild_id = ? AND user_id = ? AND rule_id = ?",
+    )
+    .bind(guild_id.to_string()).bind(user_id.to_string()).bind(rule_id.to_string())
+    .fetch_one(&mut *transaction).await?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM automod_execution WHERE guild_id = ? AND user_id = ? AND rule_id = ? AND observed_at > ? AND observed_at >= ?",
+    )
+    .bind(guild_id.to_string()).bind(user_id.to_string()).bind(rule_id.to_string())
+    .bind(resolved_at.unwrap_or(i64::MIN)).bind(now - SEVEN_DAYS_SECONDS)
+    .fetch_one(&mut *transaction).await?;
+    if count < 3 {
+        return Ok(None);
+    }
+    let id: Option<i64> = sqlx::query_scalar(
+        "INSERT OR IGNORE INTO automod_suggestion (guild_id, user_id, rule_id, opened_at) VALUES (?, ?, ?, ?) RETURNING id",
+    )
+    .bind(guild_id.to_string()).bind(user_id.to_string()).bind(rule_id.to_string()).bind(now)
+    .fetch_one(&mut *transaction).await?;
+    transaction.commit().await?;
+    Ok(id)
+}
+
+pub async fn handle_suggestion(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    user_id: u64,
+    rule_id: u64,
+    resolver: u64,
+    now: i64,
+) -> Result<bool> {
+    Ok(sqlx::query("UPDATE automod_suggestion SET status = 'handled', resolved_at = ?, resolver_user_id = ? WHERE guild_id = ? AND user_id = ? AND rule_id = ? AND status = 'open'")
+        .bind(now).bind(resolver.to_string()).bind(guild_id.to_string()).bind(user_id.to_string()).bind(rule_id.to_string())
+        .execute(pool).await?.rows_affected() == 1)
+}
+
+pub async fn resolve_rule_suggestions(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    rule_id: u64,
+    now: i64,
+) -> Result<u64> {
+    Ok(sqlx::query("UPDATE automod_suggestion SET status = 'rule_updated', resolved_at = ? WHERE guild_id = ? AND rule_id = ? AND status = 'open'")
+        .bind(now).bind(guild_id.to_string()).bind(rule_id.to_string()).execute(pool).await?.rows_affected())
+}
+
+pub async fn open_suggestion_id(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    user_id: u64,
+    rule_id: u64,
+) -> Result<Option<i64>> {
+    Ok(sqlx::query_scalar("SELECT id FROM automod_suggestion WHERE guild_id = ? AND user_id = ? AND rule_id = ? AND status = 'open'")
+        .bind(guild_id.to_string()).bind(user_id.to_string()).bind(rule_id.to_string()).fetch_optional(pool).await?)
+}
+
+pub async fn mark_suggestion_delivery(pool: &SqlitePool, id: i64, delivered: bool) -> Result<()> {
+    sqlx::query(
+        "UPDATE automod_suggestion SET delivery_status = ? WHERE id = ? AND status = 'open'",
+    )
+    .bind(if delivered { "delivered" } else { "failed" })
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn observer_enabled(pool: &SqlitePool, guild_id: GuildId) -> Result<bool> {
     Ok(sqlx::query_scalar::<_, i64>(
         "SELECT enabled FROM automod_observer_config WHERE guild_id = ?",
@@ -74,7 +157,10 @@ pub async fn set_observer_enabled(
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionMetadata, observer_enabled, record_execution, set_observer_enabled};
+    use super::{
+        ExecutionMetadata, handle_suggestion, maybe_open_suggestion, observer_enabled,
+        open_suggestion_id, record_execution, resolve_rule_suggestions, set_observer_enabled,
+    };
     use crate::database::init_db;
     use poise::serenity_prelude::GuildId;
 
@@ -162,6 +248,108 @@ mod tests {
             name.as_str(),
             "content" | "matched_content" | "matched_keyword"
         )));
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn suggestions_open_on_third_event_and_reset_after_resolution() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-automod-suggestion-test-{}",
+            std::process::id()
+        ));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+        for index in 1..=3 {
+            let execution = ExecutionMetadata {
+                guild_id: GuildId::new(1),
+                user_id: 2,
+                rule_id: 3,
+                action_type: 1,
+                channel_id: Some(4),
+                message_id: Some(index),
+                alert_message_id: None,
+            };
+            record_execution(&pool, &execution, 100 + index as i64)
+                .await
+                .unwrap();
+            let opened = maybe_open_suggestion(&pool, GuildId::new(1), 2, 3, 100 + index as i64)
+                .await
+                .unwrap();
+            assert_eq!(opened.is_some(), index == 3);
+        }
+        let fourth = ExecutionMetadata {
+            guild_id: GuildId::new(1),
+            user_id: 2,
+            rule_id: 3,
+            action_type: 1,
+            channel_id: Some(4),
+            message_id: Some(4),
+            alert_message_id: None,
+        };
+        record_execution(&pool, &fourth, 104).await.unwrap();
+        assert!(
+            maybe_open_suggestion(&pool, GuildId::new(1), 2, 3, 104)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            resolve_rule_suggestions(&pool, GuildId::new(1), 99, 150)
+                .await
+                .unwrap(),
+            0
+        );
+        assert!(
+            open_suggestion_id(&pool, GuildId::new(1), 2, 3)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            handle_suggestion(&pool, GuildId::new(1), 2, 3, 9, 200)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !handle_suggestion(&pool, GuildId::new(1), 2, 3, 9, 200)
+                .await
+                .unwrap()
+        );
+        for index in 5..=7 {
+            let execution = ExecutionMetadata {
+                guild_id: GuildId::new(1),
+                user_id: 2,
+                rule_id: 3,
+                action_type: 1,
+                channel_id: Some(4),
+                message_id: Some(index),
+                alert_message_id: None,
+            };
+            record_execution(&pool, &execution, 200 + index as i64)
+                .await
+                .unwrap();
+            let opened = maybe_open_suggestion(&pool, GuildId::new(1), 2, 3, 200 + index as i64)
+                .await
+                .unwrap();
+            assert_eq!(opened.is_some(), index == 7);
+        }
+        assert_eq!(
+            resolve_rule_suggestions(&pool, GuildId::new(1), 3, 300)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(
+            open_suggestion_id(&pool, GuildId::new(1), 2, 3)
+                .await
+                .unwrap()
+                .is_none()
+        );
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }

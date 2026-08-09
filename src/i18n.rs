@@ -155,6 +155,12 @@ pub enum TranslationKey {
     AutoModObserverNeedsChannel,
     AutoModObserverNeedsPermission,
     AutoModExecution,
+    AutoModSuggestion,
+    AutoModSuggestionHandled,
+    AutoModSuggestionNotFound,
+    AutoModSuggestionInvalidRule,
+    AutoModSuggestionDelivered,
+    AutoModSuggestionDeliveryFailed,
 
     // Settings
     SettingsTitle,
@@ -451,6 +457,27 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(
         TranslationKey::AutoModExecution,
         "Discord AutoMod execution\nRule: {}\nMember: <@{}>\nAction: {}\nMessage: {}",
+    );
+    en.insert(TranslationKey::AutoModSuggestion, "Review suggested: member <@{}> triggered AutoMod rule {} at least three times in seven days. This does not apply discipline automatically.");
+    en.insert(
+        TranslationKey::AutoModSuggestionHandled,
+        "AutoMod suggestion marked handled.",
+    );
+    en.insert(
+        TranslationKey::AutoModSuggestionNotFound,
+        "No open AutoMod suggestion matches that member and rule.",
+    );
+    en.insert(
+        TranslationKey::AutoModSuggestionInvalidRule,
+        "Use a valid Discord AutoMod rule ID.",
+    );
+    en.insert(
+        TranslationKey::AutoModSuggestionDelivered,
+        "AutoMod suggestion delivered.",
+    );
+    en.insert(
+        TranslationKey::AutoModSuggestionDeliveryFailed,
+        "AutoMod suggestion remains open, but delivery failed.",
     );
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
@@ -815,6 +842,27 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(
         TranslationKey::AutoModExecution,
         "Thực thi Discord AutoMod\nQuy tắc: {}\nThành viên: <@{}>\nThao tác: {}\nTin nhắn: {}",
+    );
+    vi.insert(TranslationKey::AutoModSuggestion, "Đề xuất xem xét: thành viên <@{}> đã kích hoạt quy tắc AutoMod {} ít nhất ba lần trong bảy ngày. Bot không tự động kỷ luật.");
+    vi.insert(
+        TranslationKey::AutoModSuggestionHandled,
+        "Đã đánh dấu đề xuất AutoMod là đã xử lý.",
+    );
+    vi.insert(
+        TranslationKey::AutoModSuggestionNotFound,
+        "Không có đề xuất AutoMod đang mở khớp với thành viên và quy tắc đó.",
+    );
+    vi.insert(
+        TranslationKey::AutoModSuggestionInvalidRule,
+        "Hãy dùng ID quy tắc Discord AutoMod hợp lệ.",
+    );
+    vi.insert(
+        TranslationKey::AutoModSuggestionDelivered,
+        "Đã gửi đề xuất AutoMod.",
+    );
+    vi.insert(
+        TranslationKey::AutoModSuggestionDeliveryFailed,
+        "Đề xuất AutoMod vẫn mở nhưng gửi thất bại.",
     );
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
@@ -1185,6 +1233,27 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::AutoModExecution,
         "Discord AutoMod実行\nルール：{}\nメンバー：<@{}>\n操作：{}\nメッセージ：{}",
+    );
+    ja.insert(TranslationKey::AutoModSuggestion, "確認の提案：メンバー<@{}>が7日間にAutoModルール{}を3回以上発動しました。Botが自動的に処分することはありません。");
+    ja.insert(
+        TranslationKey::AutoModSuggestionHandled,
+        "AutoMod提案を対応済みにしました。",
+    );
+    ja.insert(
+        TranslationKey::AutoModSuggestionNotFound,
+        "そのメンバーとルールに一致する未対応のAutoMod提案はありません。",
+    );
+    ja.insert(
+        TranslationKey::AutoModSuggestionInvalidRule,
+        "有効なDiscord AutoModルールIDを指定してください。",
+    );
+    ja.insert(
+        TranslationKey::AutoModSuggestionDelivered,
+        "AutoMod提案を送信しました。",
+    );
+    ja.insert(
+        TranslationKey::AutoModSuggestionDeliveryFailed,
+        "AutoMod提案は未対応のままですが、送信に失敗しました。",
     );
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
     ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");
