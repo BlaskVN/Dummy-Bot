@@ -262,6 +262,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn moderation_channels_are_isolated() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-moderation-channel-test-{}",
+            std::process::id()
+        ));
+        let url = format!("sqlite:{}/bot.db?mode=rwc", directory.display());
+        let pool = init_db(&url, &directory).await.unwrap();
+        sqlx::query(
+            "INSERT INTO moderation_channel_config (guild_id, channel_id) VALUES ('1', '11'), ('2', '22')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let first: String = sqlx::query_scalar(
+            "SELECT channel_id FROM moderation_channel_config WHERE guild_id = '1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let second: String = sqlx::query_scalar(
+            "SELECT channel_id FROM moderation_channel_config WHERE guild_id = '2'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!((first.as_str(), second.as_str()), ("11", "22"));
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
     async fn onboarding_is_claimed_once_per_guild() {
         let directory =
             std::env::temp_dir().join(format!("dummy-bot-onboarding-test-{}", std::process::id()));

@@ -125,11 +125,17 @@ pub enum TranslationKey {
     ModerationBotHierarchy,
     ModerationDeleteDaysRange,
     ModerationPurgeRange,
+    ModerationChannelSet,
+    ModerationChannelCurrent,
+    ModerationChannelNotConfigured,
+    ModerationChannelCleared,
+    ModerationChannelInvalid,
 
     // Settings
     SettingsTitle,
     SettingsPrefix,
     SettingsLogChannel,
+    SettingsModerationChannel,
     SettingsTimezone,
     SettingsNotConfigured,
     PrefixChanged,
@@ -328,9 +334,33 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ModerationPurgeRange,
         "Message count must be between 1 and {}.",
     );
+    en.insert(
+        TranslationKey::ModerationChannelSet,
+        "Moderation channel set to <#{}>.",
+    );
+    en.insert(
+        TranslationKey::ModerationChannelCurrent,
+        "**Moderation channel:** <#{}>",
+    );
+    en.insert(
+        TranslationKey::ModerationChannelNotConfigured,
+        "Moderation channel is not configured.",
+    );
+    en.insert(
+        TranslationKey::ModerationChannelCleared,
+        "Moderation channel cleared.",
+    );
+    en.insert(
+        TranslationKey::ModerationChannelInvalid,
+        "Choose a text channel from this server.",
+    );
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     en.insert(TranslationKey::SettingsLogChannel, "**Log Channel:** {}");
+    en.insert(
+        TranslationKey::SettingsModerationChannel,
+        "**Moderation Channel:** {}",
+    );
     en.insert(TranslationKey::SettingsTimezone, "**Time zone:** {}");
     en.insert(TranslationKey::SettingsNotConfigured, "Not configured");
     en.insert(TranslationKey::PrefixChanged, "Prefix changed to `{}`");
@@ -592,9 +622,33 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ModerationPurgeRange,
         "Số tin nhắn phải từ 1 đến {}.",
     );
+    vi.insert(
+        TranslationKey::ModerationChannelSet,
+        "Đã đặt kênh kiểm duyệt thành <#{}>.",
+    );
+    vi.insert(
+        TranslationKey::ModerationChannelCurrent,
+        "**Kênh kiểm duyệt:** <#{}>",
+    );
+    vi.insert(
+        TranslationKey::ModerationChannelNotConfigured,
+        "Kênh kiểm duyệt chưa được thiết lập.",
+    );
+    vi.insert(
+        TranslationKey::ModerationChannelCleared,
+        "Đã xóa kênh kiểm duyệt.",
+    );
+    vi.insert(
+        TranslationKey::ModerationChannelInvalid,
+        "Hãy chọn kênh văn bản trong server này.",
+    );
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     vi.insert(TranslationKey::SettingsLogChannel, "**Kênh Log:** {}");
+    vi.insert(
+        TranslationKey::SettingsModerationChannel,
+        "**Kênh kiểm duyệt:** {}",
+    );
     vi.insert(TranslationKey::SettingsTimezone, "**Múi giờ:** {}");
     vi.insert(TranslationKey::SettingsNotConfigured, "Chưa thiết lập");
     vi.insert(TranslationKey::PrefixChanged, "Đã đổi prefix thành `{}`");
@@ -868,11 +922,35 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ModerationPurgeRange,
         "メッセージ数は1から{}の範囲で指定してください。",
     );
+    ja.insert(
+        TranslationKey::ModerationChannelSet,
+        "モデレーションチャンネルを<#{}>に設定しました。",
+    );
+    ja.insert(
+        TranslationKey::ModerationChannelCurrent,
+        "**モデレーションチャンネル：** <#{}>",
+    );
+    ja.insert(
+        TranslationKey::ModerationChannelNotConfigured,
+        "モデレーションチャンネルは未設定です。",
+    );
+    ja.insert(
+        TranslationKey::ModerationChannelCleared,
+        "モデレーションチャンネルをクリアしました。",
+    );
+    ja.insert(
+        TranslationKey::ModerationChannelInvalid,
+        "このサーバーのテキストチャンネルを選択してください。",
+    );
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
     ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");
     ja.insert(
         TranslationKey::SettingsLogChannel,
         "**ログチャンネル：** {}",
+    );
+    ja.insert(
+        TranslationKey::SettingsModerationChannel,
+        "**モデレーションチャンネル：** {}",
     );
     ja.insert(TranslationKey::SettingsTimezone, "**タイムゾーン：** {}");
     ja.insert(TranslationKey::SettingsNotConfigured, "未設定");

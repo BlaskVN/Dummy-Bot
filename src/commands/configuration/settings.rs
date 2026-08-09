@@ -51,6 +51,14 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
     .await?
     .flatten()
     .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
+    let moderation_channel = sqlx::query_scalar::<_, String>(
+        "SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .fetch_optional(&ctx.data().db_pool)
+    .await?
+    .map(|id| format!("<#{id}>"))
+    .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
 
     let prefix_text = tf(lang, TranslationKey::SettingsPrefix, &[&prefix]);
     let log_channel_text = tf(
@@ -59,10 +67,15 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         &[&log_channel_display],
     );
     let timezone_text = tf(lang, TranslationKey::SettingsTimezone, &[&timezone]);
+    let moderation_channel_text = tf(
+        lang,
+        TranslationKey::SettingsModerationChannel,
+        &[&moderation_channel],
+    );
 
     let description = format!(
-        "├ {}\n├ {}\n└ {}",
-        prefix_text, log_channel_text, timezone_text
+        "├ {}\n├ {}\n├ {}\n└ {}",
+        prefix_text, log_channel_text, moderation_channel_text, timezone_text
     );
 
     let embed = serenity::CreateEmbed::new()
