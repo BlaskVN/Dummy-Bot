@@ -19,6 +19,7 @@ pub struct LeaveResult {
 pub struct ManagedActivityId {
     pub guild_id: String,
     pub scheduled_event_id: String,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -286,8 +287,17 @@ pub async fn nonterminal_activities(
     pool: &SqlitePool,
     limit: i64,
 ) -> Result<Vec<ManagedActivityId>> {
-    Ok(sqlx::query_as("SELECT guild_id, scheduled_event_id FROM community_activity WHERE state IN ('scheduled', 'active') ORDER BY updated_at LIMIT ?")
+    Ok(sqlx::query_as("SELECT guild_id, scheduled_event_id, kind FROM community_activity WHERE state IN ('scheduled', 'active') ORDER BY updated_at LIMIT ?")
         .bind(limit).fetch_all(pool).await?)
+}
+
+pub async fn guild_nonterminal_activities(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    limit: i64,
+) -> Result<Vec<ManagedActivityId>> {
+    Ok(sqlx::query_as("SELECT guild_id, scheduled_event_id, kind FROM community_activity WHERE guild_id = ? AND state IN ('scheduled', 'active') ORDER BY kind, updated_at LIMIT ?")
+        .bind(guild_id.to_string()).bind(limit).fetch_all(pool).await?)
 }
 
 pub async fn claim_deleted_activity(

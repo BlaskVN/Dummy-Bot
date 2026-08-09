@@ -1,4 +1,5 @@
 use crate::Data;
+use crate::state::ManualCheckIn;
 use poise::serenity_prelude as serenity;
 use std::collections::HashSet;
 
@@ -58,6 +59,7 @@ pub async fn handle_voice_change(
     let Some(guild_id) = voice.guild_id else {
         return;
     };
+    clear_manual_member(data, guild_id, voice.user_id).await;
     let Ok(Some((config, pool))) = crate::game_config::game_config(&data.db_pool, guild_id).await
     else {
         remove_member(data, guild_id, voice.user_id).await;
@@ -101,6 +103,8 @@ pub async fn handle_voice_change(
 pub async fn remove_member(data: &Data, guild_id: serenity::GuildId, user_id: serenity::UserId) {
     let mut beacons = data.automatic_beacons.write().await;
     update_source(&mut beacons, guild_id, user_id, None);
+    drop(beacons);
+    clear_manual_member(data, guild_id, user_id).await;
 }
 
 pub async fn beacon_active(
@@ -108,11 +112,87 @@ pub async fn beacon_active(
     guild_id: serenity::GuildId,
     channel_id: serenity::ChannelId,
 ) -> bool {
-    data.automatic_beacons
+    if data
+        .automatic_beacons
         .read()
         .await
         .iter()
         .any(|(guild, channel, _)| *guild == guild_id && *channel == channel_id)
+    {
+        return true;
+    }
+    data.manual_checkins
+        .read()
+        .await
+        .iter()
+        .any(|(guild, _, channel, _)| *guild == guild_id && *channel == channel_id)
+}
+
+pub async fn find_session(
+    ctx: &serenity::Context,
+    data: &Data,
+    guild_id: serenity::GuildId,
+    channel_id: serenity::ChannelId,
+) -> Option<serenity::ScheduledEventId> {
+    let activities = crate::community::guild_nonterminal_activities(&data.db_pool, guild_id, 100)
+        .await
+        .ok()?;
+    for activity in activities {
+        let event_id = serenity::ScheduledEventId::new(activity.scheduled_event_id.parse().ok()?);
+        if guild_id
+            .scheduled_event(&ctx.http, event_id, false)
+            .await
+            .is_ok_and(|event| event.channel_id == Some(channel_id))
+        {
+            return Some(event_id);
+        }
+    }
+    None
+}
+
+pub async fn manual_check_in(
+    data: &Data,
+    guild_id: serenity::GuildId,
+    event_id: serenity::ScheduledEventId,
+    channel_id: serenity::ChannelId,
+    user_id: serenity::UserId,
+) -> bool {
+    let mut checkins = data.manual_checkins.write().await;
+    record_checkin(&mut checkins, (guild_id, event_id, channel_id, user_id))
+}
+
+pub async fn clear_session(
+    data: &Data,
+    guild_id: serenity::GuildId,
+    event_id: serenity::ScheduledEventId,
+) {
+    let mut checkins = data.manual_checkins.write().await;
+    clear_session_checkins(&mut checkins, guild_id, event_id);
+}
+
+async fn clear_manual_member(data: &Data, guild_id: serenity::GuildId, user_id: serenity::UserId) {
+    let mut checkins = data.manual_checkins.write().await;
+    clear_member_checkins(&mut checkins, guild_id, user_id);
+}
+
+fn record_checkin(checkins: &mut HashSet<ManualCheckIn>, checkin: ManualCheckIn) -> bool {
+    checkins.insert(checkin)
+}
+
+fn clear_member_checkins(
+    checkins: &mut HashSet<ManualCheckIn>,
+    guild_id: serenity::GuildId,
+    user_id: serenity::UserId,
+) {
+    checkins.retain(|(guild, _, _, user)| *guild != guild_id || *user != user_id);
+}
+
+fn clear_session_checkins(
+    checkins: &mut HashSet<ManualCheckIn>,
+    guild_id: serenity::GuildId,
+    event_id: serenity::ScheduledEventId,
+) {
+    checkins.retain(|(guild, event, _, _)| *guild != guild_id || *event != event_id);
 }
 
 async fn set_automatic_source(
@@ -155,8 +235,10 @@ pub fn detection_status(enabled: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{activity_matches, detection_status, update_source};
-    use poise::serenity_prelude::{ActivityType, ChannelId, GuildId, UserId};
+    use super::{
+        activity_matches, clear_member_checkins, detection_status, record_checkin, update_source,
+    };
+    use poise::serenity_prelude::{ActivityType, ChannelId, GuildId, ScheduledEventId, UserId};
     use std::collections::HashSet;
 
     #[test]
@@ -225,5 +307,20 @@ mod tests {
         update_source(&mut sources, guild, UserId::new(21), None);
         assert!(!sources.iter().any(|(_, channel, _)| *channel == first));
         assert!(sources.iter().any(|(_, channel, _)| *channel == second));
+    }
+
+    #[test]
+    fn manual_checkin_is_idempotent_and_clears_on_move() {
+        let checkin = (
+            GuildId::new(1),
+            ScheduledEventId::new(2),
+            ChannelId::new(3),
+            UserId::new(4),
+        );
+        let mut checkins = HashSet::new();
+        assert!(record_checkin(&mut checkins, checkin));
+        assert!(!record_checkin(&mut checkins, checkin));
+        clear_member_checkins(&mut checkins, GuildId::new(1), UserId::new(4));
+        assert!(checkins.is_empty());
     }
 }

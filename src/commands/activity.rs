@@ -10,11 +10,84 @@ const REQUIRED_CREATE_PERMISSIONS: serenity::Permissions = serenity::Permissions
 
 #[poise::command(
     slash_command,
-    subcommands("create", "view", "update", "cancel"),
+    subcommands("create", "view", "update", "cancel", "check_in"),
     guild_only
 )]
 pub async fn activity(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
+}
+
+#[poise::command(rename = "check-in", slash_command, guild_only)]
+pub async fn check_in(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let language = ctx.data().language(guild_id).await;
+    let Some(member) = ctx.author_member().await else {
+        return Ok(());
+    };
+    let is_bot = member.user.bot;
+    drop(member);
+    if is_bot {
+        ctx.say(check_in_response(language, false)).await?;
+        return Ok(());
+    }
+    let channel_id = ctx.guild().and_then(|guild| {
+        guild
+            .voice_states
+            .get(&ctx.author().id)
+            .and_then(|state| state.channel_id)
+    });
+    let Some(channel_id) = channel_id else {
+        ctx.say(check_in_response(language, false)).await?;
+        return Ok(());
+    };
+    let Some((_, pool)) = crate::game_config::game_config(&ctx.data().db_pool, guild_id).await?
+    else {
+        ctx.say(check_in_response(language, false)).await?;
+        return Ok(());
+    };
+    if !pool.contains(&channel_id) {
+        ctx.say(check_in_response(language, false)).await?;
+        return Ok(());
+    }
+    let Some(event_id) = crate::handlers::activity_presence::find_session(
+        ctx.serenity_context(),
+        ctx.data(),
+        guild_id,
+        channel_id,
+    )
+    .await
+    else {
+        ctx.say(check_in_response(language, false)).await?;
+        return Ok(());
+    };
+    crate::handlers::activity_presence::manual_check_in(
+        ctx.data(),
+        guild_id,
+        event_id,
+        channel_id,
+        ctx.author().id,
+    )
+    .await;
+    ctx.send(
+        poise::CreateReply::default()
+            .content(check_in_response(language, true))
+            .ephemeral(true),
+    )
+    .await?;
+    Ok(())
+}
+
+fn check_in_response(language: Language, success: bool) -> &'static str {
+    match (language, success) {
+        (Language::English, true) => "Checked in for this session and voice channel.",
+        (Language::English, false) => "Join a configured session voice channel first.",
+        (Language::Vietnamese, true) => "Đã check-in cho phiên và kênh thoại này.",
+        (Language::Vietnamese, false) => "Hãy vào kênh thoại của phiên đã cấu hình trước.",
+        (Language::Japanese, true) => "このセッションとボイスチャンネルにチェックインしました。",
+        (Language::Japanese, false) => "設定済みセッションのボイスチャンネルに参加してください。",
+    }
 }
 
 #[derive(Debug, Clone, Copy, poise::ChoiceParameter)]

@@ -12,6 +12,13 @@ pub struct VoiceConnectionInfo {
     pub voice_channel_id: serenity::ChannelId,
 }
 
+pub type ManualCheckIn = (
+    serenity::GuildId,
+    serenity::ScheduledEventId,
+    serenity::ChannelId,
+    serenity::UserId,
+);
+
 pub struct Data {
     pub config: Arc<Config>,
     pub db_pool: SqlitePool,
@@ -24,6 +31,7 @@ pub struct Data {
     pub game_expiry_wakeup: Arc<Notify>,
     pub automatic_beacons:
         Arc<RwLock<HashSet<(serenity::GuildId, serenity::ChannelId, serenity::UserId)>>>,
+    pub manual_checkins: Arc<RwLock<HashSet<ManualCheckIn>>>,
 }
 
 impl Data {

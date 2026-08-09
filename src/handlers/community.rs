@@ -17,6 +17,9 @@ pub async fn handle_native_update(data: &Data, event: &serenity::ScheduledEvent)
     {
         tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not mirror scheduled event state");
     }
+    if matches!(state, "completed" | "canceled") {
+        super::activity_presence::clear_session(data, event.guild_id, event.id).await;
+    }
 }
 
 pub async fn handle_native_delete(
@@ -24,6 +27,7 @@ pub async fn handle_native_delete(
     data: &Data,
     event: &serenity::ScheduledEvent,
 ) {
+    super::activity_presence::clear_session(data, event.guild_id, event.id).await;
     notify_deleted(ctx, data, event.guild_id, event.id).await;
 }
 
