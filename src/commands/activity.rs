@@ -8,9 +8,21 @@ const REQUIRED_CREATE_PERMISSIONS: serenity::Permissions = serenity::Permissions
     .union(serenity::Permissions::VIEW_CHANNEL)
     .union(serenity::Permissions::CONNECT);
 
-#[poise::command(slash_command, subcommands("create"), guild_only)]
+#[poise::command(
+    slash_command,
+    subcommands("create", "view", "update", "cancel"),
+    guild_only
+)]
 pub async fn activity(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, poise::ChoiceParameter)]
+pub enum ActivityStatus {
+    #[name = "Active"]
+    Active,
+    #[name = "Completed"]
+    Completed,
 }
 
 #[poise::command(slash_command, guild_only)]
@@ -104,6 +116,280 @@ pub async fn create(
     Ok(())
 }
 
+#[poise::command(slash_command, guild_only)]
+pub async fn view(
+    ctx: Context<'_>,
+    #[description = "Discord Scheduled Event ID"] event_id: String,
+) -> Result<(), Error> {
+    let Some((guild_id, event_id, record)) = managed_activity(ctx, &event_id).await? else {
+        return Ok(());
+    };
+    match guild_id.scheduled_event(ctx.http(), event_id, true).await {
+        Ok(event) => {
+            ctx.say(format!(
+                "**{}**\nID: `{}`\nStatus: {:?}\nStarts: <t:{}:F>\nChannel: {}\nHost: {}\nCapacity: {}\nParticipants interested: {}",
+                event.name,
+                event.id,
+                event.status,
+                event.start_time.unix_timestamp(),
+                event.channel_id.map_or_else(|| "—".to_owned(), |id| format!("<#{id}>")),
+                record.host_user_id.map_or_else(|| "—".to_owned(), |id| format!("<@{id}>")),
+                record.capacity.map_or_else(|| "unlimited".to_owned(), |value| value.to_string()),
+                event.user_count.unwrap_or(0),
+            ))
+            .await?;
+        }
+        Err(error) if is_not_found(&error) => {
+            crate::community::update_activity_extension(
+                &ctx.data().db_pool,
+                guild_id,
+                event_id,
+                None,
+                Some("deleted"),
+            )
+            .await?;
+            ctx.say("The native event is missing; local state was reconciled.")
+                .await?;
+        }
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
+}
+
+#[poise::command(slash_command, guild_only)]
+pub async fn update(
+    ctx: Context<'_>,
+    #[description = "Discord Scheduled Event ID"] event_id: String,
+    #[description = "New name"] name: Option<String>,
+    #[description = "New RFC 3339 start time"] start_time: Option<String>,
+    #[description = "New description"] description: Option<String>,
+    #[description = "New participant limit"] capacity: Option<i64>,
+    #[description = "Lifecycle transition"] status: Option<ActivityStatus>,
+) -> Result<(), Error> {
+    let Some((guild_id, event_id, record)) = managed_activity(ctx, &event_id).await? else {
+        return Ok(());
+    };
+    if !can_manage(ctx, record.host_user_id.as_deref()).await? {
+        ctx.say("Only the host or a member with Manage Events can update this activity.")
+            .await?;
+        return Ok(());
+    }
+    if name.is_none()
+        && start_time.is_none()
+        && description.is_none()
+        && capacity.is_none()
+        && status.is_none()
+    {
+        ctx.say("Provide at least one field to update.").await?;
+        return Ok(());
+    }
+    if name
+        .as_ref()
+        .is_some_and(|value| !(1..=100).contains(&value.chars().count()))
+        || description
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 1_000)
+        || capacity.is_some_and(|value| value <= 0)
+    {
+        ctx.say("Invalid name, description, or capacity.").await?;
+        return Ok(());
+    }
+    let start = match start_time
+        .as_deref()
+        .map(serenity::Timestamp::parse)
+        .transpose()
+    {
+        Ok(start) if start.is_none_or(|value| value > serenity::Timestamp::now()) => start,
+        _ => {
+            ctx.say("Use a future RFC 3339 start time with a UTC offset.")
+                .await?;
+            return Ok(());
+        }
+    };
+    let event = match guild_id.scheduled_event(ctx.http(), event_id, false).await {
+        Ok(event) => event,
+        Err(error) if is_not_found(&error) => {
+            crate::community::update_activity_extension(
+                &ctx.data().db_pool,
+                guild_id,
+                event_id,
+                None,
+                Some("deleted"),
+            )
+            .await?;
+            ctx.say("The native event is missing; local state was reconciled.")
+                .await?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let next_status = status.map(ActivityStatus::native);
+    if next_status.is_some_and(|next| !valid_transition(event.status, next)) {
+        ctx.say("That scheduled-event status transition is not allowed.")
+            .await?;
+        return Ok(());
+    }
+    if let Some(channel_id) = event.channel_id {
+        let bot_id = ctx.cache().current_user().id;
+        let missing = missing_channel_permissions(
+            ctx,
+            channel_id,
+            bot_id,
+            serenity::Permissions::CREATE_EVENTS | serenity::Permissions::VIEW_CHANNEL,
+        )?;
+        if !missing.is_empty() {
+            ctx.say(format!("The bot is missing permissions: {missing}"))
+                .await?;
+            return Ok(());
+        }
+    }
+    let mut builder = serenity::EditScheduledEvent::new();
+    if let Some(name) = name {
+        builder = builder.name(name);
+    }
+    if let Some(start) = start {
+        builder = builder.start_time(start);
+    }
+    if let Some(description) = description {
+        builder = builder.description(description);
+    }
+    if let Some(status) = next_status {
+        builder = builder.status(status);
+    }
+    guild_id
+        .edit_scheduled_event(ctx.http(), event_id, builder)
+        .await?;
+    crate::community::update_activity_extension(
+        &ctx.data().db_pool,
+        guild_id,
+        event_id,
+        capacity,
+        next_status.map(activity_state),
+    )
+    .await?;
+    ctx.say(format!(
+        "Activity updated: {}",
+        event_url(guild_id, event_id)
+    ))
+    .await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, guild_only)]
+pub async fn cancel(
+    ctx: Context<'_>,
+    #[description = "Discord Scheduled Event ID"] event_id: String,
+) -> Result<(), Error> {
+    let Some((guild_id, event_id, record)) = managed_activity(ctx, &event_id).await? else {
+        return Ok(());
+    };
+    if !can_manage(ctx, record.host_user_id.as_deref()).await? {
+        ctx.say("Only the host or a member with Manage Events can cancel this activity.")
+            .await?;
+        return Ok(());
+    }
+    if matches!(record.state.as_str(), "canceled" | "deleted" | "completed") {
+        ctx.say("Activity is already closed.").await?;
+        return Ok(());
+    }
+    let state = match guild_id.delete_scheduled_event(ctx.http(), event_id).await {
+        Ok(()) => "canceled",
+        Err(error) if is_not_found(&error) => "deleted",
+        Err(error) => return Err(error.into()),
+    };
+    crate::community::update_activity_extension(
+        &ctx.data().db_pool,
+        guild_id,
+        event_id,
+        None,
+        Some(state),
+    )
+    .await?;
+    ctx.say("Activity canceled.").await?;
+    Ok(())
+}
+
+async fn managed_activity(
+    ctx: Context<'_>,
+    raw_event_id: &str,
+) -> Result<
+    Option<(
+        serenity::GuildId,
+        serenity::ScheduledEventId,
+        crate::community::ActivityRecord,
+    )>,
+    Error,
+> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let Ok(raw_event_id) = raw_event_id.parse::<u64>() else {
+        ctx.say("Use a valid Discord Scheduled Event ID.").await?;
+        return Ok(None);
+    };
+    let event_id = serenity::ScheduledEventId::new(raw_event_id);
+    let Some(record) = crate::community::activity(&ctx.data().db_pool, guild_id, event_id).await?
+    else {
+        ctx.say("That event is not a bot-managed activity.").await?;
+        return Ok(None);
+    };
+    Ok(Some((guild_id, event_id, record)))
+}
+
+async fn can_manage(ctx: Context<'_>, host: Option<&str>) -> Result<bool, Error> {
+    if host == Some(&ctx.author().id.to_string()) {
+        return Ok(true);
+    }
+    let member = ctx
+        .author_member()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Member unavailable"))?;
+    let guild = ctx
+        .guild()
+        .ok_or_else(|| anyhow::anyhow!("Guild unavailable"))?;
+    Ok(guild
+        .member_permissions(&member)
+        .contains(serenity::Permissions::MANAGE_EVENTS))
+}
+
+impl ActivityStatus {
+    fn native(self) -> serenity::ScheduledEventStatus {
+        match self {
+            Self::Active => serenity::ScheduledEventStatus::Active,
+            Self::Completed => serenity::ScheduledEventStatus::Completed,
+        }
+    }
+}
+
+fn valid_transition(
+    from: serenity::ScheduledEventStatus,
+    to: serenity::ScheduledEventStatus,
+) -> bool {
+    matches!(
+        (from, to),
+        (
+            serenity::ScheduledEventStatus::Scheduled,
+            serenity::ScheduledEventStatus::Active
+        ) | (
+            serenity::ScheduledEventStatus::Active,
+            serenity::ScheduledEventStatus::Completed
+        )
+    )
+}
+
+fn activity_state(status: serenity::ScheduledEventStatus) -> &'static str {
+    match status {
+        serenity::ScheduledEventStatus::Active => "active",
+        serenity::ScheduledEventStatus::Completed => "completed",
+        serenity::ScheduledEventStatus::Canceled => "canceled",
+        _ => "scheduled",
+    }
+}
+
+fn is_not_found(error: &serenity::Error) -> bool {
+    matches!(error, serenity::Error::Http(error) if error.status_code().is_some_and(|code| code.as_u16() == 404))
+}
+
 fn validate_create_input(
     guild_id: serenity::GuildId,
     channel: &serenity::GuildChannel,
@@ -162,9 +448,9 @@ fn control_labels(language: Language) -> (&'static str, &'static str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{control_labels, event_url, validate_fields};
+    use super::{control_labels, event_url, valid_transition, validate_fields};
     use crate::i18n::Language;
-    use poise::serenity_prelude::{GuildId, ScheduledEventId};
+    use poise::serenity_prelude::{GuildId, ScheduledEventId, ScheduledEventStatus};
 
     #[test]
     fn builds_native_link_and_localized_controls() {
@@ -194,5 +480,25 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn permits_only_native_forward_transitions() {
+        assert!(valid_transition(
+            ScheduledEventStatus::Scheduled,
+            ScheduledEventStatus::Active
+        ));
+        assert!(valid_transition(
+            ScheduledEventStatus::Active,
+            ScheduledEventStatus::Completed
+        ));
+        assert!(!valid_transition(
+            ScheduledEventStatus::Scheduled,
+            ScheduledEventStatus::Completed
+        ));
+        assert!(!valid_transition(
+            ScheduledEventStatus::Completed,
+            ScheduledEventStatus::Active
+        ));
     }
 }

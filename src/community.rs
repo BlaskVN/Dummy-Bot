@@ -51,6 +51,29 @@ pub async fn activity(
         .bind(guild_id.to_string()).bind(event_id.to_string()).fetch_optional(pool).await?)
 }
 
+pub async fn update_activity_extension(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    event_id: ScheduledEventId,
+    capacity: Option<i64>,
+    state: Option<&str>,
+) -> Result<bool> {
+    if capacity.is_some_and(|value| value <= 0) {
+        bail!("Activity capacity must be positive");
+    }
+    if state.is_some_and(|value| {
+        !matches!(
+            value,
+            "scheduled" | "active" | "completed" | "canceled" | "deleted"
+        )
+    }) {
+        bail!("Invalid activity state");
+    }
+    Ok(sqlx::query("UPDATE community_activity SET capacity = COALESCE(?, capacity), state = COALESCE(?, state), updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND scheduled_event_id = ?")
+        .bind(capacity).bind(state).bind(guild_id.to_string()).bind(event_id.to_string())
+        .execute(pool).await?.rows_affected() == 1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{activity, create_activity};

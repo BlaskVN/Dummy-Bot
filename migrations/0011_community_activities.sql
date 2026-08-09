@@ -7,6 +7,7 @@ CREATE TABLE community_activity (
     capacity INTEGER CHECK (capacity IS NULL OR capacity > 0),
     state TEXT NOT NULL DEFAULT 'scheduled' CHECK (state IN ('scheduled', 'active', 'completed', 'canceled', 'deleted')),
     notification_sent INTEGER NOT NULL DEFAULT 0 CHECK (notification_sent IN (0, 1)),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (guild_id, scheduled_event_id),
     CHECK ((kind = 'community' AND host_user_id IS NOT NULL) OR kind = 'game')
 );
