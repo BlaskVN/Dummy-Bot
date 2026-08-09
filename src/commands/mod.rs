@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod configuration;
 pub mod donation;
 pub mod general;
@@ -9,6 +10,7 @@ use crate::{Data, Error};
 
 pub fn all() -> Vec<poise::Command<Data, Error>> {
     let mut commands = general::all();
+    commands.push(activity::activity());
     commands.extend(moderation::all());
     commands.extend(configuration::all());
     commands.extend(voice::all());
