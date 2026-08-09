@@ -13,6 +13,10 @@ settings live in `config.env`, secrets in `.env`, and deployment settings in
 - Per-guild prefix, language, and message-log configuration
 - Deleted/edited message logging with bounded attachment archiving
 - Persistent bot presence and voice-channel reconnect support
+- Guild time zones and one-time installation onboarding
+- Owner-managed donation information with stable QR storage
+- Immutable moderation cases, dedicated moderation channels, and warn/timeout commands
+- Opt-in Discord AutoMod observation with bounded review suggestions
 
 ## Requirements and local setup
 
@@ -55,7 +59,7 @@ src/
 │   ├── presence.rs
 │   └── voice.rs
 ├── handlers/               # event dispatch and event features
-└── i18n.rs                 # user-facing EN/VI strings
+└── i18n.rs                 # user-facing EN/VI/JA strings
 migrations/                 # embedded SQLx migrations
 systemd/                    # deployment service template
 ```
@@ -102,7 +106,8 @@ stored in SQLite. They are embedded in the binary and applied by
 - Back up the SQLite database before deploying a release with a destructive
   schema change.
 
-V1 uses only `migrations/0001_initial.sql`; no additional migration is needed.
+Current releases apply numbered migrations in order; `0001_initial.sql` remains
+the upgrade baseline and must not be edited.
 
 ## Discord permissions
 
@@ -116,7 +121,9 @@ including channel overwrites.
 | `/kick` | `KICK_MEMBERS` and a role above the target | `KICK_MEMBERS` and a role above the target |
 | `/ban` | `BAN_MEMBERS` and a role above the target | `BAN_MEMBERS` and a role above the target |
 | `/purge` | `MANAGE_MESSAGES` | `VIEW_CHANNEL`, `MANAGE_MESSAGES`, `READ_MESSAGE_HISTORY` |
-| `/settings`, `/setprefix`, `/messagelog`, `/language` | `MANAGE_GUILD` | depends on the requested action/channel |
+| `/warn`, `/timeout`, `/case view`, `/case list` | `MODERATE_MEMBERS` and target hierarchy | `MODERATE_MEMBERS` and target hierarchy for timeout |
+| `/settings`, `/setprefix`, `/messagelog`, `/language`, `/timezone`, `/moderation-channel`, `/automod-observer`, `/case void` | `MANAGE_GUILD` | depends on the requested action/channel |
+| `/donation` | Bot Owner | — |
 | `/connect` | `MOVE_MEMBERS`, while in a voice channel with `CONNECT` | `VIEW_CHANNEL`, `CONNECT` in that channel |
 | `/disconnect` | `MOVE_MEMBERS` | no member-management permission is needed to leave |
 | `/presence` | an owner from `OWNER_IDS` or the Discord application owner | — |

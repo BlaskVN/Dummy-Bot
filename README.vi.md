@@ -13,6 +13,10 @@ trong `.deploy.env`.
 - Cấu hình prefix, ngôn ngữ và message log theo từng guild
 - Log tin nhắn bị xóa/chỉnh sửa, có lưu attachment với giới hạn tài nguyên
 - Lưu trạng thái presence và tự kết nối lại voice channel
+- Múi giờ theo guild và hướng dẫn một lần khi cài đặt
+- Thông tin ủng hộ do Chủ Bot quản lý với ảnh QR được lưu ổn định
+- Vụ việc kiểm duyệt bất biến, kênh kiểm duyệt riêng và lệnh warn/timeout
+- Theo dõi Discord AutoMod tùy chọn với đề xuất xem xét có giới hạn
 
 ## Yêu cầu và chạy local
 
@@ -55,7 +59,7 @@ src/
 │   ├── presence.rs
 │   └── voice.rs
 ├── handlers/               # event dispatcher và từng event feature
-└── i18n.rs                 # chuỗi EN/VI hiển thị cho người dùng
+└── i18n.rs                 # chuỗi EN/VI/JA hiển thị cho người dùng
 migrations/                 # SQLx migrations được nhúng vào binary
 systemd/                    # service template dùng khi triển khai
 ```
@@ -100,7 +104,8 @@ startup.
   `cargo test database::tests::applies_initial_migration`.
 - Backup database SQLite trước khi deploy migration có thay đổi phá hủy dữ liệu.
 
-V1 chỉ dùng `migrations/0001_initial.sql`; không cần migration bổ sung.
+Các bản phát hành hiện tại áp dụng migration được đánh số theo thứ tự;
+`0001_initial.sql` vẫn là mốc nâng cấp và không được chỉnh sửa.
 
 ## Phân quyền Discord
 
@@ -113,7 +118,9 @@ message log tính quyền tại channel đích, bao gồm channel overwrite.
 | `/kick` | `KICK_MEMBERS` và role cao hơn target | `KICK_MEMBERS` và role cao hơn target |
 | `/ban` | `BAN_MEMBERS` và role cao hơn target | `BAN_MEMBERS` và role cao hơn target |
 | `/purge` | `MANAGE_MESSAGES` | `VIEW_CHANNEL`, `MANAGE_MESSAGES`, `READ_MESSAGE_HISTORY` |
-| `/settings`, `/setprefix`, `/messagelog`, `/language` | `MANAGE_GUILD` | tùy hành động/channel đích |
+| `/warn`, `/timeout`, `/case view`, `/case list` | `MODERATE_MEMBERS` và hierarchy của target | `MODERATE_MEMBERS` và hierarchy của target với timeout |
+| `/settings`, `/setprefix`, `/messagelog`, `/language`, `/timezone`, `/moderation-channel`, `/automod-observer`, `/case void` | `MANAGE_GUILD` | tùy hành động/channel đích |
+| `/donation` | Chủ Bot | — |
 | `/connect` | `MOVE_MEMBERS`, đang ở voice channel và có `CONNECT` | `VIEW_CHANNEL`, `CONNECT` tại channel đó |
 | `/disconnect` | `MOVE_MEMBERS` | không cần quyền quản lý thành viên để tự rời |
 | `/presence` | owner trong `OWNER_IDS` hoặc Discord application owner | — |
