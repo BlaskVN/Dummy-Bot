@@ -69,10 +69,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         })
         .build();
 
-    let intents = serenity::GatewayIntents::non_privileged()
-        | serenity::GatewayIntents::MESSAGE_CONTENT
-        | serenity::GatewayIntents::GUILD_MEMBERS
-        | serenity::GatewayIntents::GUILD_VOICE_STATES;
+    let intents = gateway_intents();
     let cache_settings = {
         let mut settings = serenity::cache::Settings::default();
         settings.max_messages = config.cache_max_messages;
@@ -85,6 +82,13 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 
     client.start().await?;
     Ok(())
+}
+
+fn gateway_intents() -> serenity::GatewayIntents {
+    serenity::GatewayIntents::non_privileged()
+        | serenity::GatewayIntents::MESSAGE_CONTENT
+        | serenity::GatewayIntents::GUILD_MEMBERS
+        | serenity::GatewayIntents::GUILD_VOICE_STATES
 }
 
 fn dynamic_prefix(
@@ -126,4 +130,17 @@ async fn resolve_owners(config: &Config) -> HashSet<serenity::UserId> {
         tracing::warn!("No bot owner is configured");
     }
     owners
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gateway_intents;
+    use poise::serenity_prelude::GatewayIntents;
+
+    #[test]
+    fn requests_both_automod_intents() {
+        let intents = gateway_intents();
+        assert!(intents.contains(GatewayIntents::AUTO_MODERATION_EXECUTION));
+        assert!(intents.contains(GatewayIntents::AUTO_MODERATION_CONFIGURATION));
+    }
 }

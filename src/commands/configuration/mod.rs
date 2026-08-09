@@ -1,3 +1,4 @@
+pub mod automod_observer;
 pub mod language;
 pub mod logging;
 pub mod moderation_channel;
@@ -9,6 +10,7 @@ use crate::{Data, Error};
 
 pub fn all() -> Vec<poise::Command<Data, Error>> {
     vec![
+        automod_observer::automod_observer(),
         settings::settings(),
         prefix::setprefix(),
         logging::messagelog(),

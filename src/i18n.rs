@@ -150,6 +150,10 @@ pub enum TranslationKey {
     ModerationCaseVoidDetails,
     ModerationCaseAlreadyVoided,
     ModerationCaseVoided,
+    AutoModObserverEnabled,
+    AutoModObserverDisabled,
+    AutoModObserverNeedsChannel,
+    AutoModObserverNeedsPermission,
 
     // Settings
     SettingsTitle,
@@ -426,6 +430,22 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(
         TranslationKey::ModerationCaseVoided,
         "Moderation case #{} voided.",
+    );
+    en.insert(
+        TranslationKey::AutoModObserverEnabled,
+        "Discord AutoMod observation is enabled.",
+    );
+    en.insert(
+        TranslationKey::AutoModObserverDisabled,
+        "Discord AutoMod observation is disabled.",
+    );
+    en.insert(
+        TranslationKey::AutoModObserverNeedsChannel,
+        "Configure a moderation channel first.",
+    );
+    en.insert(
+        TranslationKey::AutoModObserverNeedsPermission,
+        "The bot needs Manage Server to receive Discord AutoMod events.",
     );
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
@@ -770,6 +790,22 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(
         TranslationKey::ModerationCaseVoided,
         "Đã vô hiệu vụ việc kiểm duyệt #{}.",
+    );
+    vi.insert(
+        TranslationKey::AutoModObserverEnabled,
+        "Đã bật theo dõi Discord AutoMod.",
+    );
+    vi.insert(
+        TranslationKey::AutoModObserverDisabled,
+        "Đã tắt theo dõi Discord AutoMod.",
+    );
+    vi.insert(
+        TranslationKey::AutoModObserverNeedsChannel,
+        "Hãy thiết lập kênh kiểm duyệt trước.",
+    );
+    vi.insert(
+        TranslationKey::AutoModObserverNeedsPermission,
+        "Bot cần quyền Quản lý Server để nhận sự kiện Discord AutoMod.",
     );
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
@@ -1120,6 +1156,22 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::ModerationCaseVoided,
         "モデレーションケース#{}を無効にしました。",
+    );
+    ja.insert(
+        TranslationKey::AutoModObserverEnabled,
+        "Discord AutoModの監視を有効にしました。",
+    );
+    ja.insert(
+        TranslationKey::AutoModObserverDisabled,
+        "Discord AutoModの監視を無効にしました。",
+    );
+    ja.insert(
+        TranslationKey::AutoModObserverNeedsChannel,
+        "先にモデレーションチャンネルを設定してください。",
+    );
+    ja.insert(
+        TranslationKey::AutoModObserverNeedsPermission,
+        "Discord AutoModイベントを受信するには、Botに「サーバーを管理」権限が必要です。",
     );
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
     ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");

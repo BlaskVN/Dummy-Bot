@@ -1,3 +1,4 @@
+pub mod automod;
 pub mod message_log;
 pub mod onboarding;
 pub mod reconnect;
@@ -52,6 +53,12 @@ pub async fn dispatch(
         }
         serenity::FullEvent::GuildCreate { guild, is_new } => {
             onboarding::handle_guild_create(ctx, guild, *is_new, data).await;
+        }
+        serenity::FullEvent::AutoModActionExecution { execution } => {
+            automod::handle_execution(execution, data).await;
+        }
+        serenity::FullEvent::AutoModRuleUpdate { rule } => {
+            automod::handle_rule_update(rule, data).await;
         }
         serenity::FullEvent::Resume { .. } => reconnect::handle_resume(ctx, data).await,
         serenity::FullEvent::Ready { .. } => reconnect::handle_ready_reconnect(ctx, data).await,
