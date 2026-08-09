@@ -55,7 +55,7 @@ pub async fn dispatch(
             onboarding::handle_guild_create(ctx, guild, *is_new, data).await;
         }
         serenity::FullEvent::AutoModActionExecution { execution } => {
-            automod::handle_execution(execution, data).await;
+            automod::handle_execution(ctx, execution, data).await;
         }
         serenity::FullEvent::AutoModRuleUpdate { rule } => {
             automod::handle_rule_update(rule, data).await;

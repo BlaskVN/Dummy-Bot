@@ -154,6 +154,7 @@ pub enum TranslationKey {
     AutoModObserverDisabled,
     AutoModObserverNeedsChannel,
     AutoModObserverNeedsPermission,
+    AutoModExecution,
 
     // Settings
     SettingsTitle,
@@ -446,6 +447,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(
         TranslationKey::AutoModObserverNeedsPermission,
         "The bot needs Manage Server to receive Discord AutoMod events.",
+    );
+    en.insert(
+        TranslationKey::AutoModExecution,
+        "Discord AutoMod execution\nRule: {}\nMember: <@{}>\nAction: {}\nMessage: {}",
     );
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
     en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
@@ -806,6 +811,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(
         TranslationKey::AutoModObserverNeedsPermission,
         "Bot cần quyền Quản lý Server để nhận sự kiện Discord AutoMod.",
+    );
+    vi.insert(
+        TranslationKey::AutoModExecution,
+        "Thực thi Discord AutoMod\nQuy tắc: {}\nThành viên: <@{}>\nThao tác: {}\nTin nhắn: {}",
     );
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
     vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
@@ -1172,6 +1181,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::AutoModObserverNeedsPermission,
         "Discord AutoModイベントを受信するには、Botに「サーバーを管理」権限が必要です。",
+    );
+    ja.insert(
+        TranslationKey::AutoModExecution,
+        "Discord AutoMod実行\nルール：{}\nメンバー：<@{}>\n操作：{}\nメッセージ：{}",
     );
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
     ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");
