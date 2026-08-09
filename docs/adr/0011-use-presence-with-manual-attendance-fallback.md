@@ -1,0 +1,3 @@
+# Use Presence with a manual attendance fallback
+
+The bot requests Discord's privileged Guild Presences intent to establish an Activity Beacon when at least one non-bot member of a session voice channel shares the matching game. Matching prefers Discord's optional activity application ID, falls back to an exact case-insensitive activity name, and never guesses aliases; every member in that same channel then accumulates their own attendance time while the beacon exists. Because Discord may deny the intent and members may hide Activity Sharing, manual check-in remains available and the degraded state is disclosed rather than withholding Session Credit and Play Time.

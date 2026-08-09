@@ -1,0 +1,3 @@
+# Use Discord Scheduled Events for Community Activities
+
+Every Community Activity is represented by a Discord Scheduled Event, which owns its schedule, location, visibility, and subscriptions. The initial implementation supports `VOICE` events only. A game mapping with multiple Voice Pool channels selects one Primary Voice Channel as the native event location while attendance may qualify in the full pool. The bot stores only domain-specific additions such as a game, capacity, or waitlist, avoiding a second calendar and reminder system at the cost of depending on Discord's event lifecycle and API. Deleting the Scheduled Event cancels the activity, notifies its Participants and Waitlisted Members once, and removes the bot's extensions rather than recreating the event.
