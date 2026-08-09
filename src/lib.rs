@@ -1,6 +1,7 @@
 pub mod app;
 pub mod automod;
 pub mod commands;
+pub mod community;
 pub mod config;
 pub mod database;
 pub mod error;
