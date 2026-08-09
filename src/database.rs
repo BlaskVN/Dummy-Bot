@@ -154,6 +154,36 @@ pub async fn message_log_channel(
     }
 }
 
+pub async fn delete_guild_data(
+    pool: &SqlitePool,
+    guild_id: poise::serenity_prelude::GuildId,
+) -> Result<()> {
+    let guild_id = guild_id.to_string();
+    let mut transaction = pool.begin().await?;
+    for table in [
+        "automod_suggestion",
+        "automod_execution",
+        "automod_observer_config",
+        "moderation_case",
+        "moderation_case_counter",
+        "moderation_channel_config",
+        "guild_onboarding",
+        "guild_timezone",
+        "guild_language",
+        "message_log_config",
+        "guild_config",
+    ] {
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DELETE FROM {table} WHERE guild_id = ?"
+        )))
+        .bind(&guild_id)
+        .execute(&mut *transaction)
+        .await?;
+    }
+    transaction.commit().await?;
+    Ok(())
+}
+
 /// Claim a new Guild's one-time onboarding before attempting delivery.
 pub async fn claim_guild_onboarding(
     pool: &SqlitePool,
@@ -194,7 +224,7 @@ pub async fn init_db(database_url: &str, data_directory: &Path) -> Result<Sqlite
 
 #[cfg(test)]
 mod tests {
-    use super::{claim_guild_onboarding, init_db};
+    use super::{claim_guild_onboarding, delete_guild_data, init_db};
 
     #[tokio::test]
     async fn applies_initial_migration() {
@@ -313,6 +343,66 @@ mod tests {
                 .await
                 .unwrap()
         );
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn guild_cleanup_is_complete_isolated_and_idempotent() {
+        let directory =
+            std::env::temp_dir().join(format!("dummy-bot-cleanup-test-{}", std::process::id()));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO guild_config (guild_id, prefix) VALUES ('1', '!'), ('2', '?');
+             INSERT INTO message_log_config (guild_id, log_channel_id, enabled) VALUES ('1', '11', 1), ('2', '22', 1);
+             INSERT INTO guild_language (guild_id, language) VALUES ('1', 'en'), ('2', 'vi');
+             INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('1', 'UTC'), ('2', 'Asia/Bangkok');
+             INSERT INTO guild_onboarding (guild_id) VALUES ('1'), ('2');
+             INSERT INTO moderation_channel_config (guild_id, channel_id) VALUES ('1', '11'), ('2', '22');
+             INSERT INTO moderation_case_counter (guild_id, last_number) VALUES ('1', 1), ('2', 1);
+             INSERT INTO moderation_case (guild_id, case_number, action, target_user_id, moderator_user_id, reason) VALUES ('1', 1, 'warn', '3', '4', 'one'), ('2', 1, 'warn', '3', '4', 'two');
+             INSERT INTO automod_observer_config (guild_id, enabled) VALUES ('1', 1), ('2', 1);
+             INSERT INTO automod_execution (delivery_key, guild_id, user_id, rule_id, action_type, observed_at) VALUES ('one', '1', '3', '4', 1, 1), ('two', '2', '3', '4', 1, 1);
+             INSERT INTO automod_suggestion (guild_id, user_id, rule_id, opened_at) VALUES ('1', '3', '4', 1), ('2', '3', '4', 1);
+             INSERT INTO donation_config (id, message) VALUES (1, 'global');"
+        ).execute(&pool).await.unwrap();
+        let guild = poise::serenity_prelude::GuildId::new(1);
+        delete_guild_data(&pool, guild).await.unwrap();
+        delete_guild_data(&pool, guild).await.unwrap();
+        let deleted_rows: i64 = sqlx::query_scalar(
+            "SELECT (SELECT COUNT(*) FROM guild_config WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM message_log_config WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM guild_language WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM guild_timezone WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM guild_onboarding WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM moderation_channel_config WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM moderation_case_counter WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM moderation_case WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM automod_observer_config WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM automod_execution WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM automod_suggestion WHERE guild_id = '1')",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(deleted_rows, 0);
+        let other_guild_rows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM moderation_case WHERE guild_id = '2'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(other_guild_rows, 1);
+        let donation: String =
+            sqlx::query_scalar("SELECT message FROM donation_config WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(donation, "global");
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }

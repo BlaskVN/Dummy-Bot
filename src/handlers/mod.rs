@@ -1,4 +1,5 @@
 pub mod automod;
+pub mod guild_lifecycle;
 pub mod message_log;
 pub mod onboarding;
 pub mod reconnect;
@@ -53,6 +54,9 @@ pub async fn dispatch(
         }
         serenity::FullEvent::GuildCreate { guild, is_new } => {
             onboarding::handle_guild_create(ctx, guild, *is_new, data).await;
+        }
+        serenity::FullEvent::GuildDelete { incomplete, .. } => {
+            guild_lifecycle::handle_guild_delete(incomplete, data).await;
         }
         serenity::FullEvent::AutoModActionExecution { execution } => {
             automod::handle_execution(ctx, execution, data).await;
