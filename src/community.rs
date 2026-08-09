@@ -22,6 +22,12 @@ pub struct ManagedActivityId {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ExpiringGameActivity {
+    pub guild_id: String,
+    pub scheduled_event_id: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ActivityRecord {
     pub scheduled_event_id: String,
     pub host_user_id: Option<String>,
@@ -58,6 +64,26 @@ pub async fn create_activity(
     sqlx::query("INSERT INTO community_activity (guild_id, scheduled_event_id, host_user_id, kind, game_key, capacity) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(guild_id.to_string()).bind(event_id.to_string()).bind(host.map(|id| id.to_string()))
         .bind(kind).bind(game_key).bind(capacity).execute(pool).await?;
+    Ok(())
+}
+
+pub async fn create_game_activity(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    event_id: ScheduledEventId,
+    entity_type: ScheduledEventType,
+    game_key: &str,
+    expires_at: i64,
+) -> Result<()> {
+    if entity_type != ScheduledEventType::Voice {
+        bail!("Only VOICE scheduled events are supported");
+    }
+    if game_key.is_empty() || expires_at <= chrono::Utc::now().timestamp() {
+        bail!("Game activity requires a key and future expiry");
+    }
+    sqlx::query("INSERT INTO community_activity (guild_id, scheduled_event_id, kind, game_key, expires_at) VALUES (?, ?, 'game', ?, ?)")
+        .bind(guild_id.to_string()).bind(event_id.to_string()).bind(game_key).bind(expires_at)
+        .execute(pool).await?;
     Ok(())
 }
 
@@ -299,13 +325,54 @@ pub async fn claim_deleted_activity(
     ))
 }
 
+pub async fn next_game_expiry(pool: &SqlitePool) -> Result<Option<i64>> {
+    Ok(sqlx::query_scalar("SELECT MIN(expires_at) FROM community_activity WHERE kind = 'game' AND state IN ('scheduled', 'active') AND expires_at IS NOT NULL")
+        .fetch_one(pool).await?)
+}
+
+pub async fn due_game_activities(
+    pool: &SqlitePool,
+    now: i64,
+    limit: i64,
+) -> Result<Vec<ExpiringGameActivity>> {
+    Ok(sqlx::query_as("SELECT guild_id, scheduled_event_id FROM community_activity WHERE kind = 'game' AND state IN ('scheduled', 'active') AND expires_at <= ? ORDER BY expires_at LIMIT ?")
+        .bind(now).bind(limit).fetch_all(pool).await?)
+}
+
+pub async fn finish_game_expiry(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    event_id: ScheduledEventId,
+    state: &str,
+) -> Result<bool> {
+    if !matches!(state, "canceled" | "deleted") {
+        bail!("Invalid expiry state");
+    }
+    let mut transaction = pool.begin().await?;
+    let changed = sqlx::query("UPDATE community_activity SET state = ?, expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND scheduled_event_id = ? AND kind = 'game' AND state IN ('scheduled', 'active')")
+        .bind(state).bind(guild_id.to_string()).bind(event_id.to_string())
+        .execute(&mut *transaction).await?.rows_affected() == 1;
+    if changed {
+        sqlx::query(
+            "DELETE FROM community_activity_member WHERE guild_id = ? AND scheduled_event_id = ?",
+        )
+        .bind(guild_id.to_string())
+        .bind(event_id.to_string())
+        .execute(&mut *transaction)
+        .await?;
+    }
+    transaction.commit().await?;
+    Ok(changed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         MembershipState, active_game_activity, activity, claim_deleted_activity,
-        claim_promotion_notification, create_activity, finish_promotion_notification,
-        join_activity, leave_activity, mirror_activity_state, nonterminal_activities,
-        set_activity_capacity, update_activity_extension,
+        claim_promotion_notification, create_activity, create_game_activity, due_game_activities,
+        finish_game_expiry, finish_promotion_notification, join_activity, leave_activity,
+        mirror_activity_state, next_game_expiry, nonterminal_activities, set_activity_capacity,
+        update_activity_extension,
     };
     use crate::database::init_db;
     use poise::serenity_prelude::{GuildId, ScheduledEventId, ScheduledEventType, UserId};
@@ -710,6 +777,49 @@ mod tests {
         let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM community_activity_member WHERE guild_id = '1' AND scheduled_event_id = '40'")
             .fetch_one(&pool).await.unwrap();
         assert_eq!(remaining, 0);
+        let expiry = chrono::Utc::now().timestamp() + 100;
+        create_game_activity(
+            &pool,
+            GuildId::new(1),
+            ScheduledEventId::new(80),
+            ScheduledEventType::Voice,
+            "factorio",
+            expiry,
+        )
+        .await
+        .unwrap();
+        assert_eq!(next_game_expiry(&pool).await.unwrap(), Some(expiry));
+        assert!(
+            due_game_activities(&pool, expiry - 1, 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            due_game_activities(&pool, expiry, 10).await.unwrap().len(),
+            1
+        );
+        assert!(
+            finish_game_expiry(
+                &pool,
+                GuildId::new(1),
+                ScheduledEventId::new(80),
+                "canceled",
+            )
+            .await
+            .unwrap()
+        );
+        assert!(
+            !finish_game_expiry(
+                &pool,
+                GuildId::new(1),
+                ScheduledEventId::new(80),
+                "canceled",
+            )
+            .await
+            .unwrap()
+        );
+        assert_eq!(next_game_expiry(&pool).await.unwrap(), None);
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }

@@ -4,7 +4,7 @@ use poise::serenity_prelude as serenity;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, Notify, RwLock, Semaphore};
 
 #[derive(Clone)]
 pub struct VoiceConnectionInfo {
@@ -21,6 +21,7 @@ pub struct Data {
     pub voice_connections: Arc<RwLock<HashMap<serenity::GuildId, VoiceConnectionInfo>>>,
     /// ponytail: one lock serializes rare session creation; shard by Guild if this becomes hot.
     pub game_session_creation: Arc<Mutex<()>>,
+    pub game_expiry_wakeup: Arc<Notify>,
 }
 
 impl Data {
