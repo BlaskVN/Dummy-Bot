@@ -1,5 +1,6 @@
 pub mod automod;
 pub mod community;
+pub mod game_session;
 pub mod guild_lifecycle;
 pub mod message_log;
 pub mod onboarding;
@@ -15,6 +16,9 @@ pub async fn dispatch(
     data: &Data,
 ) -> Result<(), Error> {
     match event {
+        serenity::FullEvent::Message { new_message } => {
+            game_session::handle_message(ctx, new_message, data).await?;
+        }
         serenity::FullEvent::MessageDelete {
             channel_id,
             deleted_message_id,

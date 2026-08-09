@@ -3,7 +3,7 @@ use poise::serenity_prelude as serenity;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, Semaphore};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 pub async fn run(config: Config) -> anyhow::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -64,6 +64,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     attachment_client,
                     attachment_downloads: Arc::new(Semaphore::new(2)),
                     voice_connections: Arc::new(RwLock::new(HashMap::new())),
+                    game_session_creation: Arc::new(Mutex::new(())),
                 };
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
                 handlers::community::reconcile_all(ctx, &data).await;

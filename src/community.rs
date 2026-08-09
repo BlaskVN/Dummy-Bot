@@ -70,6 +70,17 @@ pub async fn activity(
         .bind(guild_id.to_string()).bind(event_id.to_string()).fetch_optional(pool).await?)
 }
 
+pub async fn active_game_activity(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    game_key: &str,
+) -> Result<Option<ScheduledEventId>> {
+    let id: Option<String> = sqlx::query_scalar("SELECT scheduled_event_id FROM community_activity WHERE guild_id = ? AND kind = 'game' AND game_key = ? AND state IN ('scheduled', 'active')")
+        .bind(guild_id.to_string()).bind(game_key).fetch_optional(pool).await?;
+    id.map(|id| Ok(ScheduledEventId::new(id.parse()?)))
+        .transpose()
+}
+
 pub async fn update_activity_extension(
     pool: &SqlitePool,
     guild_id: GuildId,
@@ -291,10 +302,10 @@ pub async fn claim_deleted_activity(
 #[cfg(test)]
 mod tests {
     use super::{
-        MembershipState, activity, claim_deleted_activity, claim_promotion_notification,
-        create_activity, finish_promotion_notification, join_activity, leave_activity,
-        mirror_activity_state, nonterminal_activities, set_activity_capacity,
-        update_activity_extension,
+        MembershipState, active_game_activity, activity, claim_deleted_activity,
+        claim_promotion_notification, create_activity, finish_promotion_notification,
+        join_activity, leave_activity, mirror_activity_state, nonterminal_activities,
+        set_activity_capacity, update_activity_extension,
     };
     use crate::database::init_db;
     use poise::serenity_prelude::{GuildId, ScheduledEventId, ScheduledEventType, UserId};
@@ -392,6 +403,36 @@ mod tests {
                 .await
                 .unwrap()
                 .is_none()
+        );
+        create_activity(
+            &pool,
+            GuildId::new(1),
+            ScheduledEventId::new(15),
+            ScheduledEventType::Voice,
+            None,
+            Some("minecraft"),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            active_game_activity(&pool, GuildId::new(1), "minecraft")
+                .await
+                .unwrap(),
+            Some(ScheduledEventId::new(15))
+        );
+        assert!(
+            create_activity(
+                &pool,
+                GuildId::new(1),
+                ScheduledEventId::new(16),
+                ScheduledEventType::Voice,
+                None,
+                Some("minecraft"),
+                None,
+            )
+            .await
+            .is_err()
         );
 
         create_activity(
