@@ -181,8 +181,24 @@ async fn expire_due(ctx: &serenity::Context, pool: &SqlitePool) {
                 continue;
             }
         };
-        if let Err(error) = finish_game_expiry(pool, guild_id, event_id, state).await {
-            tracing::error!(%guild_id, %event_id, %error, "Could not finalize game-session expiry");
+        match finish_game_expiry(pool, guild_id, event_id, state).await {
+            Ok(true) => {
+                let now = chrono::Utc::now().timestamp();
+                if let Err(error) =
+                    crate::attendance::pause_session(pool, guild_id, event_id, now).await
+                {
+                    tracing::error!(%guild_id, %event_id, %error, "Could not pause expired game attendance");
+                } else if let Err(error) =
+                    crate::activity_aggregate::finalize_activity(pool, guild_id, event_id, now)
+                        .await
+                {
+                    tracing::error!(%guild_id, %event_id, %error, "Could not aggregate expired game attendance");
+                }
+            }
+            Ok(false) => {}
+            Err(error) => {
+                tracing::error!(%guild_id, %event_id, %error, "Could not finalize game-session expiry");
+            }
         }
     }
 }

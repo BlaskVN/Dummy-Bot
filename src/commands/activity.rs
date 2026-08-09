@@ -155,6 +155,10 @@ pub async fn create(
     }
     let event = guild_id.create_scheduled_event(ctx.http(), builder).await?;
     let url = event_url(guild_id, event.id);
+    let game_key = crate::game_config::game_config(&ctx.data().db_pool, guild_id)
+        .await?
+        .filter(|(_, pool)| pool.contains(&voice_channel.id))
+        .map(|(config, _)| config.game_key);
 
     if let Err(error) = create_activity(
         &ctx.data().db_pool,
@@ -162,7 +166,7 @@ pub async fn create(
         event.id,
         event.kind,
         Some(ctx.author().id),
-        None,
+        game_key.as_deref(),
         capacity,
     )
     .await
@@ -228,6 +232,7 @@ pub async fn view(
                 Some("deleted"),
             )
             .await?;
+            finalize_local(ctx, guild_id, event_id).await?;
             ctx.say("The native event is missing; local state was reconciled.")
                 .await?;
         }
@@ -351,6 +356,9 @@ pub async fn update(
         next_status.map(activity_state),
     )
     .await?;
+    if next_status == Some(serenity::ScheduledEventStatus::Completed) {
+        finalize_local(ctx, guild_id, event_id).await?;
+    }
     if capacity.is_some() {
         let promoted = crate::community::set_activity_capacity(
             &ctx.data().db_pool,
@@ -406,7 +414,21 @@ pub async fn cancel(
         Some(state),
     )
     .await?;
+    finalize_local(ctx, guild_id, event_id).await?;
     ctx.say("Activity canceled.").await?;
+    Ok(())
+}
+
+async fn finalize_local(
+    ctx: Context<'_>,
+    guild_id: serenity::GuildId,
+    event_id: serenity::ScheduledEventId,
+) -> Result<(), Error> {
+    let now = chrono::Utc::now().timestamp();
+    crate::attendance::pause_session(&ctx.data().db_pool, guild_id, event_id, now).await?;
+    crate::activity_aggregate::finalize_activity(&ctx.data().db_pool, guild_id, event_id, now)
+        .await?;
+    crate::handlers::activity_presence::clear_session(ctx.data(), guild_id, event_id).await;
     Ok(())
 }
 

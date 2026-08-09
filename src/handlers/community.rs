@@ -28,6 +28,16 @@ pub async fn handle_native_update(data: &Data, event: &serenity::ScheduledEvent)
         {
             tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not pause terminal activity attendance");
         }
+        if let Err(error) = crate::activity_aggregate::finalize_activity(
+            &data.db_pool,
+            event.guild_id,
+            event.id,
+            chrono::Utc::now().timestamp(),
+        )
+        .await
+        {
+            tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not finalize terminal activity");
+        }
         super::activity_presence::clear_session(data, event.guild_id, event.id).await;
     }
 }
@@ -49,6 +59,16 @@ pub async fn handle_native_delete(
     }
     super::activity_presence::clear_session(data, event.guild_id, event.id).await;
     notify_deleted(ctx, data, event.guild_id, event.id).await;
+    if let Err(error) = crate::activity_aggregate::finalize_activity(
+        &data.db_pool,
+        event.guild_id,
+        event.id,
+        chrono::Utc::now().timestamp(),
+    )
+    .await
+    {
+        tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not finalize deleted activity");
+    }
 }
 
 pub async fn reconcile_all(ctx: &serenity::Context, data: &Data) {

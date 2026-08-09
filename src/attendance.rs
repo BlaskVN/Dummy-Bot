@@ -26,6 +26,7 @@ pub async fn reconcile_attendance(
         .bind(guild_id.to_string()).bind(event_id.to_string()).fetch_all(&mut *transaction).await?;
     for (user, started) in active {
         if !eligible.contains(&user) {
+            insert_interval(&mut transaction, guild_id, event_id, &user, started, now).await?;
             sqlx::query("UPDATE activity_attendance SET accumulated_seconds = accumulated_seconds + MAX(0, ? - ?), active_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND scheduled_event_id = ? AND user_id = ? AND active_started_at = ?")
                 .bind(now).bind(started).bind(guild_id.to_string()).bind(event_id.to_string())
                 .bind(&user).bind(started).execute(&mut *transaction).await?;
@@ -56,8 +57,16 @@ pub async fn pause_session(
     event_id: ScheduledEventId,
     now: i64,
 ) -> Result<()> {
-    sqlx::query("UPDATE activity_attendance SET accumulated_seconds = accumulated_seconds + MAX(0, ? - active_started_at), active_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND scheduled_event_id = ? AND active_started_at IS NOT NULL")
-        .bind(now).bind(guild_id.to_string()).bind(event_id.to_string()).execute(pool).await?;
+    let mut transaction = pool.begin().await?;
+    let rows: Vec<(String, i64)> = sqlx::query_as("SELECT user_id, active_started_at FROM activity_attendance WHERE guild_id = ? AND scheduled_event_id = ? AND active_started_at IS NOT NULL")
+        .bind(guild_id.to_string()).bind(event_id.to_string()).fetch_all(&mut *transaction).await?;
+    for (user, started) in rows {
+        insert_interval(&mut transaction, guild_id, event_id, &user, started, now).await?;
+        sqlx::query("UPDATE activity_attendance SET accumulated_seconds = accumulated_seconds + MAX(0, ? - ?), active_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND scheduled_event_id = ? AND user_id = ? AND active_started_at = ?")
+            .bind(now).bind(started).bind(guild_id.to_string()).bind(event_id.to_string())
+            .bind(user).bind(started).execute(&mut *transaction).await?;
+    }
+    transaction.commit().await?;
     Ok(())
 }
 
@@ -67,8 +76,41 @@ pub async fn pause_member(
     user_id: UserId,
     now: i64,
 ) -> Result<()> {
-    sqlx::query("UPDATE activity_attendance SET accumulated_seconds = accumulated_seconds + MAX(0, ? - active_started_at), active_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ? AND active_started_at IS NOT NULL")
-        .bind(now).bind(guild_id.to_string()).bind(user_id.to_string()).execute(pool).await?;
+    let mut transaction = pool.begin().await?;
+    let rows: Vec<(String, i64)> = sqlx::query_as("SELECT scheduled_event_id, active_started_at FROM activity_attendance WHERE guild_id = ? AND user_id = ? AND active_started_at IS NOT NULL")
+        .bind(guild_id.to_string()).bind(user_id.to_string()).fetch_all(&mut *transaction).await?;
+    for (event, started) in rows {
+        let event_id = ScheduledEventId::new(event.parse()?);
+        insert_interval(
+            &mut transaction,
+            guild_id,
+            event_id,
+            &user_id.to_string(),
+            started,
+            now,
+        )
+        .await?;
+        sqlx::query("UPDATE activity_attendance SET accumulated_seconds = accumulated_seconds + MAX(0, ? - ?), active_started_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ? AND scheduled_event_id = ? AND user_id = ? AND active_started_at = ?")
+            .bind(now).bind(started).bind(guild_id.to_string()).bind(event_id.to_string())
+            .bind(user_id.to_string()).bind(started).execute(&mut *transaction).await?;
+    }
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn insert_interval(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    guild_id: GuildId,
+    event_id: ScheduledEventId,
+    user_id: &str,
+    started: i64,
+    ended: i64,
+) -> Result<()> {
+    if ended > started {
+        sqlx::query("INSERT INTO activity_attendance_interval (guild_id, scheduled_event_id, user_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING")
+            .bind(guild_id.to_string()).bind(event_id.to_string()).bind(user_id)
+            .bind(started).bind(ended).execute(&mut **transaction).await?;
+    }
     Ok(())
 }
 

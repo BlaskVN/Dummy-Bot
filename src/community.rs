@@ -54,14 +54,13 @@ pub async fn create_activity(
     if capacity.is_some_and(|capacity| capacity <= 0) {
         bail!("Activity capacity must be positive");
     }
-    let kind = if game_key.is_some() {
+    let kind = if host.is_some() {
+        "community"
+    } else if game_key.is_some() {
         "game"
     } else {
-        "community"
-    };
-    if kind == "community" && host.is_none() {
         bail!("Community activities require a host");
-    }
+    };
     sqlx::query("INSERT INTO community_activity (guild_id, scheduled_event_id, host_user_id, kind, game_key, capacity) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(guild_id.to_string()).bind(event_id.to_string()).bind(host.map(|id| id.to_string()))
         .bind(kind).bind(game_key).bind(capacity).execute(pool).await?;

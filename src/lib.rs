@@ -1,3 +1,4 @@
+pub mod activity_aggregate;
 pub mod app;
 pub mod attendance;
 pub mod automod;

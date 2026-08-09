@@ -17,6 +17,12 @@ pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
     if let Err(error) = crate::attendance::clear_stale_active_starts(&data.db_pool).await {
         tracing::error!(%error, "Could not clear stale attendance starts after resume");
     }
+    if let Err(error) =
+        crate::activity_aggregate::finalize_pending(&data.db_pool, chrono::Utc::now().timestamp())
+            .await
+    {
+        tracing::error!(%error, "Could not finalize pending activity aggregates after resume");
+    }
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
     super::game_session::wake_expiry(data);
@@ -36,6 +42,12 @@ pub async fn handle_ready_reconnect(ctx: &serenity::Context, data: &Data) {
     restore_presence(ctx, &data.db_pool).await;
     if let Err(error) = crate::attendance::clear_stale_active_starts(&data.db_pool).await {
         tracing::error!(%error, "Could not clear stale attendance starts after ready");
+    }
+    if let Err(error) =
+        crate::activity_aggregate::finalize_pending(&data.db_pool, chrono::Utc::now().timestamp())
+            .await
+    {
+        tracing::error!(%error, "Could not finalize pending activity aggregates after ready");
     }
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;

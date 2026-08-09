@@ -74,6 +74,14 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 {
                     tracing::error!(%error, "Could not clear stale attendance starts");
                 }
+                if let Err(error) = crate::activity_aggregate::finalize_pending(
+                    &data.db_pool,
+                    chrono::Utc::now().timestamp(),
+                )
+                .await
+                {
+                    tracing::error!(%error, "Could not finalize pending activity aggregates");
+                }
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
                 handlers::community::reconcile_all(ctx, &data).await;
                 handlers::game_session::spawn_expiry_worker(
