@@ -18,6 +18,7 @@ pub mod reward_roles;
 pub mod state;
 pub mod timezone;
 pub mod word_puzzle;
+pub mod word_puzzle_store;
 pub mod word_set;
 
 pub use app::run;

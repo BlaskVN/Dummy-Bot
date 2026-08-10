@@ -23,6 +23,15 @@ pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
     {
         tracing::error!(%error, "Could not finalize pending activity aggregates after resume");
     }
+    if let Err(error) = crate::word_puzzle_store::reconcile_expired(
+        &data.db_pool,
+        chrono::Utc::now().timestamp(),
+        100,
+    )
+    .await
+    {
+        tracing::error!(%error, "Could not reconcile expired Word Puzzles after resume");
+    }
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
     super::rewards::reconcile_all(ctx, data).await;
@@ -49,6 +58,15 @@ pub async fn handle_ready_reconnect(ctx: &serenity::Context, data: &Data) {
             .await
     {
         tracing::error!(%error, "Could not finalize pending activity aggregates after ready");
+    }
+    if let Err(error) = crate::word_puzzle_store::reconcile_expired(
+        &data.db_pool,
+        chrono::Utc::now().timestamp(),
+        100,
+    )
+    .await
+    {
+        tracing::error!(%error, "Could not reconcile expired Word Puzzles after ready");
     }
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;

@@ -82,6 +82,15 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 {
                     tracing::error!(%error, "Could not finalize pending activity aggregates");
                 }
+                if let Err(error) = crate::word_puzzle_store::reconcile_expired(
+                    &data.db_pool,
+                    chrono::Utc::now().timestamp(),
+                    100,
+                )
+                .await
+                {
+                    tracing::error!(%error, "Could not reconcile expired Word Puzzles");
+                }
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
                 handlers::community::reconcile_all(ctx, &data).await;
                 handlers::rewards::reconcile_all(ctx, &data).await;
