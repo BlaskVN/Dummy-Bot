@@ -165,6 +165,7 @@ pub async fn delete_guild_data(
         "word_puzzle_participant",
         "word_puzzle_session",
         "word_puzzle_completion",
+        "word_puzzle_interaction",
         "activity_reward_grant",
         "activity_reward_config",
         "activity_completion",

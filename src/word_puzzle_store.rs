@@ -1,6 +1,6 @@
 use crate::word_puzzle::{LetterMark, Puzzle, PuzzleState};
 use anyhow::{Result, anyhow, bail};
-use poise::serenity_prelude::{GuildId, UserId};
+use poise::serenity_prelude::{ChannelId, GuildId, UserId};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -36,6 +36,14 @@ pub struct SummaryEntry {
     pub attempts: i64,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct FinishedSession {
+    pub id: i64,
+    pub guild_id: String,
+    pub answer: String,
+    pub result_channel_id: String,
+}
+
 #[derive(sqlx::FromRow)]
 struct SubmissionSession {
     answer: String,
@@ -48,6 +56,7 @@ pub async fn create_session(
     pool: &SqlitePool,
     guild_id: GuildId,
     creator_id: UserId,
+    result_channel_id: ChannelId,
     now: i64,
 ) -> Result<Session> {
     let entropy: i64 = sqlx::query_scalar("SELECT random()")
@@ -56,8 +65,8 @@ pub async fn create_session(
     let answers: Vec<_> = crate::word_set::ANSWERS.lines().collect();
     let answer = answers[entropy.unsigned_abs() as usize % answers.len()];
     let mut transaction = pool.begin().await?;
-    let id = sqlx::query("INSERT INTO word_puzzle_session (guild_id, creator_id, answer, created_at) VALUES (?, ?, ?, ?)")
-        .bind(guild_id.to_string()).bind(creator_id.to_string()).bind(answer).bind(now)
+    let id = sqlx::query("INSERT INTO word_puzzle_session (guild_id, creator_id, answer, created_at, result_channel_id) VALUES (?, ?, ?, ?, ?)")
+        .bind(guild_id.to_string()).bind(creator_id.to_string()).bind(answer).bind(now).bind(result_channel_id.to_string())
         .execute(&mut *transaction).await?.last_insert_rowid();
     sqlx::query("INSERT INTO word_puzzle_participant (session_id, user_id) VALUES (?, ?)")
         .bind(id)
@@ -117,8 +126,19 @@ pub async fn submit_guess(
     user_id: UserId,
     guess: &str,
     now: i64,
+    delivery_key: &str,
 ) -> Result<PuzzleState> {
     let mut transaction = pool.begin().await?;
+    if let Some(outcome) = sqlx::query_scalar::<_, String>(
+        "SELECT outcome FROM word_puzzle_interaction WHERE delivery_key = ?",
+    )
+    .bind(delivery_key)
+    .fetch_optional(&mut *transaction)
+    .await?
+    {
+        transaction.commit().await?;
+        return parse_state(&outcome);
+    }
     let row: Option<SubmissionSession> = sqlx::query_as(
         "SELECT answer, started_at, deadline_at, finished_at FROM word_puzzle_session WHERE id = ?",
     )
@@ -188,8 +208,28 @@ pub async fn submit_guess(
             finish(&mut transaction, session_id, now).await?;
         }
     }
+    sqlx::query("INSERT INTO word_puzzle_interaction (delivery_key, guild_id, session_id, outcome, created_at) SELECT ?, guild_id, id, ?, ? FROM word_puzzle_session WHERE id = ?")
+        .bind(delivery_key).bind(state_name(state)).bind(now).bind(session_id)
+        .execute(&mut *transaction).await?;
     transaction.commit().await?;
     Ok(state)
+}
+
+pub async fn finish_now(
+    pool: &SqlitePool,
+    session_id: i64,
+    creator_id: UserId,
+    now: i64,
+) -> Result<bool> {
+    let mut transaction = pool.begin().await?;
+    let deadline: Option<i64> = sqlx::query_scalar("SELECT deadline_at FROM word_puzzle_session WHERE id = ? AND creator_id = ? AND started_at IS NOT NULL AND finished_at IS NULL")
+        .bind(session_id).bind(creator_id.to_string()).fetch_optional(&mut *transaction).await?.flatten();
+    let allowed = deadline.is_some_and(|deadline| deadline <= now);
+    if allowed {
+        expire(&mut transaction, session_id, now).await?;
+    }
+    transaction.commit().await?;
+    Ok(allowed)
 }
 
 pub async fn board_for(
@@ -254,6 +294,43 @@ pub async fn reconcile_expired(pool: &SqlitePool, now: i64, limit: i64) -> Resul
         transaction.commit().await?;
     }
     Ok(sessions.len() as u64)
+}
+
+pub async fn claim_finished(
+    pool: &SqlitePool,
+    now: i64,
+    limit: i64,
+) -> Result<Vec<FinishedSession>> {
+    if limit <= 0 {
+        return Ok(Vec::new());
+    }
+    let candidates: Vec<i64> = sqlx::query_scalar("SELECT id FROM word_puzzle_session WHERE finished_at IS NOT NULL AND result_channel_id IS NOT NULL AND (summary_claimed_at IS NULL OR summary_claimed_at <= ?) ORDER BY finished_at, id LIMIT ?")
+        .bind(now - 300).bind(limit).fetch_all(pool).await?;
+    let mut claimed = Vec::new();
+    for session_id in candidates {
+        let mut transaction = pool.begin().await?;
+        let won = sqlx::query("UPDATE word_puzzle_session SET summary_claimed_at = ? WHERE id = ? AND (summary_claimed_at IS NULL OR summary_claimed_at <= ?)")
+            .bind(now).bind(session_id).bind(now - 300).execute(&mut *transaction).await?.rows_affected() == 1;
+        if won && let Some(session) = sqlx::query_as(
+            "SELECT id, guild_id, answer, result_channel_id FROM word_puzzle_session WHERE id = ?",
+        )
+        .bind(session_id)
+        .fetch_optional(&mut *transaction)
+        .await?
+        {
+            claimed.push(session);
+        }
+        transaction.commit().await?;
+    }
+    Ok(claimed)
+}
+
+pub async fn release_summary_claim(pool: &SqlitePool, session_id: i64) -> Result<()> {
+    sqlx::query("UPDATE word_puzzle_session SET summary_claimed_at = NULL WHERE id = ?")
+        .bind(session_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn cleanup_delivered(pool: &SqlitePool, session_id: i64) -> Result<bool> {
@@ -322,15 +399,32 @@ fn encode_marks(marks: [LetterMark; 5]) -> String {
         .collect()
 }
 
+const fn state_name(state: PuzzleState) -> &'static str {
+    match state {
+        PuzzleState::Playing => "playing",
+        PuzzleState::Won => "won",
+        PuzzleState::Lost => "lost",
+    }
+}
+
+fn parse_state(state: &str) -> Result<PuzzleState> {
+    match state {
+        "playing" => Ok(PuzzleState::Playing),
+        "won" => Ok(PuzzleState::Won),
+        "lost" => Ok(PuzzleState::Lost),
+        _ => bail!("Invalid stored puzzle outcome"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        board_for, cleanup_delivered, create_session, join, reconcile_expired, session,
+        board_for, cleanup_delivered, create_session, finish_now, join, reconcile_expired, session,
         session_for_guild, start, submit_guess, summary,
     };
     use crate::database::init_db;
     use crate::word_puzzle::PuzzleState;
-    use poise::serenity_prelude::{GuildId, UserId};
+    use poise::serenity_prelude::{ChannelId, GuildId, UserId};
 
     async fn test_pool(name: &str) -> (sqlx::SqlitePool, std::path::PathBuf) {
         let directory = std::env::temp_dir().join(format!(
@@ -353,15 +447,26 @@ mod tests {
     #[tokio::test]
     async fn freezes_roster_and_keeps_unfinished_boards_private() {
         let (pool, directory) = test_pool("privacy").await;
-        let session = create_session(&pool, GuildId::new(1), UserId::new(2), 100)
-            .await
-            .unwrap();
+        let session = create_session(
+            &pool,
+            GuildId::new(1),
+            UserId::new(2),
+            ChannelId::new(9),
+            100,
+        )
+        .await
+        .unwrap();
         assert!(join(&pool, session.id, UserId::new(3)).await.unwrap());
         start(&pool, session.id, UserId::new(2), 110, 60)
             .await
             .unwrap();
+        assert!(
+            !finish_now(&pool, session.id, UserId::new(2), 120)
+                .await
+                .unwrap()
+        );
         assert!(!join(&pool, session.id, UserId::new(4)).await.unwrap());
-        submit_guess(&pool, session.id, UserId::new(2), "actor", 120)
+        submit_guess(&pool, session.id, UserId::new(2), "actor", 120, "privacy-1")
             .await
             .unwrap();
         assert_eq!(
@@ -392,9 +497,15 @@ mod tests {
     #[tokio::test]
     async fn restart_preserves_answer_deadline_and_expiry_then_cleanup_keeps_keys() {
         let (pool, directory) = test_pool("restart").await;
-        let created = create_session(&pool, GuildId::new(1), UserId::new(2), 100)
-            .await
-            .unwrap();
+        let created = create_session(
+            &pool,
+            GuildId::new(1),
+            UserId::new(2),
+            ChannelId::new(9),
+            100,
+        )
+        .await
+        .unwrap();
         join(&pool, created.id, UserId::new(3)).await.unwrap();
         start(&pool, created.id, UserId::new(2), 110, 60)
             .await
@@ -436,23 +547,56 @@ mod tests {
     #[tokio::test]
     async fn persists_same_answer_and_private_guesses_for_all_participants() {
         let (pool, directory) = test_pool("boards").await;
-        let created = create_session(&pool, GuildId::new(1), UserId::new(2), 100)
-            .await
-            .unwrap();
+        let created = create_session(
+            &pool,
+            GuildId::new(1),
+            UserId::new(2),
+            ChannelId::new(9),
+            100,
+        )
+        .await
+        .unwrap();
         join(&pool, created.id, UserId::new(3)).await.unwrap();
         start(&pool, created.id, UserId::new(2), 110, 60)
             .await
             .unwrap();
         assert_eq!(
-            submit_guess(&pool, created.id, UserId::new(2), &created.answer, 120)
-                .await
-                .unwrap(),
+            submit_guess(
+                &pool,
+                created.id,
+                UserId::new(2),
+                &created.answer,
+                120,
+                "boards-1",
+            )
+            .await
+            .unwrap(),
             PuzzleState::Won
         );
         assert_eq!(
-            submit_guess(&pool, created.id, UserId::new(3), &created.answer, 121)
-                .await
-                .unwrap(),
+            submit_guess(
+                &pool,
+                created.id,
+                UserId::new(3),
+                &created.answer,
+                121,
+                "boards-2",
+            )
+            .await
+            .unwrap(),
+            PuzzleState::Won
+        );
+        assert_eq!(
+            submit_guess(
+                &pool,
+                created.id,
+                UserId::new(3),
+                &created.answer,
+                121,
+                "boards-2",
+            )
+            .await
+            .unwrap(),
             PuzzleState::Won
         );
         let result = summary(&pool, created.id).await.unwrap();
