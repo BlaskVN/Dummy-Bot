@@ -10,7 +10,7 @@ settings live in `config.env`, secrets in `.env`, and deployment settings in
 
 - General server and bot information commands
 - Kick, ban, and purge moderation commands with Discord permission checks
-- Per-guild prefix, language, and message-log configuration
+- Slash-only commands with per-Guild language and Message Log configuration
 - Deleted/edited message logging with bounded attachment archiving
 - Persistent bot presence and voice-channel reconnect support
 - Guild time zones and one-time installation onboarding
@@ -21,12 +21,16 @@ settings live in `config.env`, secrets in `.env`, and deployment settings in
 ## Requirements and local setup
 
 Install the stable Rust toolchain and create a bot in the Discord Developer
-Portal. Enable the Message Content and Server Members privileged intents; voice
-commands also require the Voice States intent.
+Portal. Install it with the `bot` and `applications.commands` scopes. Enable the
+Server Members privileged intent. Voice States, Guild Messages, Scheduled
+Events, and AutoMod event intents are nonprivileged and requested for their
+respective features.
 
-Set `MESSAGE_CONTENT_ENABLED=false` when Message Content is not enabled in the
-Developer Portal. The bot will start normally and mark enabled Message Logs as
-degraded; keep it `true` for existing deployments that already have access.
+Message Content is optional and is not used by command parsing. Enable it in the
+Developer Portal and set `MESSAGE_CONTENT_ENABLED=true` only when full
+edited/deleted Message Log content is required. Otherwise set it to `false`;
+the bot starts normally, keeps metadata-safe logging, and explicitly marks an
+enabled Message Log as degraded.
 
 Set `GUILD_PRESENCES_ENABLED=true` only after enabling Presence Intent in the
 Developer Portal (and completing Discord review when required). Leave it false
@@ -42,7 +46,8 @@ Run the checks expected before merging:
 
 ```bash
 cargo test --locked
-cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo build --release --locked
 ```
 
@@ -59,7 +64,7 @@ src/
 ├── commands/
 │   ├── general/            # ping, botinfo, serverinfo
 │   ├── moderation/         # kick, ban, purge
-│   ├── configuration/      # language, prefix, logging, settings
+│   ├── configuration/      # language, logging, settings
 │   ├── presence.rs
 │   └── voice.rs
 ├── handlers/               # event dispatch and event features
@@ -82,8 +87,8 @@ error.
 |---|---|
 | Secret (`.env`) | `DISCORD_TOKEN` |
 | Connection | `DATABASE_URL`, `DATA_DIRECTORY`, `RUST_LOG` |
-| Ownership/defaults | `OWNER_IDS`, `DEFAULT_PREFIX`, `DEFAULT_LANGUAGE` |
-| Command limits | `PREFIX_MAX_CHARS`, `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
+| Ownership/defaults | `OWNER_IDS`, `DEFAULT_LANGUAGE` |
+| Command limits | `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
 | Runtime/recovery | `CACHE_MAX_MESSAGES`, `GATEWAY_RESUME_DELAY_SECONDS`, `GATEWAY_READY_DELAY_SECONDS`, `GUILD_PRESENCES_ENABLED` |
 | Message logging | `MESSAGE_CONTENT_ENABLED`, `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
 | Appearance | all `EMBED_COLOR_*` variables |
@@ -93,8 +98,11 @@ use the Discord application or team owner. Attachment limits default to 10 MiB
 per file and 64 MiB per purge; raise them only when the destination guild and
 host resources support the larger transfer.
 
-Per-guild prefixes are stored in SQLite. `DEFAULT_PREFIX` is only used until a
-guild saves its own prefix.
+Commands are slash-only. v2.0 removes per-Guild prefixes and does not retain a
+hidden text-command compatibility mode. See
+[the v2.0 upgrade note](docs/v2-slash-only-upgrade.md) before upgrading; the
+forward migration discards saved prefix values, so database rollback requires a
+pre-upgrade backup.
 
 ## Database migrations
 
@@ -126,7 +134,7 @@ including channel overwrites.
 | `/ban` | `BAN_MEMBERS` and a role above the target | `BAN_MEMBERS` and a role above the target |
 | `/purge` | `MANAGE_MESSAGES` | `VIEW_CHANNEL`, `MANAGE_MESSAGES`, `READ_MESSAGE_HISTORY` |
 | `/warn`, `/timeout`, `/case view`, `/case list` | `MODERATE_MEMBERS` and target hierarchy | `MODERATE_MEMBERS` and target hierarchy for timeout |
-| `/settings`, `/setprefix`, `/messagelog`, `/language`, `/timezone`, `/moderation-channel`, `/automod-observer`, `/case void` | `MANAGE_GUILD` | depends on the requested action/channel |
+| `/settings`, `/messagelog`, `/language`, `/timezone`, `/moderation-channel`, `/automod-observer`, `/case void` | `MANAGE_GUILD` | depends on the requested action/channel |
 | `/donation` | Bot Owner | — |
 | `/connect` | `MOVE_MEMBERS`, while in a voice channel with `CONNECT` | `VIEW_CHANNEL`, `CONNECT` in that channel |
 | `/disconnect` | `MOVE_MEMBERS` | no member-management permission is needed to leave |
@@ -146,6 +154,12 @@ cp .deploy.env.example .deploy.env
 # Set every DEPLOY_* value.
 ./deploy.sh
 ```
+
+Before restarting the service, confirm the Developer Portal intent toggles
+match `config.env`: Server Members is required; Presence must match
+`GUILD_PRESENCES_ENABLED`; Message Content must match
+`MESSAGE_CONTENT_ENABLED`. Verified applications may require Discord approval
+for privileged intents. Slash commands do not require Message Content.
 
 The first installation also needs a systemd unit. Load `.deploy.env`, render
 `systemd/discord-bot.service.template` by replacing each `@...@` placeholder,

@@ -10,7 +10,7 @@ trong `.deploy.env`.
 
 - Các lệnh thông tin bot và server
 - Kick, ban và purge với kiểm tra quyền Discord
-- Cấu hình prefix, ngôn ngữ và message log theo từng guild
+- Lệnh chỉ dùng slash, cùng cấu hình ngôn ngữ và Message Log theo từng guild
 - Log tin nhắn bị xóa/chỉnh sửa, có lưu attachment với giới hạn tài nguyên
 - Lưu trạng thái presence và tự kết nối lại voice channel
 - Múi giờ theo guild và hướng dẫn một lần khi cài đặt
@@ -20,13 +20,15 @@ trong `.deploy.env`.
 
 ## Yêu cầu và chạy local
 
-Cài Rust stable và tạo bot trong Discord Developer Portal. Bật hai privileged
-intent Message Content và Server Members; lệnh voice cũng cần Voice States
-intent.
+Cài Rust stable và tạo bot trong Discord Developer Portal. Cài bot với scope
+`bot` và `applications.commands`. Bật privileged intent Server Members. Bot yêu
+cầu các nonprivileged intent Voice States, Guild Messages, Scheduled Events và
+AutoMod events cho các tính năng tương ứng.
 
-Đặt `MESSAGE_CONTENT_ENABLED=false` khi chưa bật Message Content trong
-Developer Portal. Bot vẫn khởi động và đánh dấu Message Log đang bật là suy
-giảm; giữ `true` cho deployment hiện có đã được cấp quyền.
+Message Content là tùy chọn và command parser không dùng intent này. Chỉ bật nó
+trong Developer Portal và đặt `MESSAGE_CONTENT_ENABLED=true` khi cần đầy đủ nội
+dung Message Log đã xóa/chỉnh sửa. Nếu không, đặt `false`; bot vẫn khởi động,
+ghi metadata an toàn và đánh dấu rõ Message Log đang bật là suy giảm.
 
 Chỉ đặt `GUILD_PRESENCES_ENABLED=true` sau khi bật Presence Intent trong
 Developer Portal (và hoàn tất xét duyệt Discord nếu cần). Giữ `false` để bot
@@ -42,7 +44,8 @@ Chạy các bước kiểm tra trước khi merge:
 
 ```bash
 cargo test --locked
-cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo build --release --locked
 ```
 
@@ -59,7 +62,7 @@ src/
 ├── commands/
 │   ├── general/            # ping, botinfo, serverinfo
 │   ├── moderation/         # kick, ban, purge
-│   ├── configuration/      # language, prefix, logging, settings
+│   ├── configuration/      # language, logging, settings
 │   ├── presence.rs
 │   └── voice.rs
 ├── handlers/               # event dispatcher và từng event feature
@@ -81,8 +84,8 @@ permission flags, không dựa trên tên role.
 |---|---|
 | Secret (`.env`) | `DISCORD_TOKEN` |
 | Kết nối | `DATABASE_URL`, `DATA_DIRECTORY`, `RUST_LOG` |
-| Owner/mặc định | `OWNER_IDS`, `DEFAULT_PREFIX`, `DEFAULT_LANGUAGE` |
-| Giới hạn command | `PREFIX_MAX_CHARS`, `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
+| Owner/mặc định | `OWNER_IDS`, `DEFAULT_LANGUAGE` |
+| Giới hạn command | `PURGE_MAX_MESSAGES`, `PURGE_CONFIRMATION_SECONDS`, `BAN_MAX_DELETE_DAYS`, `PRESENCE_MAX_DURATION_MINUTES` |
 | Runtime/recovery | `CACHE_MAX_MESSAGES`, `GATEWAY_RESUME_DELAY_SECONDS`, `GATEWAY_READY_DELAY_SECONDS`, `GUILD_PRESENCES_ENABLED` |
 | Message log | `MESSAGE_CONTENT_ENABLED`, `MESSAGE_PREVIEW_CHARS`, `MESSAGE_LOG_CHUNK_CHARS`, `MESSAGE_TIMESTAMP_FORMAT`, `ATTACHMENT_MAX_BYTES`, `PURGE_ATTACHMENT_MAX_TOTAL_BYTES` |
 | Giao diện | toàn bộ biến `EMBED_COLOR_*` |
@@ -91,8 +94,11 @@ permission flags, không dựa trên tên role.
 dùng owner/team owner của Discord application. Attachment mặc định bị giới hạn
 10 MiB/file và 64 MiB/purge; chỉ tăng khi guild đích và tài nguyên host hỗ trợ.
 
-Prefix theo guild được lưu trong SQLite. `DEFAULT_PREFIX` chỉ được dùng cho đến
-khi guild lưu prefix riêng.
+Bot chỉ dùng slash command. v2.0 xóa prefix theo Guild và không giữ chế độ tương
+thích command bằng text. Hãy đọc
+[ghi chú nâng cấp v2.0](docs/v2-slash-only-upgrade.md) trước khi nâng cấp;
+migration sẽ xóa prefix đã lưu, nên rollback database cần bản backup trước khi
+nâng cấp.
 
 ## Database migration
 
@@ -123,7 +129,7 @@ message log tính quyền tại channel đích, bao gồm channel overwrite.
 | `/ban` | `BAN_MEMBERS` và role cao hơn target | `BAN_MEMBERS` và role cao hơn target |
 | `/purge` | `MANAGE_MESSAGES` | `VIEW_CHANNEL`, `MANAGE_MESSAGES`, `READ_MESSAGE_HISTORY` |
 | `/warn`, `/timeout`, `/case view`, `/case list` | `MODERATE_MEMBERS` và hierarchy của target | `MODERATE_MEMBERS` và hierarchy của target với timeout |
-| `/settings`, `/setprefix`, `/messagelog`, `/language`, `/timezone`, `/moderation-channel`, `/automod-observer`, `/case void` | `MANAGE_GUILD` | tùy hành động/channel đích |
+| `/settings`, `/messagelog`, `/language`, `/timezone`, `/moderation-channel`, `/automod-observer`, `/case void` | `MANAGE_GUILD` | tùy hành động/channel đích |
 | `/donation` | Chủ Bot | — |
 | `/connect` | `MOVE_MEMBERS`, đang ở voice channel và có `CONNECT` | `VIEW_CHANNEL`, `CONNECT` tại channel đó |
 | `/disconnect` | `MOVE_MEMBERS` | không cần quyền quản lý thành viên để tự rời |
@@ -143,6 +149,12 @@ cp .deploy.env.example .deploy.env
 # Đặt toàn bộ giá trị DEPLOY_*.
 ./deploy.sh
 ```
+
+Trước khi restart service, hãy kiểm tra intent trong Developer Portal khớp với
+`config.env`: Server Members là bắt buộc; Presence phải khớp
+`GUILD_PRESENCES_ENABLED`; Message Content phải khớp
+`MESSAGE_CONTENT_ENABLED`. Application đã verify có thể cần Discord phê duyệt
+privileged intent. Slash command không cần Message Content.
 
 Lần cài đầu cần thêm systemd unit. Nạp `.deploy.env`, render
 `systemd/discord-bot.service.template` bằng cách thay các placeholder `@...@`,

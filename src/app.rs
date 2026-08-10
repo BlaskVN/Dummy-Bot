@@ -158,15 +158,23 @@ mod tests {
     use poise::serenity_prelude::GatewayIntents;
 
     #[test]
-    fn requests_both_automod_intents() {
-        let intents = gateway_intents(true, true);
-        assert!(intents.contains(GatewayIntents::AUTO_MODERATION_EXECUTION));
-        assert!(intents.contains(GatewayIntents::AUTO_MODERATION_CONFIGURATION));
-        assert!(intents.contains(GatewayIntents::GUILD_SCHEDULED_EVENTS));
-        assert!(intents.contains(GatewayIntents::MESSAGE_CONTENT));
-        let degraded = gateway_intents(false, false);
-        assert!(!degraded.contains(GatewayIntents::MESSAGE_CONTENT));
-        assert!(!degraded.contains(GatewayIntents::GUILD_PRESENCES));
-        assert!(intents.contains(GatewayIntents::GUILD_PRESENCES));
+    fn startup_intents_support_message_content_enabled_and_disabled() {
+        let enabled = gateway_intents(true, true);
+        let disabled = gateway_intents(false, false);
+        assert!(enabled.contains(GatewayIntents::MESSAGE_CONTENT));
+        assert!(!disabled.contains(GatewayIntents::MESSAGE_CONTENT));
+        assert!(enabled.contains(GatewayIntents::GUILD_PRESENCES));
+        assert!(!disabled.contains(GatewayIntents::GUILD_PRESENCES));
+        for intent in [
+            GatewayIntents::GUILD_MEMBERS,
+            GatewayIntents::GUILD_VOICE_STATES,
+            GatewayIntents::GUILD_MESSAGES,
+            GatewayIntents::GUILD_SCHEDULED_EVENTS,
+            GatewayIntents::AUTO_MODERATION_EXECUTION,
+            GatewayIntents::AUTO_MODERATION_CONFIGURATION,
+        ] {
+            assert!(enabled.contains(intent));
+            assert!(disabled.contains(intent));
+        }
     }
 }

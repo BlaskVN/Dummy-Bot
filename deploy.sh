@@ -18,7 +18,7 @@ source "$config_file"
 : "${DEPLOY_BINARY_NAME:?Missing DEPLOY_BINARY_NAME}"
 : "${DEPLOY_SERVICE_NAME:?Missing DEPLOY_SERVICE_NAME}"
 
-cargo build --release
+cargo build --release --locked
 scp "target/release/${DEPLOY_BINARY_NAME}" \
     "${DEPLOY_REMOTE_HOST}:${DEPLOY_REMOTE_DIR}/${DEPLOY_BINARY_NAME}.new"
 scp config.env "${DEPLOY_REMOTE_HOST}:${DEPLOY_REMOTE_DIR}/config.env.new"
