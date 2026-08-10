@@ -160,7 +160,7 @@ pub async fn guess(
         ),
     )
     .await?;
-    deliver_finished(ctx.serenity_context(), ctx.data(), now).await;
+    award_and_deliver(ctx.serenity_context(), ctx.data(), now).await;
     Ok(())
 }
 
@@ -212,7 +212,7 @@ pub async fn finish(ctx: Context<'_>) -> Result<(), Error> {
         .await?
     {
         send_private(ctx, render(language, Text::Finished, &[])).await?;
-        deliver_finished(ctx.serenity_context(), ctx.data(), now).await;
+        award_and_deliver(ctx.serenity_context(), ctx.data(), now).await;
     } else {
         send_private(ctx, render(language, Text::FinishDenied, &[])).await?;
     }
@@ -245,6 +245,15 @@ pub async fn reconcile_and_deliver_all(ctx: &serenity::Context, data: &Data) {
     let now = chrono::Utc::now().timestamp();
     if let Err(error) = crate::word_puzzle_store::reconcile_expired(&data.db_pool, now, 100).await {
         tracing::error!(%error, "Could not reconcile expired Word Puzzles");
+    }
+    award_and_deliver(ctx, data, now).await;
+}
+
+async fn award_and_deliver(ctx: &serenity::Context, data: &Data, now: i64) {
+    if let Err(error) =
+        crate::word_puzzle_store::award_pending_credits(&data.db_pool, now, 500).await
+    {
+        tracing::error!(%error, "Could not award Word Puzzle credits");
     }
     deliver_finished(ctx, data, now).await;
 }

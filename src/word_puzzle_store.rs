@@ -52,6 +52,15 @@ struct SubmissionSession {
     finished_at: Option<i64>,
 }
 
+#[derive(sqlx::FromRow)]
+struct PendingCredit {
+    session_id: i64,
+    guild_id: String,
+    user_id: String,
+    completed_at: i64,
+    iana_name: Option<String>,
+}
+
 pub async fn create_session(
     pool: &SqlitePool,
     guild_id: GuildId,
@@ -296,6 +305,47 @@ pub async fn reconcile_expired(pool: &SqlitePool, now: i64, limit: i64) -> Resul
     Ok(sessions.len() as u64)
 }
 
+pub async fn award_pending_credits(pool: &SqlitePool, now: i64, limit: i64) -> Result<u64> {
+    if limit <= 0 {
+        return Ok(0);
+    }
+    let pending: Vec<PendingCredit> = sqlx::query_as("SELECT c.session_id, c.guild_id, c.user_id, c.completed_at, t.iana_name FROM word_puzzle_completion c LEFT JOIN guild_timezone t ON t.guild_id = c.guild_id WHERE c.credit_processed_at IS NULL ORDER BY c.completed_at, c.session_id, c.user_id LIMIT ?")
+        .bind(limit).fetch_all(pool).await?;
+    let mut awarded = 0;
+    for completion in pending {
+        let guild = completion.guild_id.parse::<u64>().ok().map(GuildId::new);
+        let user = completion.user_id.parse::<u64>().ok().map(UserId::new);
+        let timezone = completion
+            .iana_name
+            .as_deref()
+            .and_then(crate::timezone::parse);
+        if let (Some(guild), Some(user), Some(timezone), Some(completed)) = (
+            guild,
+            user,
+            timezone,
+            chrono::DateTime::from_timestamp(completion.completed_at, 0),
+        ) && !crate::activity_privacy::is_opted_out(pool, guild, user).await?
+        {
+            let day = completed.with_timezone(&timezone).date_naive();
+            let source = format!("word-puzzle-day:{day}");
+            if crate::activity_aggregate::add_session_credit(
+                pool,
+                guild,
+                user,
+                "word-puzzle",
+                &source,
+            )
+            .await?
+            {
+                awarded += 1;
+            }
+        }
+        sqlx::query("UPDATE word_puzzle_completion SET credit_processed_at = ? WHERE session_id = ? AND user_id = ? AND credit_processed_at IS NULL")
+            .bind(now).bind(completion.session_id).bind(&completion.user_id).execute(pool).await?;
+    }
+    Ok(awarded)
+}
+
 pub async fn claim_finished(
     pool: &SqlitePool,
     now: i64,
@@ -419,8 +469,8 @@ fn parse_state(state: &str) -> Result<PuzzleState> {
 #[cfg(test)]
 mod tests {
     use super::{
-        board_for, cleanup_delivered, create_session, finish_now, join, reconcile_expired, session,
-        session_for_guild, start, submit_guess, summary,
+        award_pending_credits, board_for, cleanup_delivered, create_session, finish_now, join,
+        reconcile_expired, session, session_for_guild, start, submit_guess, summary,
     };
     use crate::database::init_db;
     use crate::word_puzzle::PuzzleState;
@@ -547,6 +597,10 @@ mod tests {
     #[tokio::test]
     async fn persists_same_answer_and_private_guesses_for_all_participants() {
         let (pool, directory) = test_pool("boards").await;
+        sqlx::query("INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('1', 'UTC')")
+            .execute(&pool)
+            .await
+            .unwrap();
         let created = create_session(
             &pool,
             GuildId::new(1),
@@ -556,55 +610,114 @@ mod tests {
         )
         .await
         .unwrap();
+        sqlx::query("UPDATE word_puzzle_session SET answer = 'apple' WHERE id = ?")
+            .bind(created.id)
+            .execute(&pool)
+            .await
+            .unwrap();
         join(&pool, created.id, UserId::new(3)).await.unwrap();
         start(&pool, created.id, UserId::new(2), 110, 60)
             .await
             .unwrap();
         assert_eq!(
-            submit_guess(
-                &pool,
-                created.id,
-                UserId::new(2),
-                &created.answer,
-                120,
-                "boards-1",
-            )
-            .await
-            .unwrap(),
+            submit_guess(&pool, created.id, UserId::new(2), "apple", 120, "boards-1",)
+                .await
+                .unwrap(),
             PuzzleState::Won
         );
-        assert_eq!(
-            submit_guess(
+        for (index, guess) in ["actor", "adore", "after", "agile", "alarm", "album"]
+            .into_iter()
+            .enumerate()
+        {
+            let state = submit_guess(
                 &pool,
                 created.id,
                 UserId::new(3),
-                &created.answer,
+                guess,
                 121,
-                "boards-2",
+                &format!("boards-{}", index + 2),
             )
             .await
-            .unwrap(),
-            PuzzleState::Won
-        );
+            .unwrap();
+            assert_eq!(
+                state,
+                if index == 5 {
+                    PuzzleState::Lost
+                } else {
+                    PuzzleState::Playing
+                }
+            );
+        }
         assert_eq!(
-            submit_guess(
-                &pool,
-                created.id,
-                UserId::new(3),
-                &created.answer,
-                121,
-                "boards-2",
-            )
-            .await
-            .unwrap(),
-            PuzzleState::Won
+            submit_guess(&pool, created.id, UserId::new(3), "album", 121, "boards-7",)
+                .await
+                .unwrap(),
+            PuzzleState::Lost
         );
         let result = summary(&pool, created.id).await.unwrap();
         assert_eq!(result.len(), 2);
-        assert!(
-            result
-                .iter()
-                .all(|entry| entry.status == "won" && entry.attempts == 1)
+        assert_eq!((result[0].status.as_str(), result[0].attempts), ("won", 1));
+        assert_eq!((result[1].status.as_str(), result[1].attempts), ("lost", 6));
+        assert_eq!(award_pending_credits(&pool, 130, 10).await.unwrap(), 2);
+        let credits: Vec<i64> = sqlx::query_scalar("SELECT session_credits FROM activity_member_aggregate WHERE guild_id = '1' ORDER BY user_id")
+            .fetch_all(&pool).await.unwrap();
+        assert_eq!(credits, [1, 1]);
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn credits_once_per_local_calendar_day_without_play_time() {
+        use chrono::TimeZone;
+
+        let (pool, directory) = test_pool("credit").await;
+        sqlx::query("INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('1', 'Asia/Bangkok'), ('2', 'America/New_York')")
+            .execute(&pool).await.unwrap();
+        crate::activity_privacy::opt_out(&pool, GuildId::new(1), UserId::new(5))
+            .await
+            .unwrap();
+        let bangkok = crate::timezone::parse("Asia/Bangkok").unwrap();
+        let at = |day, hour, minute| {
+            bangkok
+                .with_ymd_and_hms(2026, 1, day, hour, minute, 0)
+                .unwrap()
+                .timestamp()
+        };
+        let rows = [
+            (1, "1", "2", at(1, 4, 59)),
+            (2, "1", "2", at(1, 5, 0)),
+            (3, "1", "3", at(1, 5, 0)),
+            (4, "2", "2", at(1, 5, 0)),
+            (5, "1", "4", at(1, 23, 59)),
+            (6, "1", "4", at(2, 0, 0)),
+            (7, "1", "5", at(1, 5, 0)),
+        ];
+        for (session_id, guild, user, completed_at) in rows {
+            sqlx::query("INSERT INTO word_puzzle_completion (session_id, guild_id, user_id, completed_at) VALUES (?, ?, ?, ?)")
+                .bind(session_id).bind(guild).bind(user).bind(completed_at).execute(&pool).await.unwrap();
+        }
+        assert_eq!(
+            award_pending_credits(&pool, at(2, 1, 0), 100)
+                .await
+                .unwrap(),
+            5
+        );
+        assert_eq!(
+            award_pending_credits(&pool, at(2, 1, 1), 100)
+                .await
+                .unwrap(),
+            0
+        );
+        let aggregates: Vec<(String, String, i64, i64)> = sqlx::query_as("SELECT guild_id, user_id, play_minutes, session_credits FROM activity_member_aggregate ORDER BY guild_id, user_id")
+            .fetch_all(&pool).await.unwrap();
+        assert_eq!(
+            aggregates,
+            vec![
+                ("1".to_owned(), "2".to_owned(), 0, 1),
+                ("1".to_owned(), "3".to_owned(), 0, 1),
+                ("1".to_owned(), "4".to_owned(), 0, 2),
+                ("2".to_owned(), "2".to_owned(), 0, 1),
+            ]
         );
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();

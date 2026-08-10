@@ -21,7 +21,12 @@ pub async fn opt_out(pool: &SqlitePool, guild_id: GuildId, user_id: UserId) -> R
     .bind(user_id.to_string())
     .execute(&mut *transaction)
     .await?;
+    sqlx::query("DELETE FROM word_puzzle_guess WHERE user_id = ? AND session_id IN (SELECT id FROM word_puzzle_session WHERE guild_id = ?)")
+        .bind(user_id.to_string()).bind(guild_id.to_string()).execute(&mut *transaction).await?;
+    sqlx::query("DELETE FROM word_puzzle_participant WHERE user_id = ? AND session_id IN (SELECT id FROM word_puzzle_session WHERE guild_id = ?)")
+        .bind(user_id.to_string()).bind(guild_id.to_string()).execute(&mut *transaction).await?;
     for table in [
+        "word_puzzle_completion",
         "activity_attendance_interval",
         "activity_attendance",
         "activity_completion",
