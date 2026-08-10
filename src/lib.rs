@@ -1,4 +1,5 @@
 pub mod activity_aggregate;
+pub mod activity_privacy;
 pub mod app;
 pub mod attendance;
 pub mod automod;

@@ -18,7 +18,9 @@ const REQUIRED_CREATE_PERMISSIONS: serenity::Permissions = serenity::Permissions
         "cancel",
         "check_in",
         "profile",
-        "leaderboard"
+        "leaderboard",
+        "opt_out",
+        "opt_in"
     ),
     guild_only
 )]
@@ -264,6 +266,77 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
     Ok(())
+}
+
+#[poise::command(rename = "opt-out", slash_command, guild_only)]
+pub async fn opt_out(
+    ctx: Context<'_>,
+    #[description = "Permanently delete this server's Activity data"] confirm: bool,
+) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let language = ctx.data().language(guild_id).await;
+    if !confirm {
+        ctx.send(
+            poise::CreateReply::default()
+                .content(privacy_response(language, "confirm"))
+                .ephemeral(true),
+        )
+        .await?;
+        return Ok(());
+    }
+    crate::activity_privacy::opt_out(&ctx.data().db_pool, guild_id, ctx.author().id).await?;
+    crate::handlers::activity_presence::remove_member(ctx.data(), guild_id, ctx.author().id).await;
+    ctx.send(
+        poise::CreateReply::default()
+            .content(privacy_response(language, "out"))
+            .ephemeral(true),
+    )
+    .await?;
+    Ok(())
+}
+
+#[poise::command(rename = "opt-in", slash_command, guild_only)]
+pub async fn opt_in(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let language = ctx.data().language(guild_id).await;
+    crate::activity_privacy::opt_in(&ctx.data().db_pool, guild_id, ctx.author().id).await?;
+    ctx.send(
+        poise::CreateReply::default()
+            .content(privacy_response(language, "in"))
+            .ephemeral(true),
+    )
+    .await?;
+    Ok(())
+}
+
+fn privacy_response(language: Language, state: &str) -> &'static str {
+    match (language, state) {
+        (Language::English, "confirm") => {
+            "Run `/activity opt-out confirm:true` to permanently delete this server's Activity data."
+        }
+        (Language::English, "out") => {
+            "Activity tracking is off and this server's Activity data was deleted."
+        }
+        (Language::English, _) => "Activity tracking is on with empty totals.",
+        (Language::Vietnamese, "confirm") => {
+            "Chạy `/activity opt-out confirm:true` để xóa vĩnh viễn dữ liệu Hoạt động trong server này."
+        }
+        (Language::Vietnamese, "out") => {
+            "Đã tắt theo dõi và xóa dữ liệu Hoạt động trong server này."
+        }
+        (Language::Vietnamese, _) => "Đã bật theo dõi Hoạt động với tổng số trống.",
+        (Language::Japanese, "confirm") => {
+            "このサーバーのアクティビティデータを完全に削除するには `/activity opt-out confirm:true` を実行してください。"
+        }
+        (Language::Japanese, "out") => {
+            "追跡を停止し、このサーバーのアクティビティデータを削除しました。"
+        }
+        (Language::Japanese, _) => "空の集計でアクティビティ追跡を有効にしました。",
+    }
 }
 
 fn rank_members(mut rows: Vec<(u64, i64)>, excluded: &HashSet<u64>) -> Vec<RankedMember> {

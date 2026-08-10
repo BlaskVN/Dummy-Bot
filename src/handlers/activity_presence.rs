@@ -12,6 +12,13 @@ pub async fn handle_presence_update(
     let Some(guild_id) = presence.guild_id else {
         return;
     };
+    if crate::activity_privacy::is_opted_out(&data.db_pool, guild_id, presence.user.id)
+        .await
+        .unwrap_or(true)
+    {
+        remove_member(data, guild_id, presence.user.id).await;
+        return;
+    }
     let Ok(Some((config, pool))) = crate::game_config::game_config(&data.db_pool, guild_id).await
     else {
         return;
@@ -63,6 +70,13 @@ pub async fn handle_voice_change(
     let Some(guild_id) = voice.guild_id else {
         return;
     };
+    if crate::activity_privacy::is_opted_out(&data.db_pool, guild_id, voice.user_id)
+        .await
+        .unwrap_or(true)
+    {
+        remove_member(data, guild_id, voice.user_id).await;
+        return;
+    }
     clear_manual_member(data, guild_id, voice.user_id).await;
     let Ok(Some((config, pool))) = crate::game_config::game_config(&data.db_pool, guild_id).await
     else {
