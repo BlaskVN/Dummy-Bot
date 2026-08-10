@@ -1,6 +1,10 @@
 pub const ANSWERS: &str = include_str!("../assets/word_puzzle/answers.txt");
 pub const ALLOWED: &str = include_str!("../assets/word_puzzle/allowed.txt");
 
+pub fn is_allowed(word: &str) -> bool {
+    ALLOWED.lines().any(|allowed| allowed == word)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ALLOWED, ANSWERS};
