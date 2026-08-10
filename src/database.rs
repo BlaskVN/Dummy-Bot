@@ -160,9 +160,15 @@ pub async fn delete_guild_data(
 ) -> Result<()> {
     let guild_id = guild_id.to_string();
     let mut transaction = pool.begin().await?;
+    for table in ["word_puzzle_guess", "word_puzzle_participant"] {
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DELETE FROM {table} WHERE session_id IN (SELECT id FROM word_puzzle_session WHERE guild_id = ?)"
+        )))
+        .bind(&guild_id)
+        .execute(&mut *transaction)
+        .await?;
+    }
     for table in [
-        "word_puzzle_guess",
-        "word_puzzle_participant",
         "word_puzzle_session",
         "word_puzzle_completion",
         "word_puzzle_interaction",

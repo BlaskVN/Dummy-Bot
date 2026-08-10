@@ -1,6 +1,6 @@
 [package]
 name = "rust_discord_bot"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2024"
 description = "High-performance modular Discord bot in Rust"
 
