@@ -1,7 +1,7 @@
 use crate::database::load_donation_config;
 use crate::i18n::{TranslationKey, t, tf};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
-use poise::serenity_prelude as serenity;
 
 /// Display bot information and uptime.
 #[poise::command(slash_command, user_cooldown = 5)]
@@ -36,29 +36,13 @@ pub async fn botinfo(ctx: Context<'_>) -> Result<(), Error> {
     if load_donation_config(&ctx.data().db_pool).await?.is_some() {
         details.push(t(lang, TranslationKey::BotInfoDonate).to_string());
     }
-    let description = details
-        .iter()
-        .enumerate()
-        .map(|(index, detail)| {
-            format!(
-                "{} {}",
-                if index + 1 == details.len() {
-                    "└"
-                } else {
-                    "├"
-                },
-                detail
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let description = details.join("\n");
 
-    let embed = serenity::CreateEmbed::new()
+    let embed = ui::embed(ctx.data(), Tone::Primary)
         .title(t(lang, TranslationKey::BotInfoTitle))
-        .description(description)
-        .color(ctx.data().config.colors.primary);
+        .description(description);
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }

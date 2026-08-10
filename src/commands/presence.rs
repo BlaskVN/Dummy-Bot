@@ -1,6 +1,7 @@
 use crate::config::EmbedColors;
 use crate::database::{clear_bot_presence, load_bot_presence, save_bot_presence};
 use crate::i18n::{TranslationKey, t, tf};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 use sqlx::SqlitePool;
@@ -179,7 +180,7 @@ pub async fn restore_presence(ctx: &serenity::Context, pool: &SqlitePool) {
 
 // ─── Commands ───────────────────────────────────────────────────────────────
 
-/// Manage bot presence — status and Rich Presence. (Owner only)
+/// Manage the bot's status and Rich Presence activity.
 #[poise::command(
     slash_command,
     subcommands("status", "activity", "clear_activity"),
@@ -192,12 +193,11 @@ pub async fn presence(ctx: Context<'_>) -> Result<(), Error> {
         None => ctx.data().default_language(),
     };
 
-    let embed = serenity::CreateEmbed::new()
+    let embed = ui::embed(ctx.data(), Tone::Primary)
         .title(t(lang, TranslationKey::PresenceTitle))
-        .description(t(lang, TranslationKey::PresenceHelp))
-        .color(ctx.data().config.colors.presence);
+        .description(t(lang, TranslationKey::PresenceHelp));
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
     Ok(())
 }
 
@@ -222,7 +222,7 @@ pub async fn status(
             TranslationKey::PresenceDurationRange,
             &[&ctx.data().config.presence_max_duration_minutes],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
@@ -287,7 +287,7 @@ pub async fn status(
         )));
     }
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }
@@ -317,7 +317,7 @@ pub async fn activity(
             TranslationKey::PresenceDurationRange,
             &[&ctx.data().config.presence_max_duration_minutes],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
@@ -422,7 +422,7 @@ pub async fn activity(
         )));
     }
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }
@@ -453,7 +453,7 @@ pub async fn clear_activity(ctx: Context<'_>) -> Result<(), Error> {
         .description(t(lang, TranslationKey::PresenceActivityCleared))
         .color(ctx.data().config.colors.online);
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }

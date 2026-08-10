@@ -1,9 +1,11 @@
 use crate::game_config::{NewGameConfig, clear_game_config, save_game_config};
 use crate::permissions::missing_channel_permissions;
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 use std::collections::HashSet;
 
+/// Configure game roles, channels, and voice session detection.
 #[poise::command(
     rename = "game-config",
     slash_command,
@@ -17,6 +19,7 @@ pub async fn game_config(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Create or update configuration for one game.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
@@ -41,13 +44,21 @@ pub async fn set(
             .await?
             .flatten();
     if timezone.is_none() {
-        ctx.say("Configure the server time zone before enabling game sessions.")
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            "Configure the server time zone before enabling game sessions.",
+        )
+        .await?;
         return Ok(());
     }
     let Ok(pool) = parse_voice_pool(&voice_pool) else {
-        ctx.say("Provide one or more unique voice channel IDs.")
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            "Provide one or more unique voice channel IDs.",
+        )
+        .await?;
         return Ok(());
     };
     let application_id = match activity_application_id
@@ -57,7 +68,7 @@ pub async fn set(
     {
         Ok(value) => value,
         Err(_) => {
-            ctx.say("Use a valid Discord application ID.").await?;
+            ui::reply(ctx, Tone::Error, "Use a valid Discord application ID.").await?;
             return Ok(());
         }
     };
@@ -69,8 +80,12 @@ pub async fn set(
         || !pool.contains(&primary_voice.id)
         || !valid_names(&game_key, &display_name, &activity_name)
     {
-        ctx.say("Invalid role, channel, voice pool, game name, or activity name.")
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            "Invalid role, channel, voice pool, game name, or activity name.",
+        )
+        .await?;
         return Ok(());
     }
     let invalid_pool_channel = {
@@ -85,8 +100,12 @@ pub async fn set(
         })
     };
     if invalid_pool_channel {
-        ctx.say("Every voice-pool ID must be a voice channel in this server.")
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            "Every voice-pool ID must be a voice channel in this server.",
+        )
+        .await?;
         return Ok(());
     }
     let bot_id = ctx.cache().current_user().id;
@@ -98,8 +117,12 @@ pub async fn set(
             serenity::Permissions::VIEW_CHANNEL,
         )?;
         if !missing.is_empty() {
-            ctx.say(format!("The bot cannot view <#{channel_id}>: {missing}"))
-                .await?;
+            ui::reply(
+                ctx,
+                Tone::Error,
+                format!("The bot cannot view <#{channel_id}>: {missing}"),
+            )
+            .await?;
             return Ok(());
         }
     }
@@ -118,17 +141,18 @@ pub async fn set(
         },
     )
     .await?;
-    ctx.say("Game configuration enabled.").await?;
+    ui::reply(ctx, Tone::Success, "Game configuration enabled.").await?;
     Ok(())
 }
 
+/// Remove configuration for one game.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     clear_game_config(&ctx.data().db_pool, guild_id).await?;
-    ctx.say("Game configuration cleared.").await?;
+    ui::reply(ctx, Tone::Success, "Game configuration cleared.").await?;
     Ok(())
 }
 

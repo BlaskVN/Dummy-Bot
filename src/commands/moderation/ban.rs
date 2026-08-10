@@ -2,10 +2,11 @@ use super::{case_summary, denial_translation, send_case_summary};
 use crate::i18n::{TranslationKey, t, tf};
 use crate::moderation_cases::{ModerationAction, create_case, valid_evidence_url};
 use crate::permissions::moderation_denial;
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
-/// Ban a member from the server.
+/// Ban a member and record the moderation case.
 #[poise::command(
     slash_command,
     guild_only,
@@ -30,15 +31,19 @@ pub async fn ban(
     let lang = ctx.data().language(guild_id).await;
 
     if let Some(denial) = moderation_denial(ctx, member.user.id)? {
-        ctx.say(t(lang, denial_translation(denial))).await?;
+        ui::reply(ctx, Tone::Error, t(lang, denial_translation(denial))).await?;
         return Ok(());
     }
     if evidence
         .as_deref()
         .is_some_and(|url| !valid_evidence_url(url, guild_id))
     {
-        ctx.say(t(lang, TranslationKey::ModerationInvalidEvidence))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            t(lang, TranslationKey::ModerationInvalidEvidence),
+        )
+        .await?;
         return Ok(());
     }
 
@@ -50,7 +55,7 @@ pub async fn ban(
             TranslationKey::ModerationDeleteDaysRange,
             &[&ctx.data().config.ban_max_delete_days],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
     member
@@ -71,8 +76,12 @@ pub async fn ban(
         Ok(number) => number,
         Err(error) => {
             tracing::error!(%guild_id, target = %member.user.id, moderator = %ctx.author().id, %error, "Discord ban succeeded but moderation case creation failed");
-            ctx.say(t(lang, TranslationKey::ModerationActionCaseFailed))
-                .await?;
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ModerationActionCaseFailed),
+            )
+            .await?;
             return Ok(());
         }
     };
@@ -84,12 +93,7 @@ pub async fn ban(
         ctx.author().id,
         &reason,
     );
-    ctx.send(
-        poise::CreateReply::default()
-            .content(&summary)
-            .allowed_mentions(serenity::CreateAllowedMentions::new()),
-    )
-    .await?;
+    ui::reply(ctx, Tone::Success, &summary).await?;
     if let Err(error) = send_case_summary(ctx, guild_id, &summary).await {
         tracing::warn!(%guild_id, case_number, %error, "Failed to send moderation case summary");
     }

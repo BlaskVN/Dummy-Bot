@@ -1,10 +1,11 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::message_log_health::{MessageLogHealth, mark_warning_sent, reconcile};
 use crate::permissions::missing_channel_permissions;
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
-/// Parent command for message logging management.
+/// Configure edited and deleted message logging for this server.
 #[poise::command(
     slash_command,
     subcommands("enable", "disable", "status"),
@@ -40,7 +41,7 @@ pub async fn enable(
             TranslationKey::ModerationBotMissingPermissions,
             &[&missing],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
@@ -67,7 +68,11 @@ pub async fn enable(
             .send_message(
                 ctx.http(),
                 serenity::CreateMessage::new()
-                    .content(t(lang, TranslationKey::MessageLogDegradedWarning))
+                    .embed(ui::panel(
+                        ctx.data(),
+                        Tone::Warning,
+                        t(lang, TranslationKey::MessageLogDegradedWarning),
+                    ))
                     .allowed_mentions(serenity::CreateAllowedMentions::new()),
             )
             .await
@@ -85,11 +90,9 @@ pub async fn enable(
 
     let message = tf(lang, TranslationKey::MessageLogEnabled, &[&log_channel.id]);
 
-    let embed = serenity::CreateEmbed::new()
-        .description(message)
-        .color(ctx.data().config.colors.success);
+    let embed = ui::panel(ctx.data(), Tone::Success, message);
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }
@@ -110,10 +113,12 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
 
     if result.rows_affected() == 0 {
-        let embed = serenity::CreateEmbed::new()
-            .description(t(lang, TranslationKey::MessageLogNotSetup))
-            .color(ctx.data().config.colors.warning);
-        ctx.send(poise::CreateReply::default().embed(embed)).await?;
+        let embed = ui::panel(
+            ctx.data(),
+            Tone::Warning,
+            t(lang, TranslationKey::MessageLogNotSetup),
+        );
+        ctx.send(ui::embed_reply(embed)).await?;
         return Ok(());
     }
     reconcile(
@@ -129,11 +134,13 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         "Message logging disabled"
     );
 
-    let embed = serenity::CreateEmbed::new()
-        .description(t(lang, TranslationKey::MessageLogDisabled))
-        .color(ctx.data().config.colors.success);
+    let embed = ui::panel(
+        ctx.data(),
+        Tone::Success,
+        t(lang, TranslationKey::MessageLogDisabled),
+    );
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }
@@ -175,22 +182,23 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
             let health_text = tf(lang, TranslationKey::MessageLogHealth, &[&health]);
 
             let description = format!(
-                "├ {} {}\n├ {}\n└ {}",
+                "{} {}\n{}\n{}",
                 status_label, status, channel_text, health_text
             );
 
-            let embed = serenity::CreateEmbed::new()
+            let embed = ui::embed(ctx.data(), Tone::Primary)
                 .title(t(lang, TranslationKey::MessageLogStatusTitle))
-                .description(description)
-                .color(ctx.data().config.colors.primary);
+                .description(description);
 
-            ctx.send(poise::CreateReply::default().embed(embed)).await?;
+            ctx.send(ui::embed_reply(embed)).await?;
         }
         None => {
-            let embed = serenity::CreateEmbed::new()
-                .description(t(lang, TranslationKey::MessageLogUseEnable))
-                .color(ctx.data().config.colors.warning);
-            ctx.send(poise::CreateReply::default().embed(embed)).await?;
+            let embed = ui::panel(
+                ctx.data(),
+                Tone::Warning,
+                t(lang, TranslationKey::MessageLogUseEnable),
+            );
+            ctx.send(ui::embed_reply(embed)).await?;
         }
     }
 

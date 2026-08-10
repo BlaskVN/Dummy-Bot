@@ -30,8 +30,8 @@ subcommands.
 
 Already slash-only surfaces include `/messagelog`, `/language`, `/timezone`,
 `/moderation-channel`, `/automod-observer`, `/game-config`, `/case`, `/warn`,
-`/timeout`, `/donation`, `/activity`, `/word-puzzle`, and `/valorant`. They do
-not need a compatibility change.
+`/timeout`, `/donation`, `/activity`, and `/word-puzzle`. They do not need a
+compatibility change.
 
 ## Prefix-only implementation removed in v2.0
 

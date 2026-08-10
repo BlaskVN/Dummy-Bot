@@ -1,8 +1,10 @@
 use crate::automod::{observer_enabled, set_observer_enabled};
 use crate::i18n::{TranslationKey, t};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use anyhow::Context as _;
 
+/// Configure passive observation of Discord AutoMod events.
 #[poise::command(
     rename = "automod-observer",
     slash_command,
@@ -15,6 +17,7 @@ pub async fn automod_observer(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Enable passive AutoMod event observation for this server.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn enable(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().context("Not in a guild")?;
@@ -26,8 +29,12 @@ pub async fn enable(ctx: Context<'_>) -> Result<(), Error> {
     .fetch_one(&ctx.data().db_pool)
     .await?;
     if !channel_configured {
-        ctx.say(t(lang, TranslationKey::AutoModObserverNeedsChannel))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            t(lang, TranslationKey::AutoModObserverNeedsChannel),
+        )
+        .await?;
         return Ok(());
     }
     let bot_can_manage_guild = {
@@ -39,26 +46,40 @@ pub async fn enable(ctx: Context<'_>) -> Result<(), Error> {
         guild.member_permissions(bot).manage_guild()
     };
     if !bot_can_manage_guild {
-        ctx.say(t(lang, TranslationKey::AutoModObserverNeedsPermission))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            t(lang, TranslationKey::AutoModObserverNeedsPermission),
+        )
+        .await?;
         return Ok(());
     }
     set_observer_enabled(&ctx.data().db_pool, guild_id, true).await?;
-    ctx.say(t(lang, TranslationKey::AutoModObserverEnabled))
-        .await?;
+    ui::reply(
+        ctx,
+        Tone::Success,
+        t(lang, TranslationKey::AutoModObserverEnabled),
+    )
+    .await?;
     Ok(())
 }
 
+/// Disable passive AutoMod event observation for this server.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().context("Not in a guild")?;
     let lang = ctx.data().language(guild_id).await;
     set_observer_enabled(&ctx.data().db_pool, guild_id, false).await?;
-    ctx.say(t(lang, TranslationKey::AutoModObserverDisabled))
-        .await?;
+    ui::reply(
+        ctx,
+        Tone::Success,
+        t(lang, TranslationKey::AutoModObserverDisabled),
+    )
+    .await?;
     Ok(())
 }
 
+/// Show whether AutoMod event observation is enabled.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().context("Not in a guild")?;
@@ -68,6 +89,6 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     } else {
         TranslationKey::AutoModObserverDisabled
     };
-    ctx.say(t(lang, key)).await?;
+    ui::reply(ctx, Tone::Neutral, t(lang, key)).await?;
     Ok(())
 }

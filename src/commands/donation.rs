@@ -1,15 +1,18 @@
 use crate::database::{clear_donation_config, save_donation_config};
 use crate::i18n::{TranslationKey, t};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use anyhow::Context as _;
 use poise::serenity_prelude as serenity;
 use std::path::{Path, PathBuf};
 
+/// Configure the donation message, link, and optional QR image.
 #[poise::command(slash_command, subcommands("set", "clear"), owners_only, hide_in_help)]
 pub async fn donation(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Set the donation message, HTTPS link, and optional QR image.
 #[poise::command(slash_command, owners_only)]
 pub async fn set(
     ctx: Context<'_>,
@@ -19,14 +22,23 @@ pub async fn set(
 ) -> Result<(), Error> {
     let lang = language(ctx).await;
     if !valid_update(message.as_deref(), url.as_deref(), qr_image.as_ref()) {
-        ctx.say(t(lang, TranslationKey::DonationInvalidUpdate))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            t(lang, TranslationKey::DonationInvalidUpdate),
+        )
+        .await?;
         return Ok(());
     }
     if let Some(url) = url.as_deref()
         && !valid_https_url(url)
     {
-        ctx.say(t(lang, TranslationKey::DonationInvalidUrl)).await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            t(lang, TranslationKey::DonationInvalidUrl),
+        )
+        .await?;
         return Ok(());
     }
 
@@ -35,8 +47,12 @@ pub async fn set(
             Ok(filename) => Some(filename),
             Err(error) => {
                 tracing::warn!(%error, "Rejected donation QR image");
-                ctx.say(t(lang, TranslationKey::DonationInvalidImage))
-                    .await?;
+                ui::reply(
+                    ctx,
+                    Tone::Error,
+                    t(lang, TranslationKey::DonationInvalidImage),
+                )
+                .await?;
                 return Ok(());
             }
         },
@@ -61,17 +77,18 @@ pub async fn set(
     if let Some(old) = old {
         remove_owned_qr(&ctx.data().config.data_directory, &old).await;
     }
-    ctx.say(t(lang, TranslationKey::DonationSaved)).await?;
+    ui::reply(ctx, Tone::Success, t(lang, TranslationKey::DonationSaved)).await?;
     Ok(())
 }
 
+/// Clear all configured donation details.
 #[poise::command(slash_command, owners_only)]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let lang = language(ctx).await;
     if let Some(filename) = clear_donation_config(&ctx.data().db_pool).await? {
         remove_owned_qr(&ctx.data().config.data_directory, &filename).await;
     }
-    ctx.say(t(lang, TranslationKey::DonationCleared)).await?;
+    ui::reply(ctx, Tone::Success, t(lang, TranslationKey::DonationCleared)).await?;
     Ok(())
 }
 

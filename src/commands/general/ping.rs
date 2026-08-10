@@ -1,4 +1,5 @@
 use crate::i18n::{TranslationKey, t, tf};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 
 /// Check bot latency and responsiveness.
@@ -10,11 +11,11 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     let start = std::time::Instant::now();
-    let msg = ctx.say(t(lang, TranslationKey::PingPong)).await?;
+    let msg = ui::reply(ctx, Tone::Primary, t(lang, TranslationKey::PingPong)).await?;
     let latency = start.elapsed();
 
     let message = tf(lang, TranslationKey::PingLatency, &[&latency.as_millis()]);
-    msg.edit(ctx, poise::CreateReply::default().content(message))
+    msg.edit(ctx, ui::reply_builder(ctx.data(), Tone::Success, message))
         .await?;
 
     tracing::debug!(latency_ms = latency.as_millis(), "Ping command executed");

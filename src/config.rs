@@ -4,12 +4,21 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 /// Discord API limits. These are protocol constraints, not deployment settings.
+/// Source: <https://docs.discord.com/developers/resources/message#embed-limits>
 pub mod discord_limits {
+    pub const MESSAGE_CONTENT_CHARS: usize = 2_000;
     pub const ACTIVITY_TEXT_CHARS: usize = 128;
     pub const BAN_DELETE_DAYS: u8 = 7;
     pub const BULK_DELETE_MESSAGES: u8 = 100;
     pub const EMBEDS_PER_MESSAGE: usize = 10;
-    pub const EMBED_FIELD_CHARS: usize = 1_024;
+    pub const EMBED_TOTAL_CHARS: usize = 6_000;
+    pub const EMBED_TITLE_CHARS: usize = 256;
+    pub const EMBED_DESCRIPTION_CHARS: usize = 4_096;
+    pub const EMBED_FIELDS: usize = 25;
+    pub const EMBED_FIELD_NAME_CHARS: usize = 256;
+    pub const EMBED_FIELD_VALUE_CHARS: usize = 1_024;
+    pub const EMBED_FOOTER_CHARS: usize = 2_048;
+    pub const EMBED_AUTHOR_CHARS: usize = 256;
 }
 
 #[derive(Debug, Clone)]
@@ -114,9 +123,9 @@ impl Config {
             bail!("BAN_MAX_DELETE_DAYS exceeds Discord's ban limit");
         }
         if self.message_preview_chars == 0
-            || self.message_preview_chars > discord_limits::EMBED_FIELD_CHARS.saturating_sub(6)
+            || self.message_preview_chars > discord_limits::EMBED_FIELD_VALUE_CHARS
             || self.message_log_chunk_chars == 0
-            || self.message_log_chunk_chars > discord_limits::EMBED_FIELD_CHARS.saturating_sub(6)
+            || self.message_log_chunk_chars > discord_limits::EMBED_FIELD_VALUE_CHARS
         {
             bail!("message log sizes must fit in a Discord embed field");
         }

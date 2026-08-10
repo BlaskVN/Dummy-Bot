@@ -1,9 +1,10 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::permissions::missing_channel_permissions;
+use crate::ui::{self, Tone};
 use crate::{Context, Error, VoiceConnectionInfo};
 use poise::serenity_prelude as serenity;
 
-/// Join the voice channel you are currently in.
+/// Connect the bot to your current voice channel.
 #[poise::command(
     slash_command,
     guild_only,
@@ -33,10 +34,12 @@ pub async fn voice_connect(ctx: Context<'_>) -> Result<(), Error> {
     let voice_channel_id = match user_voice_channel {
         Some(id) => id,
         None => {
-            let embed = serenity::CreateEmbed::new()
-                .description(t(lang, TranslationKey::VoiceNotInChannel))
-                .color(ctx.data().config.colors.error);
-            ctx.send(poise::CreateReply::default().embed(embed)).await?;
+            let embed = ui::panel(
+                ctx.data(),
+                Tone::Error,
+                t(lang, TranslationKey::VoiceNotInChannel),
+            );
+            ctx.send(ui::embed_reply(embed)).await?;
             return Ok(());
         }
     };
@@ -53,7 +56,7 @@ pub async fn voice_connect(ctx: Context<'_>) -> Result<(), Error> {
             TranslationKey::ModerationUserMissingPermissions,
             &[&user_missing],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
@@ -70,7 +73,7 @@ pub async fn voice_connect(ctx: Context<'_>) -> Result<(), Error> {
             TranslationKey::ModerationBotMissingPermissions,
             &[&missing],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
@@ -82,10 +85,12 @@ pub async fn voice_connect(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .contains_key(&guild_id)
     {
-        let embed = serenity::CreateEmbed::new()
-            .description(t(lang, TranslationKey::VoiceAlreadyConnected))
-            .color(ctx.data().config.colors.warning);
-        ctx.send(poise::CreateReply::default().embed(embed)).await?;
+        let embed = ui::panel(
+            ctx.data(),
+            Tone::Warning,
+            t(lang, TranslationKey::VoiceAlreadyConnected),
+        );
+        ctx.send(ui::embed_reply(embed)).await?;
         return Ok(());
     }
 
@@ -111,16 +116,14 @@ pub async fn voice_connect(ctx: Context<'_>) -> Result<(), Error> {
     );
 
     let message = tf(lang, TranslationKey::VoiceConnected, &[&voice_channel_id]);
-    let embed = serenity::CreateEmbed::new()
-        .description(message)
-        .color(ctx.data().config.colors.success);
+    let embed = ui::panel(ctx.data(), Tone::Success, message);
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }
 
-/// Leave the current voice channel.
+/// Disconnect the bot from its current voice channel.
 #[poise::command(
     slash_command,
     guild_only,
@@ -143,10 +146,12 @@ pub async fn voice_disconnect(ctx: Context<'_>) -> Result<(), Error> {
         .await
         .contains_key(&guild_id)
     {
-        let embed = serenity::CreateEmbed::new()
-            .description(t(lang, TranslationKey::VoiceNotConnected))
-            .color(ctx.data().config.colors.error);
-        ctx.send(poise::CreateReply::default().embed(embed)).await?;
+        let embed = ui::panel(
+            ctx.data(),
+            Tone::Error,
+            t(lang, TranslationKey::VoiceNotConnected),
+        );
+        ctx.send(ui::embed_reply(embed)).await?;
         return Ok(());
     }
 
@@ -164,11 +169,13 @@ pub async fn voice_disconnect(ctx: Context<'_>) -> Result<(), Error> {
         "Bot left voice channel"
     );
 
-    let embed = serenity::CreateEmbed::new()
-        .description(t(lang, TranslationKey::VoiceDisconnected))
-        .color(ctx.data().config.colors.success);
+    let embed = ui::panel(
+        ctx.data(),
+        Tone::Success,
+        t(lang, TranslationKey::VoiceDisconnected),
+    );
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }
