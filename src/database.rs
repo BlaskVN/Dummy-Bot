@@ -115,25 +115,6 @@ pub async fn clear_bot_presence(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
-pub async fn guild_prefix(
-    pool: &SqlitePool,
-    guild_id: Option<poise::serenity_prelude::GuildId>,
-    default: &str,
-) -> Result<String> {
-    let Some(guild_id) = guild_id else {
-        return Ok(default.to_owned());
-    };
-
-    Ok(
-        sqlx::query_scalar("SELECT prefix FROM guild_config WHERE guild_id = ?")
-            .bind(guild_id.to_string())
-            .fetch_optional(pool)
-            .await
-            .context("Failed to load guild prefix")?
-            .unwrap_or_else(|| default.to_owned()),
-    )
-}
-
 pub async fn message_log_channel(
     pool: &SqlitePool,
     guild_id: poise::serenity_prelude::GuildId,
@@ -194,7 +175,6 @@ pub async fn delete_guild_data(
         "guild_timezone",
         "guild_language",
         "message_log_config",
-        "guild_config",
     ] {
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM {table} WHERE guild_id = ?"
@@ -263,12 +243,19 @@ mod tests {
         let pool = init_db(&url, &directory).await.unwrap();
 
         let tables: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'guild_config'",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'guild_language'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
         assert_eq!(tables, 1);
+        let prefix_tables: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'guild_config'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(prefix_tables, 0);
 
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
@@ -387,8 +374,7 @@ mod tests {
         .await
         .unwrap();
         sqlx::raw_sql(
-            "INSERT INTO guild_config (guild_id, prefix) VALUES ('1', '!'), ('2', '?');
-             INSERT INTO message_log_config (guild_id, log_channel_id, enabled) VALUES ('1', '11', 1), ('2', '22', 1);
+            "INSERT INTO message_log_config (guild_id, log_channel_id, enabled) VALUES ('1', '11', 1), ('2', '22', 1);
              INSERT INTO guild_language (guild_id, language) VALUES ('1', 'en'), ('2', 'vi');
              INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('1', 'UTC'), ('2', 'Asia/Bangkok');
              INSERT INTO guild_onboarding (guild_id) VALUES ('1'), ('2');
@@ -404,8 +390,7 @@ mod tests {
         delete_guild_data(&pool, guild).await.unwrap();
         delete_guild_data(&pool, guild).await.unwrap();
         let deleted_rows: i64 = sqlx::query_scalar(
-            "SELECT (SELECT COUNT(*) FROM guild_config WHERE guild_id = '1') +
-                    (SELECT COUNT(*) FROM message_log_config WHERE guild_id = '1') +
+            "SELECT (SELECT COUNT(*) FROM message_log_config WHERE guild_id = '1') +
                     (SELECT COUNT(*) FROM guild_language WHERE guild_id = '1') +
                     (SELECT COUNT(*) FROM guild_timezone WHERE guild_id = '1') +
                     (SELECT COUNT(*) FROM guild_onboarding WHERE guild_id = '1') +

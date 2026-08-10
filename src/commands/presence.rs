@@ -182,7 +182,6 @@ pub async fn restore_presence(ctx: &serenity::Context, pool: &SqlitePool) {
 /// Manage bot presence — status and Rich Presence. (Owner only)
 #[poise::command(
     slash_command,
-    prefix_command,
     subcommands("status", "activity", "clear_activity"),
     owners_only,
     hide_in_help
@@ -203,7 +202,7 @@ pub async fn presence(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Set the bot's online status with optional auto-revert duration.
-#[poise::command(slash_command, prefix_command, owners_only)]
+#[poise::command(slash_command, owners_only)]
 pub async fn status(
     ctx: Context<'_>,
     #[description = "Bot status to set"] new_status: BotStatus,
@@ -294,7 +293,7 @@ pub async fn status(
 }
 
 /// Set the bot's Rich Presence activity (Playing, Listening, Watching, Competing, Custom).
-#[poise::command(slash_command, prefix_command, owners_only)]
+#[poise::command(slash_command, owners_only)]
 pub async fn activity(
     ctx: Context<'_>,
     #[description = "Activity type"] kind: ActivityKind,
@@ -429,7 +428,7 @@ pub async fn activity(
 }
 
 /// Clear the bot's current activity / Rich Presence and reset to Online.
-#[poise::command(slash_command, prefix_command, owners_only, rename = "clear")]
+#[poise::command(slash_command, owners_only, rename = "clear")]
 pub async fn clear_activity(ctx: Context<'_>) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
         Some(guild_id) => ctx.data().language(guild_id).await,

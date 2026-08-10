@@ -2,7 +2,7 @@ use crate::i18n::{TranslationKey, t, tf};
 use crate::{Context, Error};
 
 /// Check bot latency and responsiveness.
-#[poise::command(slash_command, prefix_command, user_cooldown = 5)]
+#[poise::command(slash_command, user_cooldown = 5)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
         Some(guild_id) => ctx.data().language(guild_id).await,

@@ -169,13 +169,10 @@ pub enum TranslationKey {
 
     // Settings
     SettingsTitle,
-    SettingsPrefix,
     SettingsLogChannel,
     SettingsModerationChannel,
     SettingsTimezone,
     SettingsNotConfigured,
-    PrefixChanged,
-    PrefixInvalidLength,
 
     // Time zone commands
     TimezoneSet,
@@ -490,7 +487,6 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "AutoMod suggestion remains open, but delivery failed.",
     );
     en.insert(TranslationKey::SettingsTitle, "**Server Settings**");
-    en.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     en.insert(TranslationKey::SettingsLogChannel, "**Log Channel:** {}");
     en.insert(
         TranslationKey::SettingsModerationChannel,
@@ -498,11 +494,6 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(TranslationKey::SettingsTimezone, "**Time zone:** {}");
     en.insert(TranslationKey::SettingsNotConfigured, "Not configured");
-    en.insert(TranslationKey::PrefixChanged, "Prefix changed to `{}`");
-    en.insert(
-        TranslationKey::PrefixInvalidLength,
-        "Prefix must contain 1 to {} characters.",
-    );
     en.insert(TranslationKey::TimezoneSet, "Time zone set to `{}`.");
     en.insert(TranslationKey::TimezoneCurrent, "**Time zone:** `{}`");
     en.insert(
@@ -880,7 +871,6 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Đề xuất AutoMod vẫn mở nhưng gửi thất bại.",
     );
     vi.insert(TranslationKey::SettingsTitle, "**Cấu Hình Server**");
-    vi.insert(TranslationKey::SettingsPrefix, "**Prefix:** `{}`");
     vi.insert(TranslationKey::SettingsLogChannel, "**Kênh Log:** {}");
     vi.insert(
         TranslationKey::SettingsModerationChannel,
@@ -888,11 +878,6 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(TranslationKey::SettingsTimezone, "**Múi giờ:** {}");
     vi.insert(TranslationKey::SettingsNotConfigured, "Chưa thiết lập");
-    vi.insert(TranslationKey::PrefixChanged, "Đã đổi prefix thành `{}`");
-    vi.insert(
-        TranslationKey::PrefixInvalidLength,
-        "Prefix phải có từ 1 đến {} ký tự.",
-    );
     vi.insert(TranslationKey::TimezoneSet, "Đã đặt múi giờ thành `{}`.");
     vi.insert(TranslationKey::TimezoneCurrent, "**Múi giờ:** `{}`");
     vi.insert(
@@ -1276,7 +1261,6 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "AutoMod提案は未対応のままですが、送信に失敗しました。",
     );
     ja.insert(TranslationKey::SettingsTitle, "**サーバー設定**");
-    ja.insert(TranslationKey::SettingsPrefix, "**プレフィックス：** `{}`");
     ja.insert(
         TranslationKey::SettingsLogChannel,
         "**ログチャンネル：** {}",
@@ -1287,14 +1271,6 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(TranslationKey::SettingsTimezone, "**タイムゾーン：** {}");
     ja.insert(TranslationKey::SettingsNotConfigured, "未設定");
-    ja.insert(
-        TranslationKey::PrefixChanged,
-        "プレフィックスを`{}`に変更しました",
-    );
-    ja.insert(
-        TranslationKey::PrefixInvalidLength,
-        "プレフィックスは1から{}文字で指定してください。",
-    );
     ja.insert(
         TranslationKey::TimezoneSet,
         "タイムゾーンを`{}`に設定しました。",

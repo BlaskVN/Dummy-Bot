@@ -345,17 +345,17 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO guild_config (guild_id, prefix) VALUES ('1', '!')")
+        sqlx::query("INSERT INTO guild_language (guild_id, language) VALUES ('1', 'vi')")
             .execute(&pool)
             .await
             .unwrap();
         sqlx::migrate!().run(&pool).await.unwrap();
-        let prefix: String =
-            sqlx::query_scalar("SELECT prefix FROM guild_config WHERE guild_id = '1'")
+        let language: String =
+            sqlx::query_scalar("SELECT language FROM guild_language WHERE guild_id = '1'")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(prefix, "!");
+        assert_eq!(language, "vi");
         assert_eq!(
             create_case(
                 &pool,

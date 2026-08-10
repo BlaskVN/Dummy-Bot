@@ -8,7 +8,6 @@ use poise::serenity_prelude as serenity;
 /// Kick a member from the server.
 #[poise::command(
     slash_command,
-    prefix_command,
     guild_only,
     default_member_permissions = "KICK_MEMBERS",
     required_permissions = "KICK_MEMBERS",

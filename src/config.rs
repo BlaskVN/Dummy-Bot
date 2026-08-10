@@ -35,9 +35,7 @@ pub struct Config {
     pub data_directory: PathBuf,
     pub log_filter: String,
     pub owner_ids: HashSet<u64>,
-    pub default_prefix: String,
     pub default_language: String,
-    pub prefix_max_chars: usize,
     pub cache_max_messages: usize,
     pub purge_max_messages: u8,
     pub purge_confirmation_seconds: u64,
@@ -69,9 +67,7 @@ impl Config {
             data_directory: required::<PathBuf>("DATA_DIRECTORY")?,
             log_filter: required("RUST_LOG")?,
             owner_ids: comma_separated("OWNER_IDS")?,
-            default_prefix: required("DEFAULT_PREFIX")?,
             default_language: required("DEFAULT_LANGUAGE")?,
-            prefix_max_chars: required("PREFIX_MAX_CHARS")?,
             cache_max_messages: required("CACHE_MAX_MESSAGES")?,
             purge_max_messages: required("PURGE_MAX_MESSAGES")?,
             purge_confirmation_seconds: required("PURGE_CONFIRMATION_SECONDS")?,
@@ -106,11 +102,6 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
-        if self.default_prefix.is_empty()
-            || self.default_prefix.chars().count() > self.prefix_max_chars
-        {
-            bail!("DEFAULT_PREFIX must contain 1..=PREFIX_MAX_CHARS characters");
-        }
         if !matches!(self.default_language.as_str(), "en" | "vi" | "ja") {
             bail!("DEFAULT_LANGUAGE must be one of: en, vi, ja");
         }

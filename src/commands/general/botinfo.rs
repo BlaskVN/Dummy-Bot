@@ -4,7 +4,7 @@ use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
 /// Display bot information and uptime.
-#[poise::command(slash_command, prefix_command, user_cooldown = 5)]
+#[poise::command(slash_command, user_cooldown = 5)]
 pub async fn botinfo(ctx: Context<'_>) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
         Some(guild_id) => ctx.data().language(guild_id).await,

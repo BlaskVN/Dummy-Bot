@@ -1,4 +1,4 @@
-use crate::{Data, Error, commands, config::Config, database, error, handlers};
+use crate::{Data, commands, config::Config, database, error, handlers};
 use poise::serenity_prelude as serenity;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -22,10 +22,6 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         .options(poise::FrameworkOptions {
             commands: commands::all(),
             owners,
-            prefix_options: poise::PrefixFrameworkOptions {
-                dynamic_prefix: Some(dynamic_prefix),
-                ..Default::default()
-            },
             on_error: |error| Box::pin(error::on_error(error)),
             event_handler: |ctx, event, _framework, data| {
                 Box::pin(handlers::dispatch(ctx, event, data))
@@ -128,21 +124,6 @@ fn gateway_intents(
         intents |= serenity::GatewayIntents::GUILD_PRESENCES;
     }
     intents
-}
-
-fn dynamic_prefix(
-    ctx: poise::PartialContext<'_, Data, Error>,
-) -> poise::BoxFuture<'_, Result<Option<String>, Error>> {
-    Box::pin(async move {
-        Ok(Some(
-            database::guild_prefix(
-                &ctx.data.db_pool,
-                ctx.guild_id,
-                &ctx.data.config.default_prefix,
-            )
-            .await?,
-        ))
-    })
 }
 
 async fn resolve_owners(config: &Config) -> HashSet<serenity::UserId> {

@@ -6,7 +6,6 @@ use poise::serenity_prelude as serenity;
 /// Display current server configuration.
 #[poise::command(
     slash_command,
-    prefix_command,
     guild_only,
     default_member_permissions = "MANAGE_GUILD",
     required_permissions = "MANAGE_GUILD"
@@ -17,15 +16,6 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
 
     let lang = ctx.data().language(guild_id).await;
-
-    // Get prefix from guild_config
-    let prefix =
-        sqlx::query_as::<_, (String,)>("SELECT prefix FROM guild_config WHERE guild_id = ?")
-            .bind(guild_id.to_string())
-            .fetch_optional(&ctx.data().db_pool)
-            .await?
-            .map(|(p,)| p)
-            .unwrap_or_else(|| ctx.data().config.default_prefix.clone());
 
     // Get log channel from message_log_config
     let log_channel = sqlx::query_as::<_, (String, i64, String)>(
@@ -68,7 +58,6 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
     .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
     let game = crate::game_config::game_config(&ctx.data().db_pool, guild_id).await?;
 
-    let prefix_text = tf(lang, TranslationKey::SettingsPrefix, &[&prefix]);
     let log_channel_text = tf(
         lang,
         TranslationKey::SettingsLogChannel,
@@ -109,8 +98,7 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         ctx.data().config.guild_presences_enabled,
     );
     let description = format!(
-        "├ {}\n├ {}\n├ {}\n├ {}\n├ {}\n├ Activity Detection: {}\n└ {}",
-        prefix_text,
+        "├ {}\n├ {}\n├ {}\n├ {}\n├ Activity Detection: {}\n└ {}",
         log_channel_text,
         log_health_text,
         moderation_channel_text,

@@ -6,7 +6,6 @@ use poise::serenity_prelude as serenity;
 /// Join the voice channel you are currently in.
 #[poise::command(
     slash_command,
-    prefix_command,
     guild_only,
     default_member_permissions = "MOVE_MEMBERS",
     required_permissions = "MOVE_MEMBERS",
@@ -124,7 +123,6 @@ pub async fn voice_connect(ctx: Context<'_>) -> Result<(), Error> {
 /// Leave the current voice channel.
 #[poise::command(
     slash_command,
-    prefix_command,
     guild_only,
     default_member_permissions = "MOVE_MEMBERS",
     required_permissions = "MOVE_MEMBERS",

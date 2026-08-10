@@ -6,7 +6,6 @@ use poise::serenity_prelude as serenity;
 /// Bulk delete messages in the current channel.
 #[poise::command(
     slash_command,
-    prefix_command,
     guild_only,
     default_member_permissions = "MANAGE_MESSAGES",
     required_permissions = "MANAGE_MESSAGES",

@@ -3,7 +3,6 @@ pub mod game;
 pub mod language;
 pub mod logging;
 pub mod moderation_channel;
-pub mod prefix;
 pub mod settings;
 pub mod timezone;
 
@@ -14,7 +13,6 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
         automod_observer::automod_observer(),
         game::game_config(),
         settings::settings(),
-        prefix::setprefix(),
         logging::messagelog(),
         moderation_channel::moderation_channel(),
         language::language(),
