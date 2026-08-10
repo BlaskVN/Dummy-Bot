@@ -8,6 +8,7 @@ pub mod warn;
 
 use crate::i18n::{Language, TranslationKey, t, tf};
 use crate::permissions::ModerationDenial;
+use crate::ui::{self, Tone};
 use crate::{Context, Data, Error};
 use poise::serenity_prelude as serenity;
 
@@ -69,7 +70,7 @@ async fn send_case_summary(
         .send_message(
             ctx.http(),
             serenity::CreateMessage::new()
-                .content(summary)
+                .embed(ui::panel(ctx.data(), Tone::Neutral, summary))
                 .allowed_mentions(serenity::CreateAllowedMentions::new()),
         )
         .await?;

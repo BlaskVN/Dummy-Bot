@@ -1,4 +1,5 @@
 use crate::i18n::{TranslationKey, t, tf};
+use crate::ui::{self, Tone};
 use crate::{Data, Error};
 
 /// Centralized error handler for the Poise framework.
@@ -22,7 +23,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             );
 
             let message = t(lang, TranslationKey::ErrorGeneric);
-            let _ = ctx.say(message).await;
+            let _ = ui::reply(ctx, Tone::Error, message).await;
         }
         poise::FrameworkError::ArgumentParse { error, ctx, .. } => {
             let lang = match ctx.guild_id() {
@@ -37,7 +38,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             );
 
             let message = tf(lang, TranslationKey::ModerationInvalidArgument, &[&error]);
-            let _ = ctx.say(message).await;
+            let _ = ui::reply(ctx, Tone::Error, message).await;
         }
         poise::FrameworkError::CooldownHit {
             remaining_cooldown,
@@ -51,7 +52,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             let seconds =
                 remaining_cooldown.as_secs() + u64::from(remaining_cooldown.subsec_nanos() != 0);
             let message = tf(lang, TranslationKey::ErrorCooldown, &[&seconds]);
-            let _ = ctx.say(message).await;
+            let _ = ui::reply(ctx, Tone::Warning, message).await;
         }
         poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
             let lang = match ctx.guild_id() {
@@ -70,7 +71,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 // owners_only and other checks fire with error = None
                 t(lang, TranslationKey::ErrorNoPermission).to_string()
             };
-            let _ = ctx.say(message).await;
+            let _ = ui::reply(ctx, Tone::Error, message).await;
         }
         poise::FrameworkError::MissingBotPermissions {
             missing_permissions,
@@ -93,7 +94,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                 TranslationKey::ModerationBotMissingPermissions,
                 &[&missing_permissions],
             );
-            let _ = ctx.say(message).await;
+            let _ = ui::reply(ctx, Tone::Error, message).await;
         }
         poise::FrameworkError::MissingUserPermissions {
             missing_permissions,
@@ -111,7 +112,7 @@ pub async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                     TranslationKey::ModerationUserMissingPermissions,
                     &[&perms],
                 );
-                let _ = ctx.say(message).await;
+                let _ = ui::reply(ctx, Tone::Error, message).await;
             }
         }
         other => {

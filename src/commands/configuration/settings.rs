@@ -1,9 +1,9 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::message_log_health::MessageLogHealth;
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
-use poise::serenity_prelude as serenity;
 
-/// Display current server configuration.
+/// Show this server's current bot configuration.
 #[poise::command(
     slash_command,
     guild_only,
@@ -98,21 +98,16 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         ctx.data().config.guild_presences_enabled,
     );
     let description = format!(
-        "├ {}\n├ {}\n├ {}\n├ {}\n├ Activity Detection: {}\n└ {}",
-        log_channel_text,
-        log_health_text,
-        moderation_channel_text,
-        timezone_text,
-        detection,
-        game_text
+        "{}\n{}\n{}\n{}\nActivity Detection: {}",
+        log_channel_text, log_health_text, moderation_channel_text, timezone_text, detection
     );
 
-    let embed = serenity::CreateEmbed::new()
+    let embed = ui::embed(ctx.data(), Tone::Neutral)
         .title(t(lang, TranslationKey::SettingsTitle))
         .description(description)
-        .color(ctx.data().config.colors.neutral);
+        .field("Game", game_text, false);
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }

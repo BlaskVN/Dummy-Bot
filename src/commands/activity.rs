@@ -1,6 +1,7 @@
 use crate::community::create_activity;
 use crate::i18n::Language;
 use crate::permissions::missing_channel_permissions;
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 use std::collections::HashSet;
@@ -9,6 +10,7 @@ const REQUIRED_CREATE_PERMISSIONS: serenity::Permissions = serenity::Permissions
     .union(serenity::Permissions::VIEW_CHANNEL)
     .union(serenity::Permissions::CONNECT);
 
+/// Track community activity, rewards, profiles, and scheduled events.
 #[poise::command(
     slash_command,
     subcommands(
@@ -29,6 +31,7 @@ pub async fn activity(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Configure activity reward roles for this server.
 #[poise::command(
     slash_command,
     subcommands("reward_set"),
@@ -41,6 +44,7 @@ pub async fn reward(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Create or update the role awarded at an activity level.
 #[poise::command(
     rename = "set",
     slash_command,
@@ -57,7 +61,7 @@ pub async fn reward_set(
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     if level <= 0 {
-        ctx.say("Reward level must be positive.").await?;
+        ui::reply(ctx, Tone::Error, "Reward level must be positive.").await?;
         return Ok(());
     }
     let bot_id = ctx.cache().current_user().id;
@@ -85,8 +89,12 @@ pub async fn reward_set(
         if ownership == "bot_owned" {
             let _ = guild_id.delete_role(ctx.http(), role.id).await;
         }
-        ctx.say(format!("Unsafe Activity Reward Role: {denial}"))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            format!("Unsafe Activity Reward Role: {denial}"),
+        )
+        .await?;
         return Ok(());
     }
     let old = crate::reward_roles::save_reward_config(
@@ -104,14 +112,19 @@ pub async fn reward_set(
         old,
     )
     .await;
-    ctx.say(format!(
-        "Activity Reward Role set to <@&{}> at Level {level}.",
-        role.id
-    ))
+    ui::reply(
+        ctx,
+        Tone::Success,
+        format!(
+            "Activity Reward Role set to <@&{}> at Level {level}.",
+            role.id
+        ),
+    )
     .await?;
     Ok(())
 }
 
+/// Record your participation in the current game session.
 #[poise::command(rename = "check-in", slash_command, guild_only)]
 pub async fn check_in(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -124,7 +137,7 @@ pub async fn check_in(ctx: Context<'_>) -> Result<(), Error> {
     let is_bot = member.user.bot;
     drop(member);
     if is_bot {
-        ctx.say(check_in_response(language, false)).await?;
+        ui::private_reply(ctx, Tone::Warning, check_in_response(language, false)).await?;
         return Ok(());
     }
     let channel_id = ctx.guild().and_then(|guild| {
@@ -134,16 +147,16 @@ pub async fn check_in(ctx: Context<'_>) -> Result<(), Error> {
             .and_then(|state| state.channel_id)
     });
     let Some(channel_id) = channel_id else {
-        ctx.say(check_in_response(language, false)).await?;
+        ui::private_reply(ctx, Tone::Warning, check_in_response(language, false)).await?;
         return Ok(());
     };
     let Some((_, pool)) = crate::game_config::game_config(&ctx.data().db_pool, guild_id).await?
     else {
-        ctx.say(check_in_response(language, false)).await?;
+        ui::private_reply(ctx, Tone::Warning, check_in_response(language, false)).await?;
         return Ok(());
     };
     if !pool.contains(&channel_id) {
-        ctx.say(check_in_response(language, false)).await?;
+        ui::private_reply(ctx, Tone::Warning, check_in_response(language, false)).await?;
         return Ok(());
     }
     let Some(event_id) = crate::handlers::activity_presence::find_session(
@@ -154,7 +167,7 @@ pub async fn check_in(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await
     else {
-        ctx.say(check_in_response(language, false)).await?;
+        ui::private_reply(ctx, Tone::Warning, check_in_response(language, false)).await?;
         return Ok(());
     };
     crate::handlers::activity_presence::manual_check_in(
@@ -172,12 +185,7 @@ pub async fn check_in(ctx: Context<'_>) -> Result<(), Error> {
         channel_id,
     )
     .await;
-    ctx.send(
-        poise::CreateReply::default()
-            .content(check_in_response(language, true))
-            .ephemeral(true),
-    )
-    .await?;
+    ui::private_reply(ctx, Tone::Success, check_in_response(language, true)).await?;
     Ok(())
 }
 
@@ -199,6 +207,7 @@ struct GameStat {
     session_credits: i64,
 }
 
+/// Show your or another member's activity profile.
 #[poise::command(slash_command, guild_only)]
 pub async fn profile(
     ctx: Context<'_>,
@@ -214,7 +223,7 @@ pub async fn profile(
         .map_or(ctx.author().id, |member| member.user.id);
     let page = page.unwrap_or(1);
     if page < 1 {
-        ctx.say(profile_unavailable(language)).await?;
+        ui::reply(ctx, Tone::Warning, profile_unavailable(language)).await?;
         return Ok(());
     }
     let opted_out: bool = sqlx::query_scalar(
@@ -225,7 +234,7 @@ pub async fn profile(
     .fetch_one(&ctx.data().db_pool)
     .await?;
     if opted_out {
-        ctx.say(profile_unavailable(language)).await?;
+        ui::reply(ctx, Tone::Warning, profile_unavailable(language)).await?;
         return Ok(());
     }
     let (minutes, credits): (i64, i64) = sqlx::query_as("SELECT play_minutes, session_credits FROM activity_member_aggregate WHERE guild_id = ? AND user_id = ?")
@@ -277,14 +286,11 @@ pub async fn profile(
         pages,
         game_rows,
     );
-    ctx.send(
-        poise::CreateReply::default().embed(
-            serenity::CreateEmbed::new()
-                .title(format!("{} — {}", labels.7, user))
-                .description(description)
-                .color(ctx.data().config.colors.primary),
-        ),
-    )
+    ctx.send(ui::embed_reply(
+        ui::embed(ctx.data(), Tone::Primary)
+            .title(format!("{} — {}", labels.7, user))
+            .description(description),
+    ))
     .await?;
     Ok(())
 }
@@ -296,6 +302,7 @@ struct RankedMember {
     rank: usize,
 }
 
+/// Show the server activity leaderboard.
 #[poise::command(slash_command, guild_only)]
 pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -327,31 +334,31 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
     }
     let title = leaderboard_title(language);
     let content = if shown.is_empty() {
-        format!("**{title}**\n{}", profile_unavailable(language))
+        profile_unavailable(language).to_owned()
     } else {
-        format!(
-            "**{title}**\n{}",
-            shown
-                .iter()
-                .map(|row| format!(
-                    "{}. <@{}> — {}",
+        shown
+            .iter()
+            .map(|row| {
+                format!(
+                    "**{}.** <@{}> — {}",
                     row.rank,
                     row.user_id,
                     format_duration(row.play_minutes)
-                ))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     };
-    ctx.send(
-        poise::CreateReply::default()
-            .content(content)
-            .allowed_mentions(serenity::CreateAllowedMentions::new()),
-    )
+    ctx.send(ui::embed_reply(
+        ui::embed(ctx.data(), Tone::Primary)
+            .title(title)
+            .description(content),
+    ))
     .await?;
     Ok(())
 }
 
+/// Delete your activity data and stop activity tracking.
 #[poise::command(rename = "opt-out", slash_command, guild_only)]
 pub async fn opt_out(
     ctx: Context<'_>,
@@ -362,25 +369,16 @@ pub async fn opt_out(
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let language = ctx.data().language(guild_id).await;
     if !confirm {
-        ctx.send(
-            poise::CreateReply::default()
-                .content(privacy_response(language, "confirm"))
-                .ephemeral(true),
-        )
-        .await?;
+        ui::private_reply(ctx, Tone::Warning, privacy_response(language, "confirm")).await?;
         return Ok(());
     }
     crate::activity_privacy::opt_out(&ctx.data().db_pool, guild_id, ctx.author().id).await?;
     crate::handlers::activity_presence::remove_member(ctx.data(), guild_id, ctx.author().id).await;
-    ctx.send(
-        poise::CreateReply::default()
-            .content(privacy_response(language, "out"))
-            .ephemeral(true),
-    )
-    .await?;
+    ui::private_reply(ctx, Tone::Success, privacy_response(language, "out")).await?;
     Ok(())
 }
 
+/// Resume activity tracking after opting out.
 #[poise::command(rename = "opt-in", slash_command, guild_only)]
 pub async fn opt_in(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -388,12 +386,7 @@ pub async fn opt_in(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let language = ctx.data().language(guild_id).await;
     crate::activity_privacy::opt_in(&ctx.data().db_pool, guild_id, ctx.author().id).await?;
-    ctx.send(
-        poise::CreateReply::default()
-            .content(privacy_response(language, "in"))
-            .ephemeral(true),
-    )
-    .await?;
+    ui::private_reply(ctx, Tone::Success, privacy_response(language, "in")).await?;
     Ok(())
 }
 
@@ -518,6 +511,7 @@ pub enum ActivityStatus {
     Completed,
 }
 
+/// Create a Discord scheduled activity event managed by the bot.
 #[poise::command(slash_command, guild_only)]
 pub async fn create(
     ctx: Context<'_>,
@@ -542,7 +536,7 @@ pub async fn create(
     ) {
         Ok(start) => start,
         Err(message) => {
-            ctx.say(message).await?;
+            ui::reply(ctx, Tone::Error, message).await?;
             return Ok(());
         }
     };
@@ -552,9 +546,11 @@ pub async fn create(
         let missing =
             missing_channel_permissions(ctx, voice_channel.id, user, REQUIRED_CREATE_PERMISSIONS)?;
         if !missing.is_empty() {
-            ctx.say(format!(
-                "{who} missing permissions in that channel: {missing}"
-            ))
+            ui::reply(
+                ctx,
+                Tone::Error,
+                format!("{who} missing permissions in that channel: {missing}"),
+            )
             .await?;
             return Ok(());
         }
@@ -594,25 +590,29 @@ pub async fn create(
                 )
             }
         };
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
     let (join, leave) = control_labels(language);
     ctx.send(
-        poise::CreateReply::default()
-            .content(format!("Activity created: {url}"))
-            .components(vec![serenity::CreateActionRow::Buttons(vec![
-                serenity::CreateButton::new(format!("activity:join:{}", event.id)).label(join),
-                serenity::CreateButton::new(format!("activity:leave:{}", event.id))
-                    .label(leave)
-                    .style(serenity::ButtonStyle::Secondary),
-            ])]),
+        ui::reply_builder(
+            ctx.data(),
+            Tone::Success,
+            format!("Activity created: {url}"),
+        )
+        .components(vec![serenity::CreateActionRow::Buttons(vec![
+            serenity::CreateButton::new(format!("activity:join:{}", event.id)).label(join),
+            serenity::CreateButton::new(format!("activity:leave:{}", event.id))
+                .label(leave)
+                .style(serenity::ButtonStyle::Secondary),
+        ])]),
     )
     .await?;
     Ok(())
 }
 
+/// View a bot-managed scheduled activity event.
 #[poise::command(slash_command, guild_only)]
 pub async fn view(
     ctx: Context<'_>,
@@ -623,18 +623,45 @@ pub async fn view(
     };
     match guild_id.scheduled_event(ctx.http(), event_id, true).await {
         Ok(event) => {
-            ctx.say(format!(
-                "**{}**\nID: `{}`\nStatus: {:?}\nStarts: <t:{}:F>\nChannel: {}\nHost: {}\nCapacity: {}\nParticipants interested: {}",
-                event.name,
-                event.id,
-                event.status,
-                event.start_time.unix_timestamp(),
-                event.channel_id.map_or_else(|| "—".to_owned(), |id| format!("<#{id}>")),
-                record.host_user_id.map_or_else(|| "—".to_owned(), |id| format!("<@{id}>")),
-                record.capacity.map_or_else(|| "unlimited".to_owned(), |value| value.to_string()),
-                event.user_count.unwrap_or(0),
-            ))
-            .await?;
+            let embed = ui::embed(ctx.data(), Tone::Primary)
+                .title(event.name)
+                .field("Status", format!("{:?}", event.status), true)
+                .field(
+                    "Starts",
+                    format!("<t:{}:F>", event.start_time.unix_timestamp()),
+                    true,
+                )
+                .field(
+                    "Channel",
+                    event
+                        .channel_id
+                        .map_or_else(|| "—".to_owned(), |id| format!("<#{id}>")),
+                    true,
+                )
+                .field(
+                    "Host",
+                    record
+                        .host_user_id
+                        .map_or_else(|| "—".to_owned(), |id| format!("<@{id}>")),
+                    true,
+                )
+                .field(
+                    "Capacity",
+                    record
+                        .capacity
+                        .map_or_else(|| "Unlimited".to_owned(), |value| value.to_string()),
+                    true,
+                )
+                .field(
+                    "Interested",
+                    event.user_count.unwrap_or(0).to_string(),
+                    true,
+                )
+                .footer(serenity::CreateEmbedFooter::new(format!(
+                    "Event ID: {}",
+                    event.id
+                )));
+            ctx.send(ui::embed_reply(embed)).await?;
         }
         Err(error) if is_not_found(&error) => {
             crate::community::update_activity_extension(
@@ -646,14 +673,19 @@ pub async fn view(
             )
             .await?;
             finalize_local(ctx, guild_id, event_id).await?;
-            ctx.say("The native event is missing; local state was reconciled.")
-                .await?;
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                "The native event is missing; local state was reconciled.",
+            )
+            .await?;
         }
         Err(error) => return Err(error.into()),
     }
     Ok(())
 }
 
+/// Update a bot-managed scheduled activity event.
 #[poise::command(slash_command, guild_only)]
 pub async fn update(
     ctx: Context<'_>,
@@ -668,8 +700,12 @@ pub async fn update(
         return Ok(());
     };
     if !can_manage(ctx, record.host_user_id.as_deref()).await? {
-        ctx.say("Only the host or a member with Manage Events can update this activity.")
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            "Only the host or a member with Manage Events can update this activity.",
+        )
+        .await?;
         return Ok(());
     }
     if name.is_none()
@@ -678,7 +714,7 @@ pub async fn update(
         && capacity.is_none()
         && status.is_none()
     {
-        ctx.say("Provide at least one field to update.").await?;
+        ui::reply(ctx, Tone::Warning, "Provide at least one field to update.").await?;
         return Ok(());
     }
     if name
@@ -689,7 +725,7 @@ pub async fn update(
             .is_some_and(|value| value.chars().count() > 1_000)
         || capacity.is_some_and(|value| value <= 0)
     {
-        ctx.say("Invalid name, description, or capacity.").await?;
+        ui::reply(ctx, Tone::Error, "Invalid name, description, or capacity.").await?;
         return Ok(());
     }
     let start = match start_time
@@ -699,8 +735,12 @@ pub async fn update(
     {
         Ok(start) if start.is_none_or(|value| value > serenity::Timestamp::now()) => start,
         _ => {
-            ctx.say("Use a future RFC 3339 start time with a UTC offset.")
-                .await?;
+            ui::reply(
+                ctx,
+                Tone::Error,
+                "Use a future RFC 3339 start time with a UTC offset.",
+            )
+            .await?;
             return Ok(());
         }
     };
@@ -715,16 +755,24 @@ pub async fn update(
                 Some("deleted"),
             )
             .await?;
-            ctx.say("The native event is missing; local state was reconciled.")
-                .await?;
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                "The native event is missing; local state was reconciled.",
+            )
+            .await?;
             return Ok(());
         }
         Err(error) => return Err(error.into()),
     };
     let next_status = status.map(ActivityStatus::native);
     if next_status.is_some_and(|next| !valid_transition(event.status, next)) {
-        ctx.say("That scheduled-event status transition is not allowed.")
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            "That scheduled-event status transition is not allowed.",
+        )
+        .await?;
         return Ok(());
     }
     if let Some(channel_id) = event.channel_id {
@@ -736,8 +784,12 @@ pub async fn update(
             serenity::Permissions::CREATE_EVENTS | serenity::Permissions::VIEW_CHANNEL,
         )?;
         if !missing.is_empty() {
-            ctx.say(format!("The bot is missing permissions: {missing}"))
-                .await?;
+            ui::reply(
+                ctx,
+                Tone::Error,
+                format!("The bot is missing permissions: {missing}"),
+            )
+            .await?;
             return Ok(());
         }
     }
@@ -789,14 +841,16 @@ pub async fn update(
         )
         .await;
     }
-    ctx.say(format!(
-        "Activity updated: {}",
-        event_url(guild_id, event_id)
-    ))
+    ui::reply(
+        ctx,
+        Tone::Success,
+        format!("Activity updated: {}", event_url(guild_id, event_id)),
+    )
     .await?;
     Ok(())
 }
 
+/// Cancel a bot-managed scheduled activity event.
 #[poise::command(slash_command, guild_only)]
 pub async fn cancel(
     ctx: Context<'_>,
@@ -806,12 +860,16 @@ pub async fn cancel(
         return Ok(());
     };
     if !can_manage(ctx, record.host_user_id.as_deref()).await? {
-        ctx.say("Only the host or a member with Manage Events can cancel this activity.")
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            "Only the host or a member with Manage Events can cancel this activity.",
+        )
+        .await?;
         return Ok(());
     }
     if matches!(record.state.as_str(), "canceled" | "deleted" | "completed") {
-        ctx.say("Activity is already closed.").await?;
+        ui::reply(ctx, Tone::Warning, "Activity is already closed.").await?;
         return Ok(());
     }
     let state = match guild_id.delete_scheduled_event(ctx.http(), event_id).await {
@@ -828,7 +886,7 @@ pub async fn cancel(
     )
     .await?;
     finalize_local(ctx, guild_id, event_id).await?;
-    ctx.say("Activity canceled.").await?;
+    ui::reply(ctx, Tone::Success, "Activity canceled.").await?;
     Ok(())
 }
 
@@ -861,13 +919,18 @@ async fn managed_activity(
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let Ok(raw_event_id) = raw_event_id.parse::<u64>() else {
-        ctx.say("Use a valid Discord Scheduled Event ID.").await?;
+        ui::reply(ctx, Tone::Error, "Use a valid Discord Scheduled Event ID.").await?;
         return Ok(None);
     };
     let event_id = serenity::ScheduledEventId::new(raw_event_id);
     let Some(record) = crate::community::activity(&ctx.data().db_pool, guild_id, event_id).await?
     else {
-        ctx.say("That event is not a bot-managed activity.").await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            "That event is not a bot-managed activity.",
+        )
+        .await?;
         return Ok(None);
     };
     Ok(Some((guild_id, event_id, record)))

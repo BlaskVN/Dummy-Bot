@@ -1,7 +1,8 @@
 use crate::i18n::{Language, TranslationKey, set_guild_language, t, tf};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 
-/// Change the bot's language for this server.
+/// Set the bot's response language for this server.
 #[poise::command(
     slash_command,
     guild_only,
@@ -23,7 +24,12 @@ pub async fn language(
         None => {
             let guild_id = ctx.guild_id().expect("guild_only command");
             let current = ctx.data().language(guild_id).await;
-            ctx.say(t(current, TranslationKey::LanguageInvalid)).await?;
+            ui::reply(
+                ctx,
+                Tone::Error,
+                t(current, TranslationKey::LanguageInvalid),
+            )
+            .await?;
             return Ok(());
         }
     };
@@ -44,7 +50,7 @@ pub async fn language(
         TranslationKey::LanguageChanged,
         &[&language.display_name()],
     );
-    ctx.say(message).await?;
+    ui::reply(ctx, Tone::Success, message).await?;
 
     Ok(())
 }

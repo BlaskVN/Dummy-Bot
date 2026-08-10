@@ -1,9 +1,11 @@
 use crate::commands::donation::owned_qr_path;
 use crate::database::{DonationConfig, load_donation_config};
 use crate::i18n::{TranslationKey, t};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
+/// Show the server's configured donation information.
 #[poise::command(slash_command, user_cooldown = 5)]
 pub async fn donate(ctx: Context<'_>) -> Result<(), Error> {
     let lang = match ctx.guild_id() {
@@ -11,14 +13,16 @@ pub async fn donate(ctx: Context<'_>) -> Result<(), Error> {
         None => ctx.data().default_language(),
     };
     let Some(config) = load_donation_config(&ctx.data().db_pool).await? else {
-        ctx.say(t(lang, TranslationKey::DonateNotConfigured))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            t(lang, TranslationKey::DonateNotConfigured),
+        )
+        .await?;
         return Ok(());
     };
 
-    let mut reply = poise::CreateReply::default()
-        .content(render(&config))
-        .allowed_mentions(serenity::CreateAllowedMentions::new());
+    let mut reply = ui::reply_builder(ctx.data(), Tone::Primary, render(&config));
     if let Some(filename) = config.qr_filename.as_deref()
         && let Some(path) = owned_qr_path(&ctx.data().config.data_directory, filename)
     {

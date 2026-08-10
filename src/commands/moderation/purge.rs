@@ -1,9 +1,10 @@
 use crate::handlers::message_log;
 use crate::i18n::{TranslationKey, tf};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
-/// Bulk delete messages in the current channel.
+/// Delete a batch of recent messages from this channel.
 #[poise::command(
     slash_command,
     guild_only,
@@ -29,7 +30,7 @@ pub async fn purge(
             TranslationKey::ModerationPurgeRange,
             &[&ctx.data().config.purge_max_messages],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
@@ -59,7 +60,7 @@ pub async fn purge(
 
     let message = tf(lang, TranslationKey::ModerationPurged, &[&count]);
 
-    let reply = ctx.say(message).await?;
+    let reply = ui::reply(ctx, Tone::Success, message).await?;
 
     tokio::time::sleep(std::time::Duration::from_secs(
         ctx.data().config.purge_confirmation_seconds,

@@ -1,7 +1,9 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::timezone;
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 
+/// Configure the time zone used for this server.
 #[poise::command(
     slash_command,
     subcommands("set", "show", "clear"),
@@ -13,6 +15,7 @@ pub async fn timezone(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Set this server's IANA time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
@@ -23,7 +26,7 @@ pub async fn set(
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
     if timezone::parse(&iana_name).is_none() {
-        ctx.say(t(lang, TranslationKey::TimezoneInvalid)).await?;
+        ui::reply(ctx, Tone::Error, t(lang, TranslationKey::TimezoneInvalid)).await?;
         return Ok(());
     }
 
@@ -35,10 +38,11 @@ pub async fn set(
     .execute(&ctx.data().db_pool)
     .await?;
     let message = tf(lang, TranslationKey::TimezoneSet, &[&iana_name]);
-    ctx.say(message).await?;
+    ui::reply(ctx, Tone::Success, message).await?;
     Ok(())
 }
 
+/// Show this server's configured time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -52,14 +56,19 @@ pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     .fetch_optional(&ctx.data().db_pool)
     .await?
     .flatten();
-    ctx.say(match value {
-        Some(value) => tf(lang, TranslationKey::TimezoneCurrent, &[&value]),
-        None => t(lang, TranslationKey::TimezoneNotConfigured).to_string(),
-    })
+    ui::reply(
+        ctx,
+        Tone::Neutral,
+        match value {
+            Some(value) => tf(lang, TranslationKey::TimezoneCurrent, &[&value]),
+            None => t(lang, TranslationKey::TimezoneNotConfigured).to_string(),
+        },
+    )
     .await?;
     Ok(())
 }
 
+/// Reset this server to the default time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -72,6 +81,6 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
         .bind(guild_id.to_string())
         .execute(&ctx.data().db_pool)
         .await?;
-    ctx.say(t(lang, TranslationKey::TimezoneCleared)).await?;
+    ui::reply(ctx, Tone::Success, t(lang, TranslationKey::TimezoneCleared)).await?;
     Ok(())
 }

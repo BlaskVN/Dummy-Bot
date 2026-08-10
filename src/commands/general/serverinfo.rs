@@ -1,6 +1,6 @@
 use crate::i18n::{TranslationKey, tf};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
-use poise::serenity_prelude as serenity;
 
 /// Display current server information.
 #[poise::command(slash_command, guild_only, user_cooldown = 5)]
@@ -31,17 +31,20 @@ pub async fn serverinfo(ctx: Context<'_>) -> Result<(), Error> {
         &[&created_at.unix_timestamp()],
     );
 
-    let description = format!(
-        "├ {}\n├ {}\n├ {}\n├ {}\n└ {}",
-        name_text, members_text, channels_text, roles_text, created_text
-    );
+    let description = [
+        name_text,
+        members_text,
+        channels_text,
+        roles_text,
+        created_text,
+    ]
+    .join("\n");
 
-    let embed = serenity::CreateEmbed::new()
+    let embed = ui::embed(ctx.data(), Tone::Primary)
         .title(crate::i18n::t(lang, TranslationKey::ServerInfoTitle))
-        .description(description)
-        .color(ctx.data().config.colors.server_info);
+        .description(description);
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    ctx.send(ui::embed_reply(embed)).await?;
 
     Ok(())
 }

@@ -1,5 +1,6 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::permissions::missing_channel_permissions;
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -11,6 +12,7 @@ fn valid_channel(
     guild_id == channel_guild_id && kind == serenity::ChannelType::Text
 }
 
+/// Configure the private channel used for moderation records.
 #[poise::command(
     rename = "moderation-channel",
     slash_command,
@@ -23,6 +25,7 @@ pub async fn moderation_channel(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Set the private moderation records channel.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
@@ -34,8 +37,12 @@ pub async fn set(
     let lang = ctx.data().language(guild_id).await;
 
     if !valid_channel(guild_id, channel.guild_id, channel.kind) {
-        ctx.say(t(lang, TranslationKey::ModerationChannelInvalid))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            t(lang, TranslationKey::ModerationChannelInvalid),
+        )
+        .await?;
         return Ok(());
     }
 
@@ -50,7 +57,7 @@ pub async fn set(
             TranslationKey::ModerationBotMissingPermissions,
             &[&missing],
         );
-        ctx.say(message).await?;
+        ui::reply(ctx, Tone::Error, message).await?;
         return Ok(());
     }
 
@@ -62,7 +69,7 @@ pub async fn set(
     .execute(&ctx.data().db_pool)
     .await?;
     let message = tf(lang, TranslationKey::ModerationChannelSet, &[&channel.id]);
-    ctx.say(message).await?;
+    ui::reply(ctx, Tone::Success, message).await?;
     Ok(())
 }
 
@@ -91,6 +98,7 @@ mod tests {
     }
 }
 
+/// Show the currently configured moderation records channel.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -103,14 +111,19 @@ pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     .bind(guild_id.to_string())
     .fetch_optional(&ctx.data().db_pool)
     .await?;
-    ctx.say(match channel {
-        Some(channel) => tf(lang, TranslationKey::ModerationChannelCurrent, &[&channel]),
-        None => t(lang, TranslationKey::ModerationChannelNotConfigured).to_owned(),
-    })
+    ui::reply(
+        ctx,
+        Tone::Neutral,
+        match channel {
+            Some(channel) => tf(lang, TranslationKey::ModerationChannelCurrent, &[&channel]),
+            None => t(lang, TranslationKey::ModerationChannelNotConfigured).to_owned(),
+        },
+    )
     .await?;
     Ok(())
 }
 
+/// Clear the configured moderation records channel.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -121,7 +134,11 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
         .bind(guild_id.to_string())
         .execute(&ctx.data().db_pool)
         .await?;
-    ctx.say(t(lang, TranslationKey::ModerationChannelCleared))
-        .await?;
+    ui::reply(
+        ctx,
+        Tone::Success,
+        t(lang, TranslationKey::ModerationChannelCleared),
+    )
+    .await?;
     Ok(())
 }

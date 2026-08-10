@@ -3,6 +3,7 @@ use crate::config::discord_limits;
 use crate::database;
 use crate::i18n::{TranslationKey, t, tf};
 use crate::message_log_health::{MessageLogHealth, current_health, mark_warning_sent, reconcile};
+use crate::ui::{self, Tone};
 use chrono::DateTime;
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
@@ -33,7 +34,11 @@ pub async fn reconcile_all_health(ctx: &Context, data: &Data) {
                     .send_message(
                         &ctx.http,
                         serenity::CreateMessage::new()
-                            .content(t(language, TranslationKey::MessageLogDegradedWarning))
+                            .embed(ui::panel(
+                                data,
+                                Tone::Warning,
+                                t(language, TranslationKey::MessageLogDegradedWarning),
+                            ))
                             .allowed_mentions(serenity::CreateAllowedMentions::new()),
                     )
                     .await;
@@ -107,12 +112,7 @@ pub async fn handle_message_delete(
     let content_preview = if message.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
-        let preview: String = message
-            .content
-            .chars()
-            .take(data.config.message_preview_chars)
-            .collect();
-        preview
+        markdown_quote(&message.content, data.config.message_preview_chars)
     };
 
     // Get author avatar URL
@@ -146,9 +146,17 @@ pub async fn handle_message_delete(
             t(lang, TranslationKey::MessageDeletedAt),
             format!("<t:{}:f>", message.timestamp.unix_timestamp()),
             false,
-        );
+        )
+        .timestamp(serenity::Timestamp::now())
+        .footer(serenity::CreateEmbedFooter::new(tf(
+            lang,
+            TranslationKey::MessageIdValue,
+            &[&deleted_message_id],
+        )));
 
-    let builder = serenity::CreateMessage::new().embed(embed);
+    let builder = serenity::CreateMessage::new()
+        .embed(embed)
+        .allowed_mentions(serenity::CreateAllowedMentions::new());
 
     if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
         tracing::error!("Failed to send deletion log: {}", e);
@@ -303,8 +311,8 @@ pub async fn handle_message_update(
 
     // Build embed showing before/after
     // Preview sizes are validated against Discord's embed limits at startup.
-    let old_preview = code_block(&old_message.content, data.config.message_preview_chars);
-    let new_preview = code_block(new_content, data.config.message_preview_chars);
+    let old_preview = markdown_quote(&old_message.content, data.config.message_preview_chars);
+    let new_preview = markdown_quote(new_content, data.config.message_preview_chars);
 
     let author_text = tf(
         lang,
@@ -334,7 +342,9 @@ pub async fn handle_message_update(
             &[&event.id],
         )));
 
-    let builder = serenity::CreateMessage::new().embed(embed);
+    let builder = serenity::CreateMessage::new()
+        .embed(embed)
+        .allowed_mentions(serenity::CreateAllowedMentions::new());
 
     if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
         tracing::error!("Failed to send edit log: {}", e);
@@ -441,21 +451,19 @@ pub async fn handle_message_delete_bulk(
             .map(|dt| dt.format(&data.config.message_timestamp_format).to_string())
             .unwrap_or_else(|| t(lang, TranslationKey::MessageUnknownTimestamp).to_string());
 
-        let content_preview: String = content
-            .chars()
-            .take(data.config.message_preview_chars)
-            .collect();
-        let preview = if content_preview.is_empty() {
-            media_only.to_string()
+        let preview = if content.is_empty() {
+            media_only
         } else {
-            content_preview
+            content
         };
-        all_lines.push(
-            escape_code_fences(&format!("[{}] {}: {}", ts_str, author, preview))
-                .chars()
-                .take(data.config.message_log_chunk_chars)
-                .collect(),
-        );
+        all_lines.push(markdown_message(
+            &ts_str,
+            author,
+            preview,
+            data.config
+                .message_preview_chars
+                .min(data.config.message_log_chunk_chars),
+        ));
     }
 
     // Split lines into chunks that fit within field value limit
@@ -467,7 +475,7 @@ pub async fn handle_message_delete_bulk(
         let needed = if current_chunk.is_empty() {
             line.chars().count()
         } else {
-            line.chars().count() + 1 // +1 for \n separator
+            line.chars().count() + 2 // blank line between message blocks
         };
 
         if !current_chunk.is_empty()
@@ -478,7 +486,7 @@ pub async fn handle_message_delete_bulk(
         }
 
         if !current_chunk.is_empty() {
-            current_chunk.push('\n');
+            current_chunk.push_str("\n\n");
         }
         current_chunk.push_str(line);
     }
@@ -503,26 +511,32 @@ pub async fn handle_message_delete_bulk(
     let total_chunks = chunks.len();
 
     // Build embeds: first embed has full summary, subsequent embeds are continuation pages
-    let mut embeds: Vec<serenity::CreateEmbed> = Vec::new();
+    let mut embeds: Vec<(serenity::CreateEmbed, usize)> = Vec::new();
 
     if chunks.is_empty() {
         // No cached messages to display
+        let title = t(lang, TranslationKey::MessageBulkDeleteTitle);
+        let no_cached = t(lang, TranslationKey::MessageNoCached);
         let embed = serenity::CreateEmbed::new()
-            .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
-            .description(description)
-            .field(
-                deleted_messages_label,
-                t(lang, TranslationKey::MessageNoCached),
-                false,
-            )
+            .title(title)
+            .description(&description)
+            .field(deleted_messages_label, no_cached, false)
             .color(data.config.colors.warning)
             .timestamp(serenity::Timestamp::now())
-            .footer(serenity::CreateEmbedFooter::new(footer_text));
-        embeds.push(embed);
+            .footer(serenity::CreateEmbedFooter::new(&footer_text));
+        let chars = [
+            title,
+            &description,
+            deleted_messages_label,
+            no_cached,
+            &footer_text,
+        ]
+        .iter()
+        .map(|value| value.chars().count())
+        .sum();
+        embeds.push((embed, chars));
     } else {
         for (idx, chunk) in chunks.iter().enumerate() {
-            let field_value = format!("```{}```", chunk);
-
             if idx == 0 {
                 // Main embed with summary info
                 let field_name = if total_chunks > 1 {
@@ -531,36 +545,51 @@ pub async fn handle_message_delete_bulk(
                     deleted_messages_label.to_string()
                 };
 
+                let title = t(lang, TranslationKey::MessageBulkDeleteTitle);
                 let embed = serenity::CreateEmbed::new()
-                    .title(t(lang, TranslationKey::MessageBulkDeleteTitle))
+                    .title(title)
                     .description(&description)
-                    .field(field_name, field_value, false)
+                    .field(&field_name, chunk, false)
                     .color(data.config.colors.warning)
                     .timestamp(serenity::Timestamp::now())
                     .footer(serenity::CreateEmbedFooter::new(&footer_text));
-                embeds.push(embed);
+                let chars = [title, &description, &field_name, chunk, &footer_text]
+                    .iter()
+                    .map(|value| value.chars().count())
+                    .sum();
+                embeds.push((embed, chars));
             } else {
                 // Continuation embed — lightweight, just the message chunk
                 let field_name =
                     format!("{} [{}/{}]", deleted_messages_label, idx + 1, total_chunks);
 
                 let embed = serenity::CreateEmbed::new()
-                    .field(field_name, field_value, false)
+                    .field(&field_name, chunk, false)
                     .color(data.config.colors.warning);
-                embeds.push(embed);
+                let chars = field_name.chars().count() + chunk.chars().count();
+                embeds.push((embed, chars));
             }
         }
     }
 
-    let mut remaining = embeds;
+    let mut remaining = embeds.into_iter().peekable();
 
-    while !remaining.is_empty() {
-        let batch_size = remaining.len().min(discord_limits::EMBEDS_PER_MESSAGE);
-        let batch: Vec<serenity::CreateEmbed> = remaining.drain(..batch_size).collect();
-
-        let mut builder = serenity::CreateMessage::new();
-        for embed in batch {
+    while remaining.peek().is_some() {
+        let mut builder =
+            serenity::CreateMessage::new().allowed_mentions(serenity::CreateAllowedMentions::new());
+        let mut batch_chars = 0;
+        let mut batch_count = 0;
+        while let Some((_, next_chars)) = remaining.peek()
+            && fits_embed_batch(batch_count, batch_chars, *next_chars)
+        {
+            let (embed, chars) = remaining.next().expect("peeked embed page");
             builder = builder.embed(embed);
+            batch_chars += chars;
+            batch_count += 1;
+        }
+        if batch_count == 0 {
+            tracing::error!("Bulk delete embed exceeds Discord's per-message limits");
+            break;
         }
 
         if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
@@ -570,8 +599,70 @@ pub async fn handle_message_delete_bulk(
     }
 }
 
-fn escape_code_fences(value: &str) -> String {
-    value.replace("```", "`\u{200b}``")
+fn fits_embed_batch(count: usize, chars: usize, next_chars: usize) -> bool {
+    count < discord_limits::EMBEDS_PER_MESSAGE
+        && next_chars <= discord_limits::EMBED_TOTAL_CHARS
+        && chars.saturating_add(next_chars) <= discord_limits::EMBED_TOTAL_CHARS
+}
+
+fn escape_markdown(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if matches!(
+            character,
+            '\\' | '`' | '*' | '_' | '~' | '|' | '>' | '#' | '[' | ']' | '(' | ')' | '<'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+fn markdown_quote(value: &str, max_chars: usize) -> String {
+    let escaped = escape_markdown(value);
+    let mut quote = String::new();
+    let mut remaining = max_chars;
+
+    for (index, line) in escaped.lines().enumerate() {
+        let prefix = if index == 0 { "> " } else { "\n> " };
+        let prefix_chars = prefix.chars().count();
+        if remaining <= prefix_chars {
+            break;
+        }
+        quote.push_str(prefix);
+        remaining -= prefix_chars;
+
+        let line_chars = line.chars().count();
+        if line_chars <= remaining {
+            quote.push_str(line);
+            remaining -= line_chars;
+        } else {
+            quote.extend(line.chars().take(remaining.saturating_sub(1)));
+            if remaining > 0 {
+                quote.push('…');
+            }
+            break;
+        }
+    }
+    quote
+}
+
+fn markdown_message(timestamp: &str, author: &str, content: &str, max_chars: usize) -> String {
+    let header = format!(
+        "**{} · {}**\n",
+        escape_markdown(timestamp),
+        escape_markdown(author)
+    );
+    let header_chars = header.chars().count();
+    if header_chars >= max_chars {
+        return markdown_quote(author, max_chars);
+    }
+    format!(
+        "{}{}",
+        header,
+        markdown_quote(content, max_chars - header_chars)
+    )
 }
 
 async fn download_attachment(
@@ -640,22 +731,41 @@ fn is_discord_cdn(url: &reqwest::Url) -> bool {
         )
 }
 
-fn code_block(value: &str, max_chars: usize) -> String {
-    let escaped = escape_code_fences(value);
-    format!(
-        "```{}```",
-        escaped.chars().take(max_chars).collect::<String>()
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{code_block, fits_byte_budget, is_discord_cdn};
+    use super::{
+        fits_byte_budget, fits_embed_batch, is_discord_cdn, markdown_message, markdown_quote,
+    };
 
     #[test]
-    fn user_content_cannot_close_code_block() {
-        let block = code_block("before```fake log", 100);
-        assert_eq!(block.matches("```").count(), 2);
+    fn user_markdown_cannot_escape_its_message_block() {
+        let entry = markdown_message(
+            "12:00",
+            "**admin**",
+            "```fake log\n> quote\n@everyone <@1> **next**",
+            500,
+        );
+        assert!(entry.contains("\\`\\`\\`fake log"));
+        assert!(entry.contains("\n> \\> quote"));
+        assert!(entry.contains("\\<@1\\>"));
+        assert!(!entry.contains("```"));
+        assert!(entry.chars().count() <= 500);
+    }
+
+    #[test]
+    fn multiline_quotes_prefix_every_line_and_fit_the_limit() {
+        let quote = markdown_quote("first\nsecond\nthird", 20);
+        assert!(quote.lines().all(|line| line.starts_with("> ")));
+        assert!(quote.chars().count() <= 20);
+    }
+
+    #[test]
+    fn embed_batches_respect_count_and_combined_character_limits() {
+        assert!(fits_embed_batch(0, 0, 6_000));
+        assert!(fits_embed_batch(9, 5_000, 1_000));
+        assert!(!fits_embed_batch(10, 0, 1));
+        assert!(!fits_embed_batch(1, 5_001, 1_000));
+        assert!(!fits_embed_batch(0, 0, 6_001));
     }
 
     #[test]

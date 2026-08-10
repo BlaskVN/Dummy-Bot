@@ -1,9 +1,11 @@
 use crate::i18n::Language;
+use crate::ui::{self, Tone};
 use crate::word_puzzle::PuzzleState;
 use crate::word_puzzle_store::{Board, FinishedSession, SummaryEntry};
 use crate::{Context, Data, Error};
 use poise::serenity_prelude as serenity;
 
+/// Play a collaborative five-letter English word puzzle.
 #[poise::command(
     rename = "word-puzzle",
     slash_command,
@@ -14,6 +16,7 @@ pub async fn word_puzzle(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Create a new word puzzle in this channel.
 #[poise::command(slash_command, guild_only)]
 pub async fn create(ctx: Context<'_>) -> Result<(), Error> {
     let (guild_id, language) = guild_context(ctx).await?;
@@ -28,10 +31,10 @@ pub async fn create(ctx: Context<'_>) -> Result<(), Error> {
     .await
     {
         Ok(session) => {
-            ctx.send(
-                poise::CreateReply::default()
-                    .content(render(language, Text::Created, &[&session.id]))
-                    .allowed_mentions(serenity::CreateAllowedMentions::new()),
+            ui::reply(
+                ctx,
+                Tone::Success,
+                render(language, Text::Created, &[&session.id]),
             )
             .await?;
         }
@@ -40,6 +43,7 @@ pub async fn create(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Join the current word puzzle in this channel.
 #[poise::command(slash_command, guild_only)]
 pub async fn join(ctx: Context<'_>) -> Result<(), Error> {
     let (guild_id, language) = guild_context(ctx).await?;
@@ -68,6 +72,7 @@ pub async fn join(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Start the lobby's puzzle with an optional deadline.
 #[poise::command(slash_command, guild_only)]
 pub async fn start(
     ctx: Context<'_>,
@@ -96,10 +101,10 @@ pub async fn start(
     .await
     {
         Ok(deadline) => {
-            ctx.send(
-                poise::CreateReply::default()
-                    .content(render(language, Text::Started, &[&deadline]))
-                    .allowed_mentions(serenity::CreateAllowedMentions::new()),
+            ui::reply(
+                ctx,
+                Tone::Success,
+                render(language, Text::Started, &[&deadline]),
             )
             .await?;
         }
@@ -108,6 +113,7 @@ pub async fn start(
     Ok(())
 }
 
+/// Submit one five-letter English word as your guess.
 #[poise::command(slash_command, guild_only)]
 pub async fn guess(
     ctx: Context<'_>,
@@ -164,6 +170,7 @@ pub async fn guess(
     Ok(())
 }
 
+/// Show the current puzzle, players, guesses, and deadline.
 #[poise::command(slash_command, guild_only)]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     let (guild_id, language) = guild_context(ctx).await?;
@@ -198,6 +205,7 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// End the current puzzle early and show its results.
 #[poise::command(slash_command, guild_only)]
 pub async fn finish(ctx: Context<'_>) -> Result<(), Error> {
     let (guild_id, language) = guild_context(ctx).await?;
@@ -227,13 +235,7 @@ async fn guild_context(ctx: Context<'_>) -> Result<(serenity::GuildId, Language)
 }
 
 async fn send_private(ctx: Context<'_>, content: String) -> Result<(), serenity::Error> {
-    ctx.send(
-        poise::CreateReply::default()
-            .content(content)
-            .ephemeral(true)
-            .allowed_mentions(serenity::CreateAllowedMentions::new()),
-    )
-    .await?;
+    ui::private_reply(ctx, Tone::Neutral, content).await?;
     Ok(())
 }
 
@@ -294,7 +296,11 @@ async fn deliver_summary(
         .send_message(
             ctx,
             serenity::CreateMessage::new()
-                .content(format_summary(language, &session.answer, &rows))
+                .embed(ui::panel(
+                    data,
+                    Tone::Primary,
+                    format_summary(language, &session.answer, &rows),
+                ))
                 .allowed_mentions(serenity::CreateAllowedMentions::new()),
         )
         .await?;

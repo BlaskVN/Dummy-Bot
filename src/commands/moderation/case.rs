@@ -1,10 +1,12 @@
 use crate::i18n::{Language, TranslationKey, t, tf};
 use crate::moderation_cases::{ModerationCaseRecord, get_case, list_cases, void_case};
+use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
 const PAGE_SIZE: i64 = 10;
 
+/// View, list, or void recorded moderation cases.
 #[poise::command(
     rename = "case",
     slash_command,
@@ -15,6 +17,7 @@ pub async fn cases(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// View one moderation case by its number.
 #[poise::command(slash_command, guild_only, required_permissions = "MODERATE_MEMBERS")]
 pub async fn view(
     ctx: Context<'_>,
@@ -25,13 +28,18 @@ pub async fn view(
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
     let Some(record) = get_case(&ctx.data().db_pool, guild_id, number).await? else {
-        ctx.say(t(lang, TranslationKey::ModerationCaseNotFound))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            t(lang, TranslationKey::ModerationCaseNotFound),
+        )
+        .await?;
         return Ok(());
     };
-    send_safe(ctx, render_case(lang, &record)).await
+    send_safe(ctx, Tone::Neutral, render_case(lang, &record)).await
 }
 
+/// List moderation cases, optionally filtered by member.
 #[poise::command(slash_command, guild_only, required_permissions = "MODERATE_MEMBERS")]
 pub async fn list(
     ctx: Context<'_>,
@@ -54,8 +62,12 @@ pub async fn list(
     )
     .await?;
     if records.is_empty() {
-        ctx.say(t(lang, TranslationKey::ModerationCaseListEmpty))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            t(lang, TranslationKey::ModerationCaseListEmpty),
+        )
+        .await?;
         return Ok(());
     }
     let rows = records
@@ -75,9 +87,10 @@ pub async fn list(
         .collect::<Vec<_>>()
         .join("\n");
     let message = tf(lang, TranslationKey::ModerationCaseList, &[&page, &rows]);
-    send_safe(ctx, message).await
+    send_safe(ctx, Tone::Neutral, message).await
 }
 
+/// Mark a moderation case invalid while preserving its audit record.
 #[poise::command(
     slash_command,
     guild_only,
@@ -94,16 +107,24 @@ pub async fn void(
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
     if reason.trim().is_empty() {
-        ctx.say(t(lang, TranslationKey::ModerationReasonRequired))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Error,
+            t(lang, TranslationKey::ModerationReasonRequired),
+        )
+        .await?;
         return Ok(());
     }
     if get_case(&ctx.data().db_pool, guild_id, number)
         .await?
         .is_none()
     {
-        ctx.say(t(lang, TranslationKey::ModerationCaseNotFound))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            t(lang, TranslationKey::ModerationCaseNotFound),
+        )
+        .await?;
         return Ok(());
     }
     if !void_case(
@@ -115,12 +136,16 @@ pub async fn void(
     )
     .await?
     {
-        ctx.say(t(lang, TranslationKey::ModerationCaseAlreadyVoided))
-            .await?;
+        ui::reply(
+            ctx,
+            Tone::Warning,
+            t(lang, TranslationKey::ModerationCaseAlreadyVoided),
+        )
+        .await?;
         return Ok(());
     }
     let message = tf(lang, TranslationKey::ModerationCaseVoided, &[&number]);
-    send_safe(ctx, message).await
+    send_safe(ctx, Tone::Success, message).await
 }
 
 fn action_name(language: Language, action: &str) -> &'static str {
@@ -180,12 +205,7 @@ fn render_case(language: Language, record: &ModerationCaseRecord) -> String {
     text
 }
 
-async fn send_safe(ctx: Context<'_>, content: String) -> Result<(), Error> {
-    ctx.send(
-        poise::CreateReply::default()
-            .content(content)
-            .allowed_mentions(serenity::CreateAllowedMentions::new()),
-    )
-    .await?;
+async fn send_safe(ctx: Context<'_>, tone: Tone, content: String) -> Result<(), Error> {
+    ui::reply(ctx, tone, content).await?;
     Ok(())
 }
