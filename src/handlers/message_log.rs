@@ -368,14 +368,31 @@ async fn deletion_actor(
         .await
         .ok()?;
     let entry = logs.entries.iter().find(|entry| {
-        entry.target_id == Some(serenity::GenericId::new(message.author.id.get()))
-            && entry
-                .options
-                .as_ref()
-                .and_then(|options| options.channel_id)
-                == Some(channel_id)
+        entry.options.as_ref().is_some_and(|options| {
+            exact_delete_match(
+                entry.target_id,
+                serenity::GenericId::new(message.author.id.get()),
+                options.channel_id,
+                channel_id,
+                options.message_id,
+                message.id,
+            )
+        })
     })?;
     logs.users.get(&entry.user_id).cloned()
+}
+
+fn exact_delete_match(
+    audit_target_id: Option<serenity::GenericId>,
+    author_id: serenity::GenericId,
+    audit_channel_id: Option<ChannelId>,
+    channel_id: ChannelId,
+    audit_message_id: Option<MessageId>,
+    message_id: MessageId,
+) -> bool {
+    audit_target_id == Some(author_id)
+        && audit_channel_id == Some(channel_id)
+        && audit_message_id == Some(message_id)
 }
 
 fn reply_field(
@@ -792,9 +809,40 @@ mod tests {
     use poise::serenity_prelude as serenity;
 
     use super::{
-        fits_byte_budget, fits_embed_batch, is_discord_cdn, markdown_message, markdown_quote,
-        message_url,
+        exact_delete_match, fits_byte_budget, fits_embed_batch, is_discord_cdn, markdown_message,
+        markdown_quote, message_url,
     };
+
+    #[test]
+    fn deletion_actor_requires_exact_message_id() {
+        let author = serenity::GenericId::new(1);
+        let channel = serenity::ChannelId::new(2);
+        let deleted = serenity::MessageId::new(7);
+        assert!(exact_delete_match(
+            Some(author),
+            author,
+            Some(channel),
+            channel,
+            Some(deleted),
+            deleted,
+        ));
+        assert!(!exact_delete_match(
+            Some(author),
+            author,
+            Some(channel),
+            channel,
+            None,
+            deleted,
+        ));
+        assert!(!exact_delete_match(
+            Some(author),
+            author,
+            Some(channel),
+            channel,
+            Some(serenity::MessageId::new(8)),
+            deleted
+        ));
+    }
 
     #[test]
     fn user_markdown_cannot_escape_its_message_block() {
