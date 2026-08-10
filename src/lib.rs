@@ -14,6 +14,7 @@ pub mod i18n;
 pub mod message_log_health;
 pub mod moderation_cases;
 pub mod permissions;
+pub mod reward_roles;
 pub mod state;
 pub mod timezone;
 
