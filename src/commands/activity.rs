@@ -3,6 +3,7 @@ use crate::i18n::Language;
 use crate::permissions::missing_channel_permissions;
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
+use std::collections::HashSet;
 
 const REQUIRED_CREATE_PERMISSIONS: serenity::Permissions = serenity::Permissions::CREATE_EVENTS
     .union(serenity::Permissions::VIEW_CHANNEL)
@@ -10,7 +11,15 @@ const REQUIRED_CREATE_PERMISSIONS: serenity::Permissions = serenity::Permissions
 
 #[poise::command(
     slash_command,
-    subcommands("create", "view", "update", "cancel", "check_in"),
+    subcommands(
+        "create",
+        "view",
+        "update",
+        "cancel",
+        "check_in",
+        "profile",
+        "leaderboard"
+    ),
     guild_only
 )]
 pub async fn activity(_ctx: Context<'_>) -> Result<(), Error> {
@@ -94,6 +103,253 @@ fn check_in_response(language: Language, success: bool) -> &'static str {
         (Language::Vietnamese, false) => "Hãy vào kênh thoại của phiên đã cấu hình trước.",
         (Language::Japanese, true) => "このセッションとボイスチャンネルにチェックインしました。",
         (Language::Japanese, false) => "設定済みセッションのボイスチャンネルに参加してください。",
+    }
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct GameStat {
+    game_key: String,
+    play_minutes: i64,
+    session_credits: i64,
+}
+
+#[poise::command(slash_command, guild_only)]
+pub async fn profile(
+    ctx: Context<'_>,
+    #[description = "Member in this server"] member: Option<serenity::Member>,
+    #[description = "Per-game page"] page: Option<i64>,
+) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let language = ctx.data().language(guild_id).await;
+    let user = member
+        .as_ref()
+        .map_or(ctx.author().id, |member| member.user.id);
+    let page = page.unwrap_or(1);
+    if page < 1 {
+        ctx.say(profile_unavailable(language)).await?;
+        return Ok(());
+    }
+    let opted_out: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM activity_opt_out WHERE guild_id = ? AND user_id = ?)",
+    )
+    .bind(guild_id.to_string())
+    .bind(user.to_string())
+    .fetch_one(&ctx.data().db_pool)
+    .await?;
+    if opted_out {
+        ctx.say(profile_unavailable(language)).await?;
+        return Ok(());
+    }
+    let (minutes, credits): (i64, i64) = sqlx::query_as("SELECT play_minutes, session_credits FROM activity_member_aggregate WHERE guild_id = ? AND user_id = ?")
+        .bind(guild_id.to_string()).bind(user.to_string()).fetch_optional(&ctx.data().db_pool).await?.unwrap_or((0, 0));
+    let games: Vec<GameStat> = sqlx::query_as("SELECT game_key, play_minutes, session_credits FROM activity_member_game_aggregate WHERE guild_id = ? AND user_id = ? ORDER BY play_minutes DESC, game_key LIMIT 10 OFFSET ?")
+        .bind(guild_id.to_string()).bind(user.to_string()).bind((page - 1) * 10)
+        .fetch_all(&ctx.data().db_pool).await?;
+    let game_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM activity_member_game_aggregate WHERE guild_id = ? AND user_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(user.to_string())
+    .fetch_one(&ctx.data().db_pool)
+    .await?;
+    let level = crate::activity_aggregate::activity_level(minutes);
+    let next_minutes =
+        ((level + 1) as u128 * (level + 2) as u128 * 30).min(i64::MAX as u128) as i64;
+    let labels = profile_labels(language);
+    let game_rows = if games.is_empty() {
+        labels.5.to_owned()
+    } else {
+        games
+            .iter()
+            .map(|game| {
+                format!(
+                    "`{}` — {} — {} {}",
+                    game.game_key,
+                    format_duration(game.play_minutes),
+                    game.session_credits,
+                    labels.2
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let pages = ((game_count + 9) / 10).max(1);
+    let description = format!(
+        "{}: {}\n{}: {}\n{}: {}\n{}: {}\n\n{} ({}/{}):\n{}",
+        labels.0,
+        format_duration(minutes),
+        labels.1,
+        credits,
+        labels.3,
+        level,
+        labels.4,
+        format_duration((next_minutes - minutes).max(0)),
+        labels.6,
+        page,
+        pages,
+        game_rows,
+    );
+    ctx.send(
+        poise::CreateReply::default().embed(
+            serenity::CreateEmbed::new()
+                .title(format!("{} — {}", labels.7, user))
+                .description(description)
+                .color(ctx.data().config.colors.primary),
+        ),
+    )
+    .await?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RankedMember {
+    user_id: u64,
+    play_minutes: i64,
+    rank: usize,
+}
+
+#[poise::command(slash_command, guild_only)]
+pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let language = ctx.data().language(guild_id).await;
+    let rows: Vec<(String, i64)> = sqlx::query_as("SELECT a.user_id, a.play_minutes FROM activity_member_aggregate a LEFT JOIN activity_opt_out o ON o.guild_id = a.guild_id AND o.user_id = a.user_id WHERE a.guild_id = ? AND o.user_id IS NULL ORDER BY a.play_minutes DESC, a.user_id LIMIT 1000")
+        .bind(guild_id.to_string()).fetch_all(&ctx.data().db_pool).await?;
+    let bot_ids = ctx.guild().map_or_else(HashSet::new, |guild| {
+        guild
+            .members
+            .iter()
+            .filter_map(|(id, member)| member.user.bot.then_some(id.get()))
+            .collect()
+    });
+    let ranked = rank_members(
+        rows.into_iter()
+            .filter_map(|(id, minutes)| id.parse().ok().map(|id| (id, minutes)))
+            .collect(),
+        &bot_ids,
+    );
+    let mut shown = ranked.iter().take(10).collect::<Vec<_>>();
+    if let Some(caller) = ranked
+        .iter()
+        .find(|row| row.user_id == ctx.author().id.get())
+        && !shown.iter().any(|row| row.user_id == caller.user_id)
+    {
+        shown.push(caller);
+    }
+    let title = leaderboard_title(language);
+    let content = if shown.is_empty() {
+        format!("**{title}**\n{}", profile_unavailable(language))
+    } else {
+        format!(
+            "**{title}**\n{}",
+            shown
+                .iter()
+                .map(|row| format!(
+                    "{}. <@{}> — {}",
+                    row.rank,
+                    row.user_id,
+                    format_duration(row.play_minutes)
+                ))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
+    ctx.send(
+        poise::CreateReply::default()
+            .content(content)
+            .allowed_mentions(serenity::CreateAllowedMentions::new()),
+    )
+    .await?;
+    Ok(())
+}
+
+fn rank_members(mut rows: Vec<(u64, i64)>, excluded: &HashSet<u64>) -> Vec<RankedMember> {
+    rows.retain(|(user, _)| !excluded.contains(user));
+    rows.sort_by_key(|(user, minutes)| (std::cmp::Reverse(*minutes), *user));
+    let mut previous = None;
+    let mut rank = 0;
+    rows.into_iter()
+        .enumerate()
+        .map(|(index, (user_id, play_minutes))| {
+            if previous != Some(play_minutes) {
+                rank = index + 1;
+                previous = Some(play_minutes);
+            }
+            RankedMember {
+                user_id,
+                play_minutes,
+                rank,
+            }
+        })
+        .collect()
+}
+
+fn format_duration(minutes: i64) -> String {
+    format!("{}h {:02}m", minutes.max(0) / 60, minutes.max(0) % 60)
+}
+
+fn profile_labels(
+    language: Language,
+) -> (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+) {
+    match language {
+        Language::English => (
+            "Play Time",
+            "Session Credit",
+            "credits",
+            "Level",
+            "Next Level",
+            "No game totals",
+            "Games",
+            "Activity Profile",
+        ),
+        Language::Vietnamese => (
+            "Thời gian chơi",
+            "Điểm phiên",
+            "điểm",
+            "Cấp",
+            "Cấp tiếp theo",
+            "Chưa có tổng theo game",
+            "Game",
+            "Hồ sơ hoạt động",
+        ),
+        Language::Japanese => (
+            "プレイ時間",
+            "セッションクレジット",
+            "クレジット",
+            "レベル",
+            "次のレベル",
+            "ゲーム別集計なし",
+            "ゲーム",
+            "アクティビティプロフィール",
+        ),
+    }
+}
+
+fn profile_unavailable(language: Language) -> &'static str {
+    match language {
+        Language::English => "No Activity Profile is available.",
+        Language::Vietnamese => "Không có Hồ sơ hoạt động.",
+        Language::Japanese => "アクティビティプロフィールはありません。",
+    }
+}
+
+fn leaderboard_title(language: Language) -> &'static str {
+    match language {
+        Language::English => "Play-Time Leaderboard",
+        Language::Vietnamese => "Bảng xếp hạng thời gian chơi",
+        Language::Japanese => "プレイ時間ランキング",
     }
 }
 
@@ -571,9 +827,12 @@ fn control_labels(language: Language) -> (&'static str, &'static str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{control_labels, event_url, valid_transition, validate_fields};
+    use super::{
+        control_labels, event_url, format_duration, rank_members, valid_transition, validate_fields,
+    };
     use crate::i18n::Language;
     use poise::serenity_prelude::{GuildId, ScheduledEventId, ScheduledEventStatus};
+    use std::collections::HashSet;
 
     #[test]
     fn builds_native_link_and_localized_controls() {
@@ -623,5 +882,21 @@ mod tests {
             ScheduledEventStatus::Completed,
             ScheduledEventStatus::Active
         ));
+    }
+
+    #[test]
+    fn ranks_ties_without_credit_tiebreakers() {
+        let ranked = rank_members(
+            vec![(4, 60), (2, 120), (3, 120), (1, 180)],
+            &HashSet::from([4]),
+        );
+        assert_eq!(
+            ranked
+                .iter()
+                .map(|row| (row.user_id, row.rank))
+                .collect::<Vec<_>>(),
+            vec![(1, 1), (2, 2), (3, 2)]
+        );
+        assert_eq!(format_duration(125), "2h 05m");
     }
 }
