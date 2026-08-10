@@ -105,6 +105,8 @@ pub enum TranslationKey {
     MessageId,
     MessageIdValue,
     MessageDeletedAt,
+    MessageSentAt,
+    MessageReplyTo,
     MessageUnknownTimestamp,
     MessageNoCached,
 
@@ -309,6 +311,8 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(TranslationKey::MessageId, "ID");
     en.insert(TranslationKey::MessageIdValue, "Message ID: {}");
     en.insert(TranslationKey::MessageDeletedAt, "Deleted at");
+    en.insert(TranslationKey::MessageSentAt, "Sent at");
+    en.insert(TranslationKey::MessageReplyTo, "Replying to");
     en.insert(TranslationKey::MessageUnknownTimestamp, "Unknown time");
     en.insert(
         TranslationKey::MessageNoCached,
@@ -687,6 +691,8 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(TranslationKey::MessageId, "ID");
     vi.insert(TranslationKey::MessageIdValue, "ID tin nhắn: {}");
     vi.insert(TranslationKey::MessageDeletedAt, "Thời điểm xóa");
+    vi.insert(TranslationKey::MessageSentAt, "Thời điểm gửi");
+    vi.insert(TranslationKey::MessageReplyTo, "Trả lời tin nhắn");
     vi.insert(
         TranslationKey::MessageUnknownTimestamp,
         "Không rõ thời gian",
@@ -1083,6 +1089,8 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(TranslationKey::MessageId, "ID");
     ja.insert(TranslationKey::MessageIdValue, "メッセージID：{}");
     ja.insert(TranslationKey::MessageDeletedAt, "削除日時");
+    ja.insert(TranslationKey::MessageSentAt, "送信日時");
+    ja.insert(TranslationKey::MessageReplyTo, "返信先");
     ja.insert(TranslationKey::MessageUnknownTimestamp, "時刻不明");
     ja.insert(
         TranslationKey::MessageNoCached,

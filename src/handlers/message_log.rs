@@ -108,29 +108,27 @@ pub async fn handle_message_delete(
         }
     };
 
-    // Build the embed with fields (matching JavaScript format)
+    let deleted_by = deletion_actor(ctx, guild_id, channel_id, &message)
+        .await
+        .unwrap_or_else(|| message.author.clone());
+
     let content_preview = if message.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
         markdown_quote(&message.content, data.config.message_preview_chars)
     };
 
-    // Get author avatar URL
-    let avatar_url = message.author.face();
-
-    let embed = serenity::CreateEmbed::new()
+    let sent_at = format!("<t:{}:f>", message.timestamp.unix_timestamp());
+    let deleted_at = serenity::Timestamp::now();
+    let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageDeleted))
-        .thumbnail(avatar_url)
+        .author(serenity::CreateEmbedAuthor::from(&deleted_by))
+        .thumbnail(message.author.face())
         .color(data.config.colors.error)
         .field(
             t(lang, TranslationKey::MessageAuthorLabel),
             format!("<@{}>", message.author.id),
-            true,
-        )
-        .field(
-            t(lang, TranslationKey::MessageId),
-            message.author.id.to_string(),
-            true,
+            false,
         )
         .field(
             t(lang, TranslationKey::MessageChannelLabel),
@@ -142,17 +140,15 @@ pub async fn handle_message_delete(
             content_preview,
             false,
         )
-        .field(
-            t(lang, TranslationKey::MessageDeletedAt),
-            format!("<t:{}:f>", message.timestamp.unix_timestamp()),
-            false,
-        )
-        .timestamp(serenity::Timestamp::now())
-        .footer(serenity::CreateEmbedFooter::new(tf(
+        .field(t(lang, TranslationKey::MessageSentAt), sent_at, false)
+        .timestamp(deleted_at)
+        .footer(serenity::CreateEmbedFooter::new(t(
             lang,
-            TranslationKey::MessageIdValue,
-            &[&deleted_message_id],
+            TranslationKey::MessageDeletedAt,
         )));
+    if let Some(reply) = reply_field(lang, guild_id, &message) {
+        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
+    }
 
     let builder = serenity::CreateMessage::new()
         .embed(embed)
@@ -314,33 +310,35 @@ pub async fn handle_message_update(
     let old_preview = markdown_quote(&old_message.content, data.config.message_preview_chars);
     let new_preview = markdown_quote(new_content, data.config.message_preview_chars);
 
-    let author_text = tf(
-        lang,
-        TranslationKey::MessageAuthor,
-        &[&old_message.author.id],
-    );
-    let channel_text = tf(lang, TranslationKey::MessageChannel, &[&event.channel_id]);
-    let jump_url = format!(
-        "https://discord.com/channels/{}/{}/{}",
-        guild_id, event.channel_id, event.id
-    );
-    let jump_text = tf(lang, TranslationKey::MessageJumpTo, &[&jump_url]);
-
     let before_label = t(lang, TranslationKey::MessageBefore);
     let after_label = t(lang, TranslationKey::MessageAfter);
 
-    let embed = serenity::CreateEmbed::new()
+    let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageEditedTitle))
-        .description(format!("{}\n{}\n{}", author_text, channel_text, jump_text))
+        .author(serenity::CreateEmbedAuthor::from(&old_message.author))
+        .thumbnail(old_message.author.face())
+        .field(
+            t(lang, TranslationKey::MessageAuthorLabel),
+            format!("<@{}>", old_message.author.id),
+            false,
+        )
+        .field(
+            t(lang, TranslationKey::MessageChannelLabel),
+            format!("<#{}>", event.channel_id),
+            false,
+        )
         .field(before_label, old_preview, false)
         .field(after_label, new_preview, false)
         .color(data.config.colors.warning)
         .timestamp(serenity::Timestamp::now())
-        .footer(serenity::CreateEmbedFooter::new(tf(
-            lang,
-            TranslationKey::MessageIdValue,
-            &[&event.id],
+        .footer(serenity::CreateEmbedFooter::new(format!(
+            "{} <t:{}:f>",
+            t(lang, TranslationKey::MessageSentAt),
+            old_message.timestamp.unix_timestamp()
         )));
+    if let Some(reply) = reply_field(lang, guild_id, old_message) {
+        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
+    }
 
     let builder = serenity::CreateMessage::new()
         .embed(embed)
@@ -349,6 +347,69 @@ pub async fn handle_message_update(
     if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
         tracing::error!("Failed to send edit log: {}", e);
     }
+}
+
+async fn deletion_actor(
+    ctx: &Context,
+    guild_id: serenity::GuildId,
+    channel_id: ChannelId,
+    message: &serenity::Message,
+) -> Option<serenity::User> {
+    let logs = guild_id
+        .audit_logs(
+            &ctx.http,
+            Some(serenity::audit_log::Action::Message(
+                serenity::audit_log::MessageAction::Delete,
+            )),
+            None,
+            None,
+            Some(5),
+        )
+        .await
+        .ok()?;
+    let entry = logs.entries.iter().find(|entry| {
+        entry.target_id == Some(serenity::GenericId::new(message.author.id.get()))
+            && entry
+                .options
+                .as_ref()
+                .and_then(|options| options.channel_id)
+                == Some(channel_id)
+    })?;
+    logs.users.get(&entry.user_id).cloned()
+}
+
+fn reply_field(
+    lang: crate::i18n::Language,
+    guild_id: serenity::GuildId,
+    message: &serenity::Message,
+) -> Option<String> {
+    let reference = message.message_reference.as_ref()?;
+    let message_id = reference.message_id?;
+    let channel_id = reference.channel_id;
+    let jump_url = message_url(guild_id, channel_id, message_id);
+    let preview = message
+        .referenced_message
+        .as_deref()
+        .map(|reply| {
+            format!(
+                "<@{}>\n{}",
+                reply.author.id,
+                markdown_quote(&reply.content, 700)
+            )
+        })
+        .unwrap_or_else(|| t(lang, TranslationKey::MessageNoCached).to_string());
+    Some(format!(
+        "{preview}\n{}",
+        tf(lang, TranslationKey::MessageJumpTo, &[&jump_url])
+    ))
+}
+
+fn message_url(
+    guild_id: serenity::GuildId,
+    channel_id: ChannelId,
+    message_id: MessageId,
+) -> String {
+    format!("https://discord.com/channels/{guild_id}/{channel_id}/{message_id}")
 }
 
 async fn send_metadata_log(
@@ -369,12 +430,7 @@ async fn send_metadata_log(
         .field(
             t(language, TranslationKey::MessageChannelLabel),
             format!("<#{channel_id}>"),
-            true,
-        )
-        .field(
-            t(language, TranslationKey::MessageId),
-            message_id.to_string(),
-            true,
+            false,
         )
         .color(data.config.colors.warning);
     if let Err(error) = log_channel
@@ -733,8 +789,11 @@ fn is_discord_cdn(url: &reqwest::Url) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use poise::serenity_prelude as serenity;
+
     use super::{
         fits_byte_budget, fits_embed_batch, is_discord_cdn, markdown_message, markdown_quote,
+        message_url,
     };
 
     #[test]
@@ -776,6 +835,18 @@ mod tests {
                 .unwrap()
         ));
         assert!(!is_discord_cdn(&"https://127.0.0.1/file".parse().unwrap()));
+    }
+
+    #[test]
+    fn reply_link_points_to_the_referenced_message() {
+        assert_eq!(
+            message_url(
+                serenity::GuildId::new(1),
+                serenity::ChannelId::new(2),
+                serenity::MessageId::new(3)
+            ),
+            "https://discord.com/channels/1/2/3"
+        );
     }
 
     #[test]
