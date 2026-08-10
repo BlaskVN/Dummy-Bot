@@ -22,14 +22,25 @@ pub async fn donate(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
 
-    let mut reply = ui::reply_builder(ctx.data(), Tone::Primary, render(&config));
-    if let Some(filename) = config.qr_filename.as_deref()
+    let description = render(&config);
+    let reply = if let Some(filename) = config.qr_filename.as_deref()
         && let Some(path) = owned_qr_path(&ctx.data().config.data_directory, filename)
     {
-        reply = reply.attachment(serenity::CreateAttachment::path(path).await?);
-    }
+        ui::embed_reply(
+            ui::embed(ctx.data(), Tone::Primary)
+                .description(description)
+                .image(attachment_url(filename)),
+        )
+        .attachment(serenity::CreateAttachment::path(path).await?)
+    } else {
+        ui::reply_builder(ctx.data(), Tone::Primary, description)
+    };
     ctx.send(reply).await?;
     Ok(())
+}
+
+fn attachment_url(filename: &str) -> String {
+    format!("attachment://{filename}")
 }
 
 fn render(config: &DonationConfig) -> String {
@@ -42,7 +53,7 @@ fn render(config: &DonationConfig) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::render;
+    use super::{attachment_url, render};
     use crate::database::DonationConfig;
 
     #[test]
@@ -70,6 +81,14 @@ mod tests {
                 qr_filename: Some("donation-qr-1.png".into())
             }),
             "Thanks\nhttps://example.com"
+        );
+    }
+
+    #[test]
+    fn donation_qr_uses_the_embed_attachment_url() {
+        assert_eq!(
+            attachment_url("donation-qr-1.png"),
+            "attachment://donation-qr-1.png"
         );
     }
 }
