@@ -9,7 +9,11 @@ use poise::serenity_prelude as serenity;
 
 const RECONCILE_LIMIT: i64 = 500;
 
-pub async fn handle_native_update(data: &Data, event: &serenity::ScheduledEvent) {
+pub async fn handle_native_update(
+    ctx: &serenity::Context,
+    data: &Data,
+    event: &serenity::ScheduledEvent,
+) {
     let Some(state) = native_state(event.status) else {
         return;
     };
@@ -37,6 +41,8 @@ pub async fn handle_native_update(data: &Data, event: &serenity::ScheduledEvent)
         .await
         {
             tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not finalize terminal activity");
+        } else {
+            super::rewards::reconcile(ctx, data, event.guild_id).await;
         }
         super::activity_presence::clear_session(data, event.guild_id, event.id).await;
     }
@@ -68,6 +74,8 @@ pub async fn handle_native_delete(
     .await
     {
         tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not finalize deleted activity");
+    } else {
+        super::rewards::reconcile(ctx, data, event.guild_id).await;
     }
 }
 
@@ -97,7 +105,7 @@ pub async fn reconcile_all(ctx: &serenity::Context, data: &Data) {
         }
         let event_id = serenity::ScheduledEventId::new(event);
         match guild_id.scheduled_event(&ctx.http, event_id, false).await {
-            Ok(event) => handle_native_update(data, &event).await,
+            Ok(event) => handle_native_update(ctx, data, &event).await,
             Err(error) if is_not_found(&error) => {
                 notify_deleted(ctx, data, guild_id, event_id).await
             }

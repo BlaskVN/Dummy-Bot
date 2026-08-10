@@ -6,6 +6,7 @@ pub mod guild_lifecycle;
 pub mod message_log;
 pub mod onboarding;
 pub mod reconnect;
+pub mod rewards;
 pub mod voice;
 
 use crate::{Data, Error};
@@ -65,6 +66,12 @@ pub async fn dispatch(
         serenity::FullEvent::GuildMemberRemoval { guild_id, user, .. } => {
             activity_presence::remove_member(data, *guild_id, user.id).await;
         }
+        serenity::FullEvent::GuildRoleUpdate { new, .. } => {
+            rewards::audit(ctx, data, new.guild_id).await;
+        }
+        serenity::FullEvent::ChannelUpdate { new, .. } => {
+            rewards::audit(ctx, data, new.guild_id).await;
+        }
         serenity::FullEvent::GuildCreate { guild, is_new } => {
             onboarding::handle_guild_create(ctx, guild, *is_new, data).await;
         }
@@ -79,7 +86,7 @@ pub async fn dispatch(
         }
         serenity::FullEvent::GuildScheduledEventCreate { event }
         | serenity::FullEvent::GuildScheduledEventUpdate { event } => {
-            community::handle_native_update(data, event).await;
+            community::handle_native_update(ctx, data, event).await;
         }
         serenity::FullEvent::GuildScheduledEventDelete { event } => {
             community::handle_native_delete(ctx, data, event).await;

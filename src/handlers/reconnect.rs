@@ -25,6 +25,7 @@ pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
     }
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
+    super::rewards::reconcile_all(ctx, data).await;
     super::game_session::wake_expiry(data);
     spawn_voice_reconnect(
         ctx.clone(),
@@ -51,6 +52,7 @@ pub async fn handle_ready_reconnect(ctx: &serenity::Context, data: &Data) {
     }
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
+    super::rewards::reconcile_all(ctx, data).await;
     super::game_session::wake_expiry(data);
     spawn_voice_reconnect(
         ctx.clone(),

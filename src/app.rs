@@ -84,6 +84,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 }
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
                 handlers::community::reconcile_all(ctx, &data).await;
+                handlers::rewards::reconcile_all(ctx, &data).await;
                 handlers::game_session::spawn_expiry_worker(
                     ctx.clone(),
                     data.db_pool.clone(),

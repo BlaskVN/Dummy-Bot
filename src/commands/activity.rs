@@ -20,11 +20,95 @@ const REQUIRED_CREATE_PERMISSIONS: serenity::Permissions = serenity::Permissions
         "profile",
         "leaderboard",
         "opt_out",
-        "opt_in"
+        "opt_in",
+        "reward"
     ),
     guild_only
 )]
 pub async fn activity(_ctx: Context<'_>) -> Result<(), Error> {
+    Ok(())
+}
+
+#[poise::command(
+    slash_command,
+    subcommands("reward_set"),
+    guild_only,
+    default_member_permissions = "MANAGE_GUILD",
+    required_permissions = "MANAGE_GUILD",
+    required_bot_permissions = "MANAGE_ROLES"
+)]
+pub async fn reward(_ctx: Context<'_>) -> Result<(), Error> {
+    Ok(())
+}
+
+#[poise::command(
+    rename = "set",
+    slash_command,
+    guild_only,
+    required_permissions = "MANAGE_GUILD",
+    required_bot_permissions = "MANAGE_ROLES"
+)]
+pub async fn reward_set(
+    ctx: Context<'_>,
+    #[description = "Activity Level required"] level: i64,
+    #[description = "Safe existing role; omit to create one"] role: Option<serenity::Role>,
+) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    if level <= 0 {
+        ctx.say("Reward level must be positive.").await?;
+        return Ok(());
+    }
+    let bot_id = ctx.cache().current_user().id;
+    let (role, ownership) = match role {
+        Some(role) => (role, "guild_owned"),
+        None => (
+            guild_id
+                .create_role(
+                    ctx.http(),
+                    serenity::EditRole::new()
+                        .name(format!("Activity Level {level}"))
+                        .permissions(serenity::Permissions::empty())
+                        .hoist(false)
+                        .mentionable(false),
+                )
+                .await?,
+            "bot_owned",
+        ),
+    };
+    let validation = ctx.guild().map_or(
+        Err(crate::reward_roles::RewardRoleDenial::Missing),
+        |guild| crate::reward_roles::validate_reward_role_data(&guild, bot_id, &role),
+    );
+    if let Err(denial) = validation {
+        if ownership == "bot_owned" {
+            let _ = guild_id.delete_role(ctx.http(), role.id).await;
+        }
+        ctx.say(format!("Unsafe Activity Reward Role: {denial}"))
+            .await?;
+        return Ok(());
+    }
+    let old = crate::reward_roles::save_reward_config(
+        &ctx.data().db_pool,
+        guild_id,
+        role.id,
+        level,
+        ownership,
+    )
+    .await?;
+    crate::handlers::rewards::replace_and_reconcile(
+        ctx.serenity_context(),
+        ctx.data(),
+        guild_id,
+        old,
+    )
+    .await;
+    ctx.say(format!(
+        "Activity Reward Role set to <@&{}> at Level {level}.",
+        role.id
+    ))
+    .await?;
     Ok(())
 }
 
@@ -757,6 +841,7 @@ async fn finalize_local(
     crate::attendance::pause_session(&ctx.data().db_pool, guild_id, event_id, now).await?;
     crate::activity_aggregate::finalize_activity(&ctx.data().db_pool, guild_id, event_id, now)
         .await?;
+    crate::handlers::rewards::reconcile(ctx.serenity_context(), ctx.data(), guild_id).await;
     crate::handlers::activity_presence::clear_session(ctx.data(), guild_id, event_id).await;
     Ok(())
 }

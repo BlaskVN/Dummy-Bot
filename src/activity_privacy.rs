@@ -27,6 +27,7 @@ pub async fn opt_out(pool: &SqlitePool, guild_id: GuildId, user_id: UserId) -> R
         "activity_completion",
         "activity_member_game_aggregate",
         "activity_member_aggregate",
+        "activity_reward_grant",
     ] {
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM {table} WHERE guild_id = ? AND user_id = ?"

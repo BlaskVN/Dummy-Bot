@@ -193,6 +193,8 @@ async fn expire_due(ctx: &serenity::Context, pool: &SqlitePool) {
                         .await
                 {
                     tracing::error!(%guild_id, %event_id, %error, "Could not aggregate expired game attendance");
+                } else {
+                    super::rewards::reconcile_pool(ctx, pool, guild_id).await;
                 }
             }
             Ok(false) => {}

@@ -161,6 +161,8 @@ pub async fn delete_guild_data(
     let guild_id = guild_id.to_string();
     let mut transaction = pool.begin().await?;
     for table in [
+        "activity_reward_grant",
+        "activity_reward_config",
         "activity_completion",
         "activity_member_aggregate",
         "activity_member_game_aggregate",
