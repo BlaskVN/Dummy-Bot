@@ -372,8 +372,14 @@ mod tests {
 
     #[tokio::test]
     async fn guild_cleanup_is_complete_isolated_and_idempotent() {
-        let directory =
-            std::env::temp_dir().join(format!("dummy-bot-cleanup-test-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-cleanup-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let pool = init_db(
             &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
             &directory,
