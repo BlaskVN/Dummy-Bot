@@ -3,6 +3,8 @@ use anyhow::{Result, anyhow, bail};
 use poise::serenity_prelude::{ChannelId, GuildId, UserId};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
+const UNSTARTED_SESSION_TIMEOUT_SECONDS: i64 = 60 * 60;
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Session {
     pub id: i64,
@@ -295,14 +297,28 @@ pub async fn reconcile_expired(pool: &SqlitePool, now: i64, limit: i64) -> Resul
     if limit <= 0 {
         return Ok(0);
     }
-    let sessions: Vec<i64> = sqlx::query_scalar("SELECT id FROM word_puzzle_session WHERE finished_at IS NULL AND deadline_at <= ? ORDER BY deadline_at, id LIMIT ?")
-        .bind(now).bind(limit).fetch_all(pool).await?;
+    let stale: Vec<i64> = sqlx::query_scalar("SELECT id FROM word_puzzle_session WHERE started_at IS NULL AND finished_at IS NULL AND created_at <= ? ORDER BY created_at, id LIMIT ?")
+        .bind(now.saturating_sub(UNSTARTED_SESSION_TIMEOUT_SECONDS)).bind(limit).fetch_all(pool).await?;
+    let mut removed = 0_u64;
+    for session_id in stale {
+        let mut transaction = pool.begin().await?;
+        sqlx::query("DELETE FROM word_puzzle_participant WHERE session_id = ? AND EXISTS (SELECT 1 FROM word_puzzle_session WHERE id = ? AND started_at IS NULL AND finished_at IS NULL AND created_at <= ?)")
+            .bind(session_id).bind(session_id).bind(now.saturating_sub(UNSTARTED_SESSION_TIMEOUT_SECONDS))
+            .execute(&mut *transaction).await?;
+        removed += sqlx::query("DELETE FROM word_puzzle_session WHERE id = ? AND started_at IS NULL AND finished_at IS NULL AND created_at <= ?")
+            .bind(session_id).bind(now.saturating_sub(UNSTARTED_SESSION_TIMEOUT_SECONDS))
+            .execute(&mut *transaction).await?.rows_affected();
+        transaction.commit().await?;
+    }
+    let remaining = limit.saturating_sub(removed as i64);
+    let sessions: Vec<i64> = sqlx::query_scalar("SELECT id FROM word_puzzle_session WHERE started_at IS NOT NULL AND finished_at IS NULL AND deadline_at <= ? ORDER BY deadline_at, id LIMIT ?")
+        .bind(now).bind(remaining).fetch_all(pool).await?;
     for session_id in &sessions {
         let mut transaction = pool.begin().await?;
         expire(&mut transaction, *session_id, now).await?;
         transaction.commit().await?;
     }
-    Ok(sessions.len() as u64)
+    Ok(removed + sessions.len() as u64)
 }
 
 pub async fn award_pending_credits(pool: &SqlitePool, now: i64, limit: i64) -> Result<u64> {
@@ -590,6 +606,39 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(completions, 2);
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn stale_unstarted_session_releases_guild_slot() {
+        let (pool, directory) = test_pool("stale-open").await;
+        let created = create_session(
+            &pool,
+            GuildId::new(1),
+            UserId::new(2),
+            ChannelId::new(9),
+            100,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(reconcile_expired(&pool, 3_699, 10).await.unwrap(), 0);
+        assert!(session(&pool, created.id).await.unwrap().is_some());
+        assert_eq!(reconcile_expired(&pool, 3_700, 10).await.unwrap(), 1);
+        assert!(session(&pool, created.id).await.unwrap().is_none());
+        assert!(
+            create_session(
+                &pool,
+                GuildId::new(1),
+                UserId::new(3),
+                ChannelId::new(9),
+                3_700,
+            )
+            .await
+            .is_ok()
+        );
+
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }

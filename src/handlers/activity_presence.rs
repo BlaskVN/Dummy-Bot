@@ -56,7 +56,7 @@ pub async fn handle_presence_update(
         channel_id.filter(|channel| pool.contains(channel) && matched),
     )
     .await;
-    if let Some(channel_id) = channel_id {
+    if let Some(channel_id) = configured_channel(&pool, channel_id) {
         reconcile_channel(ctx, data, guild_id, channel_id).await;
     }
 }
@@ -116,13 +116,13 @@ pub async fn handle_voice_change(
             .filter(|channel| pool.contains(channel) && matched),
     )
     .await;
-    let old_channel = old.and_then(|state| state.channel_id);
+    let old_channel = configured_channel(&pool, old.and_then(|state| state.channel_id));
     if let Some(channel) = old_channel
         && Some(channel) != voice.channel_id
     {
         reconcile_channel(ctx, data, guild_id, channel).await;
     }
-    if let Some(channel) = voice.channel_id {
+    if let Some(channel) = configured_channel(&pool, voice.channel_id) {
         reconcile_channel(ctx, data, guild_id, channel).await;
     }
 }
@@ -186,21 +186,28 @@ async fn find_sessions(
     let activities = crate::community::guild_nonterminal_activities(&data.db_pool, guild_id, 100)
         .await
         .unwrap_or_default();
-    let mut events = Vec::new();
-    for activity in activities {
-        let Ok(raw_id) = activity.scheduled_event_id.parse() else {
-            continue;
-        };
-        let event_id = serenity::ScheduledEventId::new(raw_id);
-        if guild_id
-            .scheduled_event(&ctx.http, event_id, false)
-            .await
-            .is_ok_and(|event| event.channel_id == Some(channel_id))
-        {
-            events.push(event_id);
-        }
-    }
-    events
+    let managed = activities
+        .into_iter()
+        .filter_map(|activity| activity.scheduled_event_id.parse().ok())
+        .map(serenity::ScheduledEventId::new)
+        .collect::<HashSet<_>>();
+    guild_id
+        .scheduled_events(&ctx.http, false)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|event| {
+            (managed.contains(&event.id) && event.channel_id == Some(channel_id))
+                .then_some(event.id)
+        })
+        .collect()
+}
+
+fn configured_channel(
+    pool: &[serenity::ChannelId],
+    channel: Option<serenity::ChannelId>,
+) -> Option<serenity::ChannelId> {
+    channel.filter(|channel| pool.contains(channel))
 }
 
 pub async fn manual_check_in(
@@ -364,7 +371,8 @@ pub fn detection_status(enabled: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        activity_matches, clear_member_checkins, detection_status, record_checkin, update_source,
+        activity_matches, clear_member_checkins, configured_channel, detection_status,
+        record_checkin, update_source,
     };
     use poise::serenity_prelude::{ActivityType, ChannelId, GuildId, ScheduledEventId, UserId};
     use std::collections::HashSet;
@@ -373,6 +381,20 @@ mod tests {
     fn renders_detection_availability() {
         assert_eq!(detection_status(true), "available");
         assert_eq!(detection_status(false), "degraded");
+    }
+
+    #[test]
+    fn reconciles_only_configured_voice_channels() {
+        let configured = [ChannelId::new(10), ChannelId::new(11)];
+        assert_eq!(
+            configured_channel(&configured, Some(ChannelId::new(10))),
+            Some(ChannelId::new(10))
+        );
+        assert_eq!(
+            configured_channel(&configured, Some(ChannelId::new(12))),
+            None
+        );
+        assert_eq!(configured_channel(&configured, None), None);
     }
 
     #[test]
