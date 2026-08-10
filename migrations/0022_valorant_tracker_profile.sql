@@ -1,0 +1,6 @@
+CREATE TABLE valorant_tracker_profile (
+    user_id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
