@@ -126,8 +126,8 @@ the upgrade baseline and must not be edited.
 Privileged commands combine Poise checks with Discord's command permission
 metadata. Kick and ban also verify the caller's and bot's role hierarchy.
 Voice and message logging evaluate permissions in the destination channel,
-including channel overwrites. Message Log only attributes a deletion when the
-audit entry identifies the exact message; otherwise it shows the message author.
+including channel overwrites. Message Log shows the original author in the
+embed body and thumbnail; it does not infer the deleting actor from audit logs.
 
 | Command | User permission | Bot permission |
 |---|---|---|

@@ -33,8 +33,20 @@ pub async fn botinfo(ctx: Context<'_>) -> Result<(), Error> {
         language_text.to_string(),
         framework_text.to_string(),
     ];
-    if load_donation_config(&ctx.data().db_pool).await?.is_some() {
-        details.push(t(lang, TranslationKey::BotInfoDonate).to_string());
+    if let Some(donation) = load_donation_config(&ctx.data().db_pool).await? {
+        let mut donate_parts = Vec::new();
+        donate_parts.push(t(lang, TranslationKey::BotInfoDonate).to_string());
+        if let Some(msg) = &donation.message
+            && !msg.trim().is_empty()
+        {
+            donate_parts.push(msg.trim().to_string());
+        }
+        if let Some(url) = &donation.url
+            && !url.trim().is_empty()
+        {
+            donate_parts.push(url.trim().to_string());
+        }
+        details.push(donate_parts.join("\n"));
     }
     let description = details.join("\n");
 
