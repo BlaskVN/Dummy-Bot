@@ -24,7 +24,9 @@ pub async fn game_config(_ctx: Context<'_>) -> Result<(), Error> {
 pub async fn set(
     ctx: Context<'_>,
     #[description = "Role that opens the game session"] role: serenity::Role,
-    #[description = "Stable game key, for example minecraft"] game_key: String,
+    #[description = "Stable game key, for example minecraft"]
+    #[autocomplete = "autocomplete_game_key"]
+    game_key: String,
     #[description = "Game display name"] display_name: String,
     #[description = "Text channel for game mentions"] game_channel: serenity::GuildChannel,
     #[description = "Primary session voice channel"] primary_voice: serenity::GuildChannel,
@@ -181,6 +183,30 @@ fn valid_names(key: &str, display_name: &str, activity_name: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
         && (1..=100).contains(&display_name.chars().count())
         && (1..=128).contains(&activity_name.chars().count())
+}
+
+const COMMON_GAME_KEYS: &[&str] = &[
+    "minecraft",
+    "csgo",
+    "valorant",
+    "league-of-legends",
+    "dota2",
+    "gta-v",
+    "genshin-impact",
+    "overwatch",
+    "apex-legends",
+    "rust",
+    "palworld",
+    "roblox",
+];
+
+async fn autocomplete_game_key(_ctx: Context<'_>, partial: &str) -> Vec<String> {
+    let partial = partial.to_lowercase();
+    COMMON_GAME_KEYS
+        .iter()
+        .filter(move |key| key.contains(&partial))
+        .map(|&key| key.to_string())
+        .collect()
 }
 
 #[cfg(test)]

@@ -17,7 +17,7 @@ use poise::serenity_prelude as serenity;
 pub async fn ban(
     ctx: Context<'_>,
     #[description = "Member to ban"] member: serenity::Member,
-    #[description = "Days of messages to delete"]
+    #[description = "Days of messages to delete (0-7)"]
     #[max = 7]
     delete_days: Option<u8>,
     #[description = "Discord message link containing evidence"] evidence: Option<String>,

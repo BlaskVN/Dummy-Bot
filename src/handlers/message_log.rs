@@ -108,10 +108,6 @@ pub async fn handle_message_delete(
         }
     };
 
-    let deleted_by = deletion_actor(ctx, guild_id, channel_id, &message)
-        .await
-        .unwrap_or_else(|| message.author.clone());
-
     let content_preview = if message.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
@@ -120,32 +116,33 @@ pub async fn handle_message_delete(
 
     let sent_at = format!("<t:{}:f>", message.timestamp.unix_timestamp());
     let deleted_at = serenity::Timestamp::now();
+    let deleted_at_str = format!("<t:{}:f>", deleted_at.unix_timestamp());
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageDeleted))
-        .author(serenity::CreateEmbedAuthor::from(&deleted_by))
         .thumbnail(message.author.face())
         .color(data.config.colors.error)
         .field(
             t(lang, TranslationKey::MessageAuthorLabel),
             format!("<@{}>", message.author.id),
-            false,
+            true,
         )
         .field(
             t(lang, TranslationKey::MessageChannelLabel),
             format!("<#{}>", channel_id),
-            false,
+            true,
         )
         .field(
             t(lang, TranslationKey::MessageContent),
             content_preview,
             false,
         )
-        .field(t(lang, TranslationKey::MessageSentAt), sent_at, false)
-        .timestamp(deleted_at)
-        .footer(serenity::CreateEmbedFooter::new(t(
-            lang,
-            TranslationKey::MessageDeletedAt,
-        )));
+        .field(
+            t(lang, TranslationKey::MessageDeletedAt),
+            deleted_at_str,
+            true,
+        )
+        .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
+        .timestamp(deleted_at);
     if let Some(reply) = reply_field(lang, guild_id, &message) {
         embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
     }
@@ -313,29 +310,33 @@ pub async fn handle_message_update(
     let before_label = t(lang, TranslationKey::MessageBefore);
     let after_label = t(lang, TranslationKey::MessageAfter);
 
+    let sent_at = format!("<t:{}:f>", old_message.timestamp.unix_timestamp());
+    let edited_at = serenity::Timestamp::now();
+    let edited_at_str = format!("<t:{}:f>", edited_at.unix_timestamp());
+
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageEditedTitle))
-        .author(serenity::CreateEmbedAuthor::from(&old_message.author))
         .thumbnail(old_message.author.face())
         .field(
             t(lang, TranslationKey::MessageAuthorLabel),
             format!("<@{}>", old_message.author.id),
-            false,
+            true,
         )
         .field(
             t(lang, TranslationKey::MessageChannelLabel),
             format!("<#{}>", event.channel_id),
-            false,
+            true,
         )
         .field(before_label, old_preview, false)
         .field(after_label, new_preview, false)
+        .field(
+            t(lang, TranslationKey::MessageEditedAt),
+            edited_at_str,
+            true,
+        )
+        .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
         .color(data.config.colors.warning)
-        .timestamp(serenity::Timestamp::now())
-        .footer(serenity::CreateEmbedFooter::new(format!(
-            "{} <t:{}:f>",
-            t(lang, TranslationKey::MessageSentAt),
-            old_message.timestamp.unix_timestamp()
-        )));
+        .timestamp(edited_at);
     if let Some(reply) = reply_field(lang, guild_id, old_message) {
         embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
     }
@@ -347,52 +348,6 @@ pub async fn handle_message_update(
     if let Err(e) = log_channel_id.send_message(&ctx.http, builder).await {
         tracing::error!("Failed to send edit log: {}", e);
     }
-}
-
-async fn deletion_actor(
-    ctx: &Context,
-    guild_id: serenity::GuildId,
-    channel_id: ChannelId,
-    message: &serenity::Message,
-) -> Option<serenity::User> {
-    let logs = guild_id
-        .audit_logs(
-            &ctx.http,
-            Some(serenity::audit_log::Action::Message(
-                serenity::audit_log::MessageAction::Delete,
-            )),
-            None,
-            None,
-            Some(5),
-        )
-        .await
-        .ok()?;
-    let entry = logs.entries.iter().find(|entry| {
-        entry.options.as_ref().is_some_and(|options| {
-            exact_delete_match(
-                entry.target_id,
-                serenity::GenericId::new(message.author.id.get()),
-                options.channel_id,
-                channel_id,
-                options.message_id,
-                message.id,
-            )
-        })
-    })?;
-    logs.users.get(&entry.user_id).cloned()
-}
-
-fn exact_delete_match(
-    audit_target_id: Option<serenity::GenericId>,
-    author_id: serenity::GenericId,
-    audit_channel_id: Option<ChannelId>,
-    channel_id: ChannelId,
-    audit_message_id: Option<MessageId>,
-    message_id: MessageId,
-) -> bool {
-    audit_target_id == Some(author_id)
-        && audit_channel_id == Some(channel_id)
-        && audit_message_id == Some(message_id)
 }
 
 fn reply_field(
@@ -809,40 +764,9 @@ mod tests {
     use poise::serenity_prelude as serenity;
 
     use super::{
-        exact_delete_match, fits_byte_budget, fits_embed_batch, is_discord_cdn, markdown_message,
-        markdown_quote, message_url,
+        fits_byte_budget, fits_embed_batch, is_discord_cdn, markdown_message, markdown_quote,
+        message_url,
     };
-
-    #[test]
-    fn deletion_actor_requires_exact_message_id() {
-        let author = serenity::GenericId::new(1);
-        let channel = serenity::ChannelId::new(2);
-        let deleted = serenity::MessageId::new(7);
-        assert!(exact_delete_match(
-            Some(author),
-            author,
-            Some(channel),
-            channel,
-            Some(deleted),
-            deleted,
-        ));
-        assert!(!exact_delete_match(
-            Some(author),
-            author,
-            Some(channel),
-            channel,
-            None,
-            deleted,
-        ));
-        assert!(!exact_delete_match(
-            Some(author),
-            author,
-            Some(channel),
-            channel,
-            Some(serenity::MessageId::new(8)),
-            deleted
-        ));
-    }
 
     #[test]
     fn user_markdown_cannot_escape_its_message_block() {
