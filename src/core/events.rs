@@ -16,16 +16,19 @@ impl CoreEventBus {
             return;
         }
 
-        let guild_id = message.guild_id.map(|g| g.get().to_string()).unwrap_or_default();
+        let guild_id = message
+            .guild_id
+            .map(|g| g.get().to_string())
+            .unwrap_or_default();
         let author_id = message.author.id.get().to_string();
         let content = message.content.clone();
 
         // Call inspect_message in automod module
-        if let Ok(Some(result)) = self.rhai_manager.call_fn::<rhai::Map>(
-            "automod",
-            "inspect_message",
-            (content, author_id, guild_id),
-        ).await {
+        if let Ok(Some(result)) = self
+            .rhai_manager
+            .call_fn::<rhai::Map>("automod", "inspect_message", (content, author_id, guild_id))
+            .await
+        {
             tracing::debug!(?result, "AutoMod Rhai module inspection result");
         }
     }
@@ -36,8 +39,11 @@ impl CoreEventBus {
         new: &serenity::VoiceState,
     ) {
         let user_id = new.user_id.get().to_string();
-        let guild_id = new.guild_id.map(|g| g.get().to_string()).unwrap_or_default();
-        
+        let guild_id = new
+            .guild_id
+            .map(|g| g.get().to_string())
+            .unwrap_or_default();
+
         let old_channel = old.and_then(|v| v.channel_id).map(|c| c.get().to_string());
         let new_channel = new.channel_id.map(|c| c.get().to_string());
 

@@ -45,6 +45,7 @@ jobs:
             install -m 0755 deploy.sh "${package}/deploy.sh"
             install -m 0644 LICENSE README.md README.vi.md .env.example .deploy.env.example config.env "${package}/"
             install -m 0644 systemd/discord-bot.service.template "${package}/systemd/"
+            cp -r modules "${package}/"
             tar -czf "dist/${asset}.tar.gz" -C "${stage}" "${asset}"
           done
 

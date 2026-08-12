@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rhai::{Engine, Scope, AST};
+use rhai::{AST, Engine, Scope};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::sync::RwLock;
@@ -15,7 +15,7 @@ impl RhaiManager {
         let mut engine = Engine::new();
         engine.set_max_operations(100_000);
         engine.set_max_call_levels(50);
-        
+
         // Register all host native bindings
         crate::core::bindings::register_all(&mut engine);
 
@@ -39,9 +39,10 @@ impl RhaiManager {
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rhai") {
                 let name = path.file_stem().unwrap().to_string_lossy().to_string();
                 let content = tokio::fs::read_to_string(&path).await?;
-                let ast = self.engine.compile(&content)
-                    .with_context(|| format!("Failed to compile Rhai script: {}", path.display()))?;
-                
+                let ast = self.engine.compile(&content).with_context(|| {
+                    format!("Failed to compile Rhai script: {}", path.display())
+                })?;
+
                 tracing::info!(module_name = %name, path = %path.display(), "Loaded Rhai script module");
                 ast_map.insert(name, ast);
             }
@@ -78,7 +79,12 @@ impl RhaiManager {
             Ok(result) => Ok(Some(result)),
             Err(err) => {
                 tracing::error!(module = %module_name, function = %fn_name, error = %err, "Rhai script execution failed");
-                Err(anyhow::anyhow!("Rhai execution error in {}.{}: {}", module_name, fn_name, err))
+                Err(anyhow::anyhow!(
+                    "Rhai execution error in {}.{}: {}",
+                    module_name,
+                    fn_name,
+                    err
+                ))
             }
         }
     }
