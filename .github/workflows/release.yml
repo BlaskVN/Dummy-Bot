@@ -8,24 +8,40 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  check:
+    name: Check, Test & Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v4
 
       - name: Cache Rust build & dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-release"
+          shared-key: "rust-release-check"
+
+      - name: Check Formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy Linter
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Run Tests
+        run: cargo test --locked
+
+  release:
+    name: Build & Publish Release
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust build & dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust-release-build"
 
       - name: Install Cross
         uses: taiki-e/install-action@cross
-
-      - name: Test & Lint
-        run: |
-          cargo fmt --check
-          cargo test --locked
-          cargo clippy --locked --all-targets -- -D warnings
 
       - name: Build
         run: |
