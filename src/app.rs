@@ -53,7 +53,9 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 commands::presence::restore_presence(ctx, &setup_pool).await;
 
-                let rhai_manager = Arc::new(crate::core::RhaiManager::new(&setup_config.rhai_modules_directory));
+                let rhai_manager = Arc::new(crate::core::RhaiManager::new(
+                    &setup_config.rhai_modules_directory,
+                ));
                 if let Err(err) = rhai_manager.load_all().await {
                     tracing::error!(error = %err, "Failed to load Rhai script modules");
                 }

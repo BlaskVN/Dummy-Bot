@@ -316,7 +316,14 @@ mod tests {
             .iter()
             .map(|command| command.name.as_str())
             .collect::<Vec<_>>();
-        for representative in ["ping", "ban", "settings", "presence", "connect", "reload_modules"] {
+        for representative in [
+            "ping",
+            "ban",
+            "settings",
+            "presence",
+            "connect",
+            "reload_modules",
+        ] {
             assert!(names.contains(&representative), "missing /{representative}");
         }
         assert!(!names.contains(&"setprefix"));

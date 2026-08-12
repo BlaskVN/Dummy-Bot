@@ -14,7 +14,9 @@ pub async fn reload_modules(ctx: Context<'_>) -> Result<(), Error> {
         Ok(()) => {
             let msg = match lang {
                 Language::Vietnamese => "Tất cả Rhai script modules đã được nạp lại thành công!",
-                Language::Japanese => "すべての Rhai スクリプトモジュールが正常に再読み込みされました！",
+                Language::Japanese => {
+                    "すべての Rhai スクリプトモジュールが正常に再読み込みされました！"
+                }
                 Language::English => "All Rhai script modules reloaded successfully!",
             };
             ui::private_reply(ctx, Tone::Success, msg).await?;

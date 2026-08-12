@@ -1,4 +1,4 @@
-use rhai::{Engine, Map, Dynamic};
+use rhai::{Dynamic, Engine, Map};
 
 pub fn register(engine: &mut Engine) {
     // In-memory key-value store interface exposed to Rhai for transient script states
