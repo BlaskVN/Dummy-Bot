@@ -42,6 +42,7 @@ pub struct Config {
     pub discord_token: String,
     pub database_url: String,
     pub data_directory: PathBuf,
+    pub rhai_modules_directory: PathBuf,
     pub log_filter: String,
     pub owner_ids: HashSet<u64>,
     pub default_language: String,
@@ -74,6 +75,9 @@ impl Config {
             discord_token: required("DISCORD_TOKEN")?,
             database_url: required("DATABASE_URL")?,
             data_directory: required::<PathBuf>("DATA_DIRECTORY")?,
+            rhai_modules_directory: std::env::var("RHAI_MODULES_DIRECTORY")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from("modules")),
             log_filter: required("RUST_LOG")?,
             owner_ids: comma_separated("OWNER_IDS")?,
             default_language: required("DEFAULT_LANGUAGE")?,

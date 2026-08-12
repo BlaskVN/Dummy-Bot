@@ -22,6 +22,8 @@ pub async fn dispatch(
             activity_presence::handle_presence_update(ctx, new_data, data).await;
         }
         serenity::FullEvent::Message { new_message } => {
+            let bus = crate::core::events::CoreEventBus::new(data.rhai_manager.clone());
+            bus.dispatch_message(new_message).await;
             game_session::handle_message(ctx, new_message, data).await?;
             message_log::save_message(new_message, data).await;
         }
@@ -61,6 +63,8 @@ pub async fn dispatch(
             message_log::handle_message_update(ctx, old_if_available.as_ref(), event, data).await;
         }
         serenity::FullEvent::VoiceStateUpdate { old, new, .. } => {
+            let bus = crate::core::events::CoreEventBus::new(data.rhai_manager.clone());
+            bus.dispatch_voice_state_update(old.as_ref(), new).await;
             voice::handle_voice_state_update(ctx, old, new, data).await;
             activity_presence::handle_voice_change(ctx, old.as_ref(), new, data).await;
         }

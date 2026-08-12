@@ -4,6 +4,7 @@ pub mod donation;
 pub mod general;
 pub mod moderation;
 pub mod presence;
+pub mod reload_modules;
 pub mod voice;
 pub mod word_puzzle;
 
@@ -18,6 +19,7 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
     commands.push(donation::donation());
     commands.push(presence::presence());
     commands.push(word_puzzle::word_puzzle());
+    commands.push(reload_modules::reload_modules());
     apply_localizations(&mut commands);
     commands
 }
@@ -55,6 +57,10 @@ fn get_command_descriptions(name: &str) -> (String, String) {
         "ping" => Some((
             "Kiểm tra độ trễ và khả năng phản hồi của Bot.",
             "ボットの応答速度（レイテンシ）を確認します。",
+        )),
+        "reload_modules" => Some((
+            "Nạp lại toàn bộ Rhai script modules mà không cần khởi động lại bot.",
+            "ボットを再起動せずにすべての Rhai スクリプトモジュールを再読み込みします。",
         )),
         "botinfo" => Some((
             "Hiển thị thông tin chi tiết và thời gian hoạt động của Bot.",
@@ -310,7 +316,7 @@ mod tests {
             .iter()
             .map(|command| command.name.as_str())
             .collect::<Vec<_>>();
-        for representative in ["ping", "ban", "settings", "presence", "connect"] {
+        for representative in ["ping", "ban", "settings", "presence", "connect", "reload_modules"] {
             assert!(names.contains(&representative), "missing /{representative}");
         }
         assert!(!names.contains(&"setprefix"));
