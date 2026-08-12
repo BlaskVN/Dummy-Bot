@@ -204,7 +204,13 @@ pub async fn handle_message_delete(
             t(lang, TranslationKey::MessageContent),
             content_preview,
             false,
-        )
+        );
+    if let Some(msg) = &serenity_msg
+        && let Some(reply) = reply_field(lang, guild_id, msg)
+    {
+        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
+    }
+    embed = embed
         .field(
             t(lang, TranslationKey::MessageDeletedAt),
             deleted_at_str,
@@ -212,11 +218,6 @@ pub async fn handle_message_delete(
         )
         .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
         .timestamp(deleted_at);
-    if let Some(msg) = &serenity_msg
-        && let Some(reply) = reply_field(lang, guild_id, msg)
-    {
-        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, true);
-    }
 
     let builder = serenity::CreateMessage::new()
         .embed(embed)
@@ -429,7 +430,13 @@ pub async fn handle_message_update(
             true,
         )
         .field(before_label, old_preview, false)
-        .field(after_label, new_preview, false)
+        .field(after_label, new_preview, false);
+    if let Some(msg) = serenity_msg
+        && let Some(reply) = reply_field(lang, guild_id, msg)
+    {
+        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
+    }
+    embed = embed
         .field(
             t(lang, TranslationKey::MessageEditedAt),
             edited_at_str,
@@ -438,11 +445,6 @@ pub async fn handle_message_update(
         .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
         .color(data.config.colors.warning)
         .timestamp(edited_at);
-    if let Some(msg) = serenity_msg
-        && let Some(reply) = reply_field(lang, guild_id, msg)
-    {
-        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, true);
-    }
 
     let builder = serenity::CreateMessage::new()
         .embed(embed)
@@ -466,11 +468,12 @@ fn reply_field(
         .referenced_message
         .as_deref()
         .map(|reply| {
-            format!(
-                "<@{}>\n{}",
-                reply.author.id,
+            let content = if reply.content.is_empty() {
+                t(lang, TranslationKey::MessageMediaOnly).to_string()
+            } else {
                 markdown_quote(&reply.content, 700)
-            )
+            };
+            format!("<@{}>: {content}", reply.author.id)
         })
         .unwrap_or_else(|| t(lang, TranslationKey::MessageNoCached).to_string());
     Some(format!(
@@ -944,5 +947,26 @@ mod tests {
         assert!(fits_byte_budget(6, 4, 10));
         assert!(!fits_byte_budget(7, 4, 10));
         assert!(!fits_byte_budget(u64::MAX, 1, u64::MAX));
+    }
+
+    #[test]
+    fn reply_field_formats_user_content_and_jump_link() {
+        use crate::i18n::Language;
+        let mut msg = serenity::Message::default();
+        let mut reference = serenity::MessageReference::from((
+            serenity::ChannelId::new(2),
+            serenity::MessageId::new(3),
+        ));
+        reference.guild_id = Some(serenity::GuildId::new(1));
+        msg.message_reference = Some(reference);
+        let mut ref_msg = serenity::Message::default();
+        ref_msg.author.id = serenity::UserId::new(99);
+        ref_msg.content = "Test content".to_string();
+        msg.referenced_message = Some(Box::new(ref_msg));
+
+        let formatted =
+            super::reply_field(Language::English, serenity::GuildId::new(1), &msg).unwrap();
+        assert!(formatted.contains("<@99>: "));
+        assert!(formatted.contains("[Jump to Message](https://discord.com/channels/1/2/3)"));
     }
 }

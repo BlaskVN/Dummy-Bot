@@ -2,11 +2,11 @@
 
 [English](README.md)
 
-Dummy Bot (v3.0.0) là Discord bot hiệu năng cao viết bằng Rust Native Core (Poise/Serenity, SQLite) kết hợp cùng các Rhai Scripting Modules. Cấu hình vận
+Dummy Bot (v3.0.1) là Discord bot hiệu năng cao viết bằng Rust Native Core (Poise/Serenity, SQLite) kết hợp cùng các Rhai Scripting Modules. Cấu hình vận
 hành nằm trong `config.env`, secret nằm trong `.env`, và cấu hình triển khai nằm
 trong `.deploy.env`.
 
-## Kiến trúc hệ thống (v3.0.0)
+## Kiến trúc hệ thống (v3.0.1)
 
 - **Rust Native Core**: Quản lý kết nối Discord Gateway, SQLx SQLite storage, Event Bus Dispatcher và đăng ký Host API bindings an toàn luồng.
 - **Rhai Script Modules**: Các module tính năng xung quanh (`automod.rhai`, `moderation.rhai`, `word_puzzle.rhai`, `attendance.rhai`, `community.rhai`) nằm trong thư mục `/modules/` hỗ trợ hot-reload tức thì qua lệnh `/reload_modules`.
