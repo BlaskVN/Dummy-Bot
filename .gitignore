@@ -10,3 +10,7 @@
 /.idea
 
 /.cargo
+
+# agents
+.agents/skills/
+skills-lock.json

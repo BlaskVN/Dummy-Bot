@@ -23,6 +23,7 @@ pub async fn dispatch(
         }
         serenity::FullEvent::Message { new_message } => {
             game_session::handle_message(ctx, new_message, data).await?;
+            message_log::save_message(new_message, data).await;
         }
         serenity::FullEvent::MessageDelete {
             channel_id,

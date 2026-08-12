@@ -9,6 +9,9 @@ use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
 
 pub async fn reconcile_all_health(ctx: &Context, data: &Data) {
+    if let Err(error) = database::prune_stale_cached_messages(&data.db_pool, 3 * 86400).await {
+        tracing::error!(%error, "Failed to prune stale cached messages");
+    }
     let rows = match sqlx::query_as::<_, (String, String)>(
         "SELECT guild_id, log_channel_id FROM message_log_config WHERE enabled = 1",
     )
@@ -56,6 +59,35 @@ pub async fn reconcile_all_health(ctx: &Context, data: &Data) {
     }
 }
 
+/// Persist incoming non-bot guild message to SQLite cache for restart resilience.
+pub async fn save_message(message: &serenity::Message, data: &Data) {
+    let Some(guild_id) = message.guild_id else {
+        return;
+    };
+    if message.author.bot {
+        return;
+    }
+    let attachments_json = match poise::serenity_prelude::json::to_string(&message.attachments) {
+        Ok(json) => json,
+        Err(_) => "[]".to_string(),
+    };
+    let record = database::CachedMessageRecord {
+        message_id: message.id.to_string(),
+        channel_id: message.channel_id.to_string(),
+        guild_id: guild_id.to_string(),
+        author_id: message.author.id.to_string(),
+        author_name: message.author.name.clone(),
+        author_avatar_url: message.author.face(),
+        is_bot: false,
+        content: message.content.clone(),
+        created_at: message.timestamp.unix_timestamp(),
+        attachments_json,
+    };
+    if let Err(error) = database::save_cached_message(&data.db_pool, &record).await {
+        tracing::warn!(%error, "Failed to persist cached message to DB");
+    }
+}
+
 /// Handle message deletion events.
 ///
 /// Looks up the cached message, checks if logging is enabled for this guild,
@@ -76,26 +108,63 @@ pub async fn handle_message_delete(
     // Get language for this guild
     let lang = data.language(guild_id).await;
 
-    // Try to fetch the message from cache
-    let message = ctx
+    // Try to fetch the message from cache or SQLite DB
+    let ram_msg = ctx
         .cache
         .message(channel_id, deleted_message_id)
         .map(|message| message.clone());
-    let Some(message) = message else {
-        send_metadata_log(
-            ctx,
-            data,
-            guild_id,
-            channel_id,
-            deleted_message_id,
-            TranslationKey::MessageDeleted,
-        )
-        .await;
-        return;
-    };
+    let serenity_msg;
+    let (is_bot, author_id, author_face, content, sent_at_unix, attachments) =
+        if let Some(message) = ram_msg {
+            let _ = database::delete_cached_message(&data.db_pool, &deleted_message_id.to_string())
+                .await;
+            let is_bot = message.author.bot;
+            let author_id = message.author.id.to_string();
+            let author_face = message.author.face();
+            let content = message.content.clone();
+            let sent_at_unix = message.timestamp.unix_timestamp();
+            let attachments = message.attachments.clone();
+            serenity_msg = Some(message);
+            (
+                is_bot,
+                author_id,
+                author_face,
+                content,
+                sent_at_unix,
+                attachments,
+            )
+        } else if let Ok(Some(db_msg)) =
+            database::load_cached_message(&data.db_pool, &deleted_message_id.to_string()).await
+        {
+            let _ = database::delete_cached_message(&data.db_pool, &deleted_message_id.to_string())
+                .await;
+            let attachments: Vec<serenity::Attachment> =
+                poise::serenity_prelude::json::from_str(&db_msg.attachments_json)
+                    .unwrap_or_default();
+            serenity_msg = None;
+            (
+                db_msg.is_bot,
+                db_msg.author_id,
+                db_msg.author_avatar_url,
+                db_msg.content,
+                db_msg.created_at,
+                attachments,
+            )
+        } else {
+            send_metadata_log(
+                ctx,
+                data,
+                guild_id,
+                channel_id,
+                deleted_message_id,
+                TranslationKey::MessageDeleted,
+            )
+            .await;
+            return;
+        };
 
     // Skip bot messages to avoid spam
-    if message.author.bot {
+    if is_bot {
         return;
     }
 
@@ -108,27 +177,27 @@ pub async fn handle_message_delete(
         }
     };
 
-    let content_preview = if message.content.is_empty() {
+    let content_preview = if content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
-        markdown_quote(&message.content, data.config.message_preview_chars)
+        markdown_quote(&content, data.config.message_preview_chars)
     };
 
-    let sent_at = format!("<t:{}:f>", message.timestamp.unix_timestamp());
+    let sent_at = format!("<t:{sent_at_unix}:f>");
     let deleted_at = serenity::Timestamp::now();
     let deleted_at_str = format!("<t:{}:f>", deleted_at.unix_timestamp());
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageDeleted))
-        .thumbnail(message.author.face())
+        .thumbnail(author_face)
         .color(data.config.colors.error)
         .field(
             t(lang, TranslationKey::MessageAuthorLabel),
-            format!("<@{}>", message.author.id),
+            format!("<@{author_id}>"),
             true,
         )
         .field(
             t(lang, TranslationKey::MessageChannelLabel),
-            format!("<#{}>", channel_id),
+            format!("<#{channel_id}>"),
             true,
         )
         .field(
@@ -143,8 +212,10 @@ pub async fn handle_message_delete(
         )
         .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
         .timestamp(deleted_at);
-    if let Some(reply) = reply_field(lang, guild_id, &message) {
-        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
+    if let Some(msg) = &serenity_msg
+        && let Some(reply) = reply_field(lang, guild_id, msg)
+    {
+        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, true);
     }
 
     let builder = serenity::CreateMessage::new()
@@ -155,7 +226,7 @@ pub async fn handle_message_delete(
         tracing::error!("Failed to send deletion log: {}", e);
     }
 
-    for attachment in &message.attachments {
+    for attachment in &attachments {
         if let Err(error) = send_logged_attachment(ctx, log_channel_id, data, attachment).await {
             tracing::warn!(
                 filename = %attachment.filename,
@@ -247,9 +318,31 @@ pub async fn handle_message_update(
     let lang = data.language(guild_id).await;
 
     // Serenity snapshots this before applying the update to its cache.
-    let old_message = match old_message {
-        Some(message) => message,
-        None => {
+    let serenity_msg;
+    let (is_bot, author_id, author_face, old_content, sent_at_unix) = if let Some(message) =
+        old_message
+    {
+        serenity_msg = Some(message);
+        (
+            message.author.bot,
+            message.author.id.to_string(),
+            message.author.face(),
+            message.content.clone(),
+            message.timestamp.unix_timestamp(),
+        )
+    } else if let Ok(Some(db_msg)) =
+        database::load_cached_message(&data.db_pool, &event.id.to_string()).await
+    {
+        serenity_msg = None;
+        (
+            db_msg.is_bot,
+            db_msg.author_id,
+            db_msg.author_avatar_url,
+            db_msg.content,
+            db_msg.created_at,
+        )
+    } else {
+        if current_health(&data.db_pool, guild_id).await.ok() == Some(MessageLogHealth::Degraded) {
             send_metadata_log(
                 ctx,
                 data,
@@ -259,12 +352,12 @@ pub async fn handle_message_update(
                 TranslationKey::MessageEditedTitle,
             )
             .await;
-            return;
         }
+        return;
     };
 
     // Skip bot messages
-    if old_message.author.bot {
+    if is_bot {
         return;
     }
 
@@ -289,8 +382,16 @@ pub async fn handle_message_update(
         }
     };
 
-    if old_message.content == *new_content {
+    if old_content == *new_content {
         return; // Content didn't change
+    }
+
+    // Update stored DB cache with new content
+    if let Ok(Some(mut db_msg)) =
+        database::load_cached_message(&data.db_pool, &event.id.to_string()).await
+    {
+        db_msg.content = new_content.clone();
+        let _ = database::save_cached_message(&data.db_pool, &db_msg).await;
     }
 
     let log_channel_id = match database::message_log_channel(&data.db_pool, guild_id).await {
@@ -304,22 +405,22 @@ pub async fn handle_message_update(
 
     // Build embed showing before/after
     // Preview sizes are validated against Discord's embed limits at startup.
-    let old_preview = markdown_quote(&old_message.content, data.config.message_preview_chars);
+    let old_preview = markdown_quote(&old_content, data.config.message_preview_chars);
     let new_preview = markdown_quote(new_content, data.config.message_preview_chars);
 
     let before_label = t(lang, TranslationKey::MessageBefore);
     let after_label = t(lang, TranslationKey::MessageAfter);
 
-    let sent_at = format!("<t:{}:f>", old_message.timestamp.unix_timestamp());
+    let sent_at = format!("<t:{sent_at_unix}:f>");
     let edited_at = serenity::Timestamp::now();
     let edited_at_str = format!("<t:{}:f>", edited_at.unix_timestamp());
 
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageEditedTitle))
-        .thumbnail(old_message.author.face())
+        .thumbnail(author_face)
         .field(
             t(lang, TranslationKey::MessageAuthorLabel),
-            format!("<@{}>", old_message.author.id),
+            format!("<@{author_id}>"),
             true,
         )
         .field(
@@ -337,8 +438,10 @@ pub async fn handle_message_update(
         .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
         .color(data.config.colors.warning)
         .timestamp(edited_at);
-    if let Some(reply) = reply_field(lang, guild_id, old_message) {
-        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
+    if let Some(msg) = serenity_msg
+        && let Some(reply) = reply_field(lang, guild_id, msg)
+    {
+        embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, true);
     }
 
     let builder = serenity::CreateMessage::new()
@@ -452,14 +555,29 @@ pub async fn handle_message_delete_bulk(
     let mut user_messages: Vec<(String, String, i64)> = Vec::new();
 
     for &msg_id in deleted_message_ids {
-        if let Some(msg) = ctx.cache.message(channel_id, msg_id) {
+        let ram_msg = ctx
+            .cache
+            .message(channel_id, msg_id)
+            .map(|message| message.clone());
+        if let Some(msg) = ram_msg {
             cached_count += 1;
+            let _ = database::delete_cached_message(&data.db_pool, &msg_id.to_string()).await;
             if msg.author.bot {
                 bot_count += 1;
             } else {
                 // Store user message info with unix timestamp for sorting and display
                 let unix_ts = msg.timestamp.unix_timestamp();
                 user_messages.push((msg.author.name.clone(), msg.content.clone(), unix_ts));
+            }
+        } else if let Ok(Some(db_msg)) =
+            database::load_cached_message(&data.db_pool, &msg_id.to_string()).await
+        {
+            cached_count += 1;
+            let _ = database::delete_cached_message(&data.db_pool, &msg_id.to_string()).await;
+            if db_msg.is_bot {
+                bot_count += 1;
+            } else {
+                user_messages.push((db_msg.author_name, db_msg.content, db_msg.created_at));
             }
         }
     }
