@@ -175,6 +175,7 @@ pub async fn delete_guild_data(
         "guild_timezone",
         "guild_language",
         "message_log_config",
+        "cached_message",
     ] {
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM {table} WHERE guild_id = ?"
@@ -201,6 +202,103 @@ pub async fn claim_guild_onboarding(
     .context("Failed to claim guild onboarding")?
     .rows_affected()
         == 1)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachedMessageRecord {
+    pub message_id: String,
+    pub channel_id: String,
+    pub guild_id: String,
+    pub author_id: String,
+    pub author_name: String,
+    pub author_avatar_url: String,
+    pub is_bot: bool,
+    pub content: String,
+    pub created_at: i64,
+    pub attachments_json: String,
+}
+
+pub async fn save_cached_message(pool: &SqlitePool, record: &CachedMessageRecord) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO cached_message (
+            message_id, channel_id, guild_id, author_id, author_name, author_avatar_url, is_bot, content, created_at, attachments_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(message_id) DO UPDATE SET
+            content = excluded.content,
+            attachments_json = excluded.attachments_json",
+    )
+    .bind(&record.message_id)
+    .bind(&record.channel_id)
+    .bind(&record.guild_id)
+    .bind(&record.author_id)
+    .bind(&record.author_name)
+    .bind(&record.author_avatar_url)
+    .bind(if record.is_bot { 1 } else { 0 })
+    .bind(&record.content)
+    .bind(record.created_at)
+    .bind(&record.attachments_json)
+    .execute(pool)
+    .await
+    .context("Failed to save cached message")?;
+    Ok(())
+}
+
+pub async fn load_cached_message(
+    pool: &SqlitePool,
+    message_id: &str,
+) -> Result<Option<CachedMessageRecord>> {
+    let row = sqlx::query_as::<_, (String, String, String, String, String, String, i64, String, i64, String)>(
+        "SELECT message_id, channel_id, guild_id, author_id, author_name, author_avatar_url, is_bot, content, created_at, attachments_json FROM cached_message WHERE message_id = ?",
+    )
+    .bind(message_id)
+    .fetch_optional(pool)
+    .await
+    .context("Failed to load cached message")?;
+
+    Ok(row.map(
+        |(
+            message_id,
+            channel_id,
+            guild_id,
+            author_id,
+            author_name,
+            author_avatar_url,
+            is_bot,
+            content,
+            created_at,
+            attachments_json,
+        )| CachedMessageRecord {
+            message_id,
+            channel_id,
+            guild_id,
+            author_id,
+            author_name,
+            author_avatar_url,
+            is_bot: is_bot != 0,
+            content,
+            created_at,
+            attachments_json,
+        },
+    ))
+}
+
+pub async fn delete_cached_message(pool: &SqlitePool, message_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM cached_message WHERE message_id = ?")
+        .bind(message_id)
+        .execute(pool)
+        .await
+        .context("Failed to delete cached message")?;
+    Ok(())
+}
+
+pub async fn prune_stale_cached_messages(pool: &SqlitePool, ttl_seconds: i64) -> Result<u64> {
+    let cutoff = chrono::Utc::now().timestamp() - ttl_seconds;
+    let result = sqlx::query("DELETE FROM cached_message WHERE created_at < ?")
+        .bind(cutoff)
+        .execute(pool)
+        .await
+        .context("Failed to prune stale cached messages")?;
+    Ok(result.rows_affected())
 }
 
 /// Initialize the SQLite database connection pool.
@@ -417,6 +515,49 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(donation, "global");
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cached_message_crud_and_ttl_pruning() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-cached-message-test-{}",
+            std::process::id()
+        ));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+
+        let record = super::CachedMessageRecord {
+            message_id: "100".into(),
+            channel_id: "200".into(),
+            guild_id: "300".into(),
+            author_id: "400".into(),
+            author_name: "Alice".into(),
+            author_avatar_url: "https://cdn.discordapp.com/avatar.png".into(),
+            is_bot: false,
+            content: "Hello world".into(),
+            created_at: 1000,
+            attachments_json: "[]".into(),
+        };
+
+        super::save_cached_message(&pool, &record).await.unwrap();
+        let loaded = super::load_cached_message(&pool, "100").await.unwrap();
+        assert_eq!(loaded, Some(record));
+
+        let pruned = super::prune_stale_cached_messages(&pool, 0).await.unwrap();
+        assert_eq!(pruned, 1);
+        assert!(
+            super::load_cached_message(&pool, "100")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }
