@@ -62,6 +62,13 @@ Schedule this only after Riot grants production access:
 - Remove legacy prefix commands as the deliberate breaking change.
 - Retain optional Message Content access only for Message Log; preserve explicit degraded behavior if Discord denies it.
 
+## v3.0 — Modular Architecture with Native Rust Core & Rhai Script Modules
+
+- Refactor core system into a high-performance native Rust core (Discord Gateway, SQLx SQLite, State Management, Event Bus Dispatcher).
+- Integrate Rhai v1.25.1 embedded scripting engine with `sync` and `serde` features.
+- Move surrounding feature modules into `/modules/*.rhai` scripts (`automod.rhai`, `moderation.rhai`, `word_puzzle.rhai`, `attendance.rhai`, `community.rhai`).
+- Add `/reload_modules` slash command for live hot-reloading without restarting the bot.
+
 ## Deferred until demonstrated need
 
 - Additional Game Role mappings, Game Integrations, Mini-games, Word Sets, custom words, reward tiers, and reward perks.

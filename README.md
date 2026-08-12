@@ -2,9 +2,14 @@
 
 [Tiếng Việt](README.vi.md)
 
-Dummy Bot is a Discord bot built with Rust, Poise/Serenity, and SQLite. Runtime
+Dummy Bot (v3.0.0) is a high-performance Discord bot built with a native Rust Core (Poise/Serenity, SQLite) and embedded Rhai scripting modules. Runtime
 settings live in `config.env`, secrets in `.env`, and deployment settings in
 `.deploy.env`.
+
+## Architecture (v3.0.0)
+
+- **Rust Native Core**: Handles Discord Gateway connection, SQLx SQLite state storage, event bus dispatching, and thread-safe host API bindings.
+- **Rhai Script Modules**: Peripheral feature modules (`automod.rhai`, `moderation.rhai`, `word_puzzle.rhai`, `attendance.rhai`, `community.rhai`) live in `/modules/` and support hot-reloading via `/reload_modules`.
 
 ## Features
 

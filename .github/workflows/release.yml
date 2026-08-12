@@ -8,29 +8,21 @@ permissions:
   contents: write
 
 jobs:
-  check:
-    name: Check, Test & Lint
+  wait-for-ci:
+    name: Wait for CI Workflow
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache Rust build & dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Wait for CI check to pass
+        uses: wagoid/wait-action@v6
         with:
-          shared-key: "rust-release-check"
-
-      - name: Check Formatting
-        run: cargo fmt --check
-
-      - name: Run Clippy Linter
-        run: cargo clippy --locked --all-targets -- -D warnings
-
-      - name: Run Tests
-        run: cargo test --locked
+          token: ${{ secrets.GITHUB_TOKEN }}
+          check_name: "Check, Test & Lint"
+          ref: ${{ github.sha }}
+          timeout: 600
 
   release:
     name: Build & Publish Release
-    needs: check
+    needs: wait-for-ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +30,7 @@ jobs:
       - name: Cache Rust build & dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-release-build"
+          shared-key: "rust-release"
 
       - name: Install Cross
         uses: taiki-e/install-action@cross
