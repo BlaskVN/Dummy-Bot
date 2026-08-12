@@ -32,6 +32,7 @@ pub struct Data {
     pub automatic_beacons:
         Arc<RwLock<HashSet<(serenity::GuildId, serenity::ChannelId, serenity::UserId)>>>,
     pub manual_checkins: Arc<RwLock<HashSet<ManualCheckIn>>>,
+    pub rhai_manager: Arc<crate::core::RhaiManager>,
 }
 
 impl Data {

@@ -6,6 +6,7 @@ pub mod automod;
 pub mod commands;
 pub mod community;
 pub mod config;
+pub mod core;
 pub mod database;
 pub mod error;
 pub mod game_config;

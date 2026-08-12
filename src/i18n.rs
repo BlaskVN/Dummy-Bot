@@ -225,6 +225,50 @@ pub enum TranslationKey {
     ErrorCooldown,
 }
 
+impl TranslationKey {
+    pub fn try_from_str(s: &str) -> Option<Self> {
+        match s {
+            "PingPong" => Some(Self::PingPong),
+            "PingLatency" => Some(Self::PingLatency),
+            "BotInfoTitle" => Some(Self::BotInfoTitle),
+            "BotInfoUptime" => Some(Self::BotInfoUptime),
+            "BotInfoServers" => Some(Self::BotInfoServers),
+            "BotInfoLanguage" => Some(Self::BotInfoLanguage),
+            "BotInfoFramework" => Some(Self::BotInfoFramework),
+            "BotInfoDonate" => Some(Self::BotInfoDonate),
+            "ServerInfoTitle" => Some(Self::ServerInfoTitle),
+            "ServerInfoName" => Some(Self::ServerInfoName),
+            "ServerInfoMembers" => Some(Self::ServerInfoMembers),
+            "ServerInfoChannels" => Some(Self::ServerInfoChannels),
+            "ServerInfoRoles" => Some(Self::ServerInfoRoles),
+            "ServerInfoCreated" => Some(Self::ServerInfoCreated),
+            "LanguageChanged" => Some(Self::LanguageChanged),
+            "LanguageChangedTo" => Some(Self::LanguageChangedTo),
+            "LanguageCurrent" => Some(Self::LanguageCurrent),
+            "LanguageAvailable" => Some(Self::LanguageAvailable),
+            "LanguageInvalid" => Some(Self::LanguageInvalid),
+            "ModerationNoReason" => Some(Self::ModerationNoReason),
+            "ModerationKicked" => Some(Self::ModerationKicked),
+            "ModerationKickReason" => Some(Self::ModerationKickReason),
+            "ModerationBanned" => Some(Self::ModerationBanned),
+            "ModerationBanReason" => Some(Self::ModerationBanReason),
+            "ModerationPurged" => Some(Self::ModerationPurged),
+            "AutoModObserverEnabled" => Some(Self::AutoModObserverEnabled),
+            "AutoModObserverDisabled" => Some(Self::AutoModObserverDisabled),
+            "AutoModExecution" => Some(Self::AutoModExecution),
+            "AutoModSuggestion" => Some(Self::AutoModSuggestion),
+            "TimezoneSet" => Some(Self::TimezoneSet),
+            "TimezoneCurrent" => Some(Self::TimezoneCurrent),
+            "TimezoneInvalid" => Some(Self::TimezoneInvalid),
+            "ErrorNotInGuild" => Some(Self::ErrorNotInGuild),
+            "ErrorNoPermission" => Some(Self::ErrorNoPermission),
+            "ErrorGeneric" => Some(Self::ErrorGeneric),
+            "ErrorCooldown" => Some(Self::ErrorCooldown),
+            _ => None,
+        }
+    }
+}
+
 type TranslationMap = HashMap<TranslationKey, &'static str>;
 
 /// Global translation storage
