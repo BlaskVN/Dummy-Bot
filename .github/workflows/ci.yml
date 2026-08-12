@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  check:
+    name: Check, Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust build & dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust-ci"
+
+      - name: Check Formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy Linter
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Run Tests
+        run: cargo test --locked
