@@ -11,7 +11,8 @@ use super::formatting::{
 };
 use super::health::{self, current_health, mark_warning_sent, reconcile};
 use super::models::{
-    DeletedMessageView, MessageLogHealth, MessageLogOptions, PurgedMessageSummary,
+    DeletedMessageView, EditedMessageView, MessageLogHealth, MessageLogOptions,
+    PurgedMessageSummary,
 };
 use super::ports::{AttachmentFetcher, MessageLogOutbox};
 
@@ -114,6 +115,17 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         }
     }
 
+    async fn resolve_log_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
+        match health::get_log_channel(self.pool, guild_id).await {
+            Ok(Some(channel)) => Some(channel),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::error!("Failed to query message_log_config: {}", e);
+                None
+            }
+        }
+    }
+
     /// Handle message deletion events.
     pub async fn handle_message_delete(
         &self,
@@ -123,13 +135,8 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         guild_id: GuildId,
         ram_message: Option<serenity::Message>,
     ) {
-        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
-            Ok(Some(channel)) => channel,
-            Ok(None) => return,
-            Err(e) => {
-                tracing::error!("Failed to query message_log_config: {}", e);
-                return;
-            }
+        let Some(log_channel_id) = self.resolve_log_channel(guild_id).await else {
+            return;
         };
 
         let serenity_msg;
@@ -315,28 +322,27 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             let _ = database::save_cached_message(self.pool, &db_msg).await;
         }
 
-        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
-            Ok(Some(channel)) => channel,
-            Ok(None) => return,
-            Err(e) => {
-                tracing::error!("Failed to query message_log_config: {}", e);
-                return;
-            }
+        let Some(log_channel_id) = self.resolve_log_channel(guild_id).await else {
+            return;
         };
 
         let reply = serenity_msg.and_then(|msg| reply_field(lang, guild_id, msg));
 
-        let embed = build_edited_message_embed(
-            lang,
-            event.channel_id,
-            &author_id,
-            &author_face,
-            &old_content,
+        let view = EditedMessageView {
+            channel_id: event.channel_id,
+            author_id: &author_id,
+            author_face: &author_face,
+            old_content: &old_content,
             new_content,
             sent_at_unix,
+            reply_info: reply,
+        };
+
+        let embed = build_edited_message_embed(
+            lang,
+            &view,
             self.options.preview_chars,
             self.options.warning_color,
-            reply,
         );
 
         let builder = serenity::CreateMessage::new()
@@ -359,13 +365,8 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
     ) where
         R: Fn(ChannelId, MessageId) -> Option<serenity::Message>,
     {
-        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
-            Ok(Some(channel)) => channel,
-            Ok(None) => return,
-            Err(e) => {
-                tracing::error!("Failed to query message_log_config: {}", e);
-                return;
-            }
+        let Some(log_channel_id) = self.resolve_log_channel(guild_id).await else {
+            return;
         };
 
         let mut cached_count = 0;
@@ -432,20 +433,12 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         guild_id: GuildId,
         messages: &[serenity::Message],
     ) {
-        if !messages
-            .iter()
-            .any(|message| !message.author.bot && !message.attachments.is_empty())
-        {
+        if messages.is_empty() {
             return;
         }
 
-        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
-            Ok(Some(channel)) => channel,
-            Ok(None) => return,
-            Err(error) => {
-                tracing::error!(%error, "Failed to load message log channel for purge");
-                return;
-            }
+        let Some(log_channel_id) = self.resolve_log_channel(guild_id).await else {
+            return;
         };
 
         let mut archived_bytes = 0;
@@ -510,7 +503,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         channel_id: ChannelId,
     ) {
         if current_health(self.pool, guild_id).await.ok() == Some(MessageLogHealth::Degraded)
-            && let Ok(Some(log_channel)) = health::get_log_channel(self.pool, guild_id).await
+            && let Some(log_channel) = self.resolve_log_channel(guild_id).await
         {
             let embed = build_metadata_embed(
                 lang,

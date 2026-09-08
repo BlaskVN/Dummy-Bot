@@ -9,7 +9,7 @@ The message logging system currently exhibits several architectural shortcomings
 
 ## Goals & Architecture
 We will refactor message logging into a deep module (`crate::message_log`):
-- **Thin Public Interface**: Exposes cohesive domain operations (`enable`, `disable`, `status`, `reconcile_all`, `ingest_message`, `handle_delete`, `handle_delete_bulk`, `handle_update`, `archive_purge_attachments`).
+- **Thin Public Interface**: Exposes cohesive domain operations (`enable`, `enable_with_outbox`, `disable`, `status`, `reconcile`, `get_config`, `get_log_channel`), domain service `MessageLogService` (providing `save_message`, `handle_message_delete`, `handle_message_update`, `handle_message_delete_bulk`, `archive_purge_attachments`, `reconcile_all_health`), domain models (`MessageLogConfig`, `MessageLogHealth`, `MessageLogOptions`, `DeletedMessageView`, `EditedMessageView`, `PurgedMessageSummary`), and ports.
 - **Ports & Adapters (Hexagonal Architecture)**:
   - `MessageLogOutbox` port: Abstraction for delivering embeds and files to a Discord channel (`DiscordOutbox` for production, `InMemoryOutbox` for testing).
   - `AttachmentFetcher` port: Abstraction for downloading attachments with byte limits and CDN verification (`HttpAttachmentFetcher` for production, `MockAttachmentFetcher` for testing).

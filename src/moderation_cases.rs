@@ -91,7 +91,7 @@ pub trait DiscordModerationExecutor: Send + Sync {
         reason: &str,
     ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
 
-    fn send_moderation_channel_log(
+    fn post_moderation_case_notice(
         &self,
         channel_id: poise::serenity_prelude::ChannelId,
         summary: &str,
@@ -142,7 +142,7 @@ impl DiscordModerationExecutor for SerenityDiscordExecutor<'_> {
         }
     }
 
-    async fn send_moderation_channel_log(
+    async fn post_moderation_case_notice(
         &self,
         channel_id: poise::serenity_prelude::ChannelId,
         summary: &str,
@@ -244,7 +244,7 @@ pub async fn execute_moderation_action<E: DiscordModerationExecutor>(
     {
         let ch = poise::serenity_prelude::ChannelId::new(channel_id);
         if let Err(err) = executor
-            .send_moderation_channel_log(ch, &summary_text)
+            .post_moderation_case_notice(ch, &summary_text)
             .await
         {
             tracing::warn!(
@@ -668,7 +668,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_moderation_channel_log(
+        async fn post_moderation_case_notice(
             &self,
             channel_id: poise::serenity_prelude::ChannelId,
             summary: &str,

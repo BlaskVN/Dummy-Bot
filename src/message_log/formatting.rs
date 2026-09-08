@@ -160,46 +160,39 @@ pub fn build_deleted_message_embed(
         .timestamp(deleted_at)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn build_edited_message_embed(
     lang: Language,
-    channel_id: ChannelId,
-    author_id: &str,
-    author_face: &str,
-    old_content: &str,
-    new_content: &str,
-    sent_at_unix: i64,
+    view: &super::models::EditedMessageView<'_>,
     preview_chars: usize,
     warning_color: serenity::Colour,
-    reply_info: Option<String>,
 ) -> serenity::CreateEmbed {
-    let old_preview = markdown_quote(old_content, preview_chars);
-    let new_preview = markdown_quote(new_content, preview_chars);
+    let old_preview = markdown_quote(view.old_content, preview_chars);
+    let new_preview = markdown_quote(view.new_content, preview_chars);
 
     let before_label = t(lang, TranslationKey::MessageBefore);
     let after_label = t(lang, TranslationKey::MessageAfter);
 
-    let sent_at = format!("<t:{sent_at_unix}:f>");
+    let sent_at = format!("<t:{}:f>", view.sent_at_unix);
     let edited_at = serenity::Timestamp::now();
     let edited_at_str = format!("<t:{}:f>", edited_at.unix_timestamp());
 
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageEditedTitle))
-        .thumbnail(author_face)
+        .thumbnail(view.author_face)
         .field(
             t(lang, TranslationKey::MessageAuthorLabel),
-            format!("<@{author_id}>"),
+            format!("<@{}>", view.author_id),
             true,
         )
         .field(
             t(lang, TranslationKey::MessageChannelLabel),
-            format!("<#{channel_id}>"),
+            format!("<#{}>", view.channel_id),
             true,
         )
         .field(before_label, old_preview, false)
         .field(after_label, new_preview, false);
 
-    if let Some(reply) = reply_info {
+    if let Some(reply) = &view.reply_info {
         embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
     }
 

@@ -18,12 +18,8 @@ pub fn moderation_denial(
     let actor = ctx.author().id;
     let bot = ctx.cache().current_user().id;
 
-    if target == actor {
+    if target == actor || target == bot {
         return Ok(Some(ModerationDenial::SelfTarget));
-    }
-
-    if target == bot {
-        return Ok(Some(ModerationDenial::BotHierarchy));
     }
 
     if actor != guild.owner_id

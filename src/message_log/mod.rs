@@ -22,12 +22,6 @@ pub use ports::{
 };
 pub use service::MessageLogService;
 
-/// Convenience domain wrapper to persist an incoming non-bot message to SQLite cache.
-pub async fn ingest_message(pool: &sqlx::SqlitePool, message: &poise::serenity_prelude::Message) {
-    MessageLogService::<DiscordOutbox<'_>, HttpAttachmentFetcher>::save_message(pool, message)
-        .await;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

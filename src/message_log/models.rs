@@ -77,3 +77,14 @@ pub struct DeletedMessageView<'a> {
     pub sent_at_unix: i64,
     pub reply_info: Option<String>,
 }
+
+#[derive(Debug, Clone)]
+pub struct EditedMessageView<'a> {
+    pub channel_id: ChannelId,
+    pub author_id: &'a str,
+    pub author_face: &'a str,
+    pub old_content: &'a str,
+    pub new_content: &'a str,
+    pub sent_at_unix: i64,
+    pub reply_info: Option<String>,
+}
