@@ -7,7 +7,7 @@ pub mod service;
 pub use formatting::{
     build_bulk_delete_embeds, build_deleted_message_embed, build_edited_message_embed,
     build_metadata_embed, escape_markdown, fits_byte_budget, fits_embed_batch, markdown_message,
-    markdown_quote, message_url, reply_field,
+    markdown_quote, message_url, reply_field, truncate_text,
 };
 pub use health::{
     current_health, disable, enable, enable_with_outbox, format_status_description, get_config,

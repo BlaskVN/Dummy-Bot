@@ -18,6 +18,22 @@ pub fn escape_markdown(value: &str) -> String {
     escaped
 }
 
+pub fn truncate_text(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        value.to_string()
+    } else {
+        let mut truncated: String = value.chars().take(max_chars.saturating_sub(1)).collect();
+        let trailing_backslashes = truncated.chars().rev().take_while(|&c| c == '\\').count();
+        if trailing_backslashes % 2 == 1 {
+            truncated.pop();
+        }
+        if max_chars > 0 {
+            truncated.push('…');
+        }
+        truncated
+    }
+}
+
 pub fn markdown_quote(value: &str, max_chars: usize) -> String {
     let escaped = escape_markdown(value);
     let mut quote = String::new();
@@ -94,7 +110,8 @@ pub fn reply_field(
             let content = if reply.content.is_empty() {
                 t(lang, TranslationKey::MessageMediaOnly).to_string()
             } else {
-                markdown_quote(&reply.content, 700)
+                let escaped = escape_markdown(&reply.content);
+                truncate_text(&escaped, 700)
             };
             format!("<@{}>: {content}", reply.author.id)
         })
@@ -433,6 +450,16 @@ mod tests {
     }
 
     #[test]
+    fn truncate_text_handles_bounds_and_escaping() {
+        assert_eq!(truncate_text("hello world", 20), "hello world");
+        assert_eq!(truncate_text("hello world", 5), "hell…");
+        assert_eq!(truncate_text("", 5), "");
+        assert_eq!(truncate_text("abc", 0), "");
+        // Avoid leaving dangling single escape backslash when truncated
+        assert_eq!(truncate_text("ab\\cd", 4), "ab…");
+    }
+
+    #[test]
     fn reply_field_formats_user_content_and_jump_link() {
         let mut msg = serenity::Message::default();
         let mut reference =
@@ -445,7 +472,31 @@ mod tests {
         msg.referenced_message = Some(Box::new(ref_msg));
 
         let formatted = reply_field(Language::English, GuildId::new(1), &msg).unwrap();
-        assert!(formatted.contains("<@99>: "));
-        assert!(formatted.contains("[Jump to Message](https://discord.com/channels/1/2/3)"));
+        assert_eq!(
+            formatted,
+            "<@99>: Test content\n[Jump to Message](https://discord.com/channels/1/2/3)"
+        );
+        // Ensure no blockquote `> ` prefix is attached to the content
+        assert!(!formatted.contains(": >"));
+        assert!(!formatted.contains("\n>"));
+    }
+
+    #[test]
+    fn reply_field_formats_media_only_when_content_empty() {
+        let mut msg = serenity::Message::default();
+        let mut reference =
+            serenity::MessageReference::from((ChannelId::new(2), MessageId::new(3)));
+        reference.guild_id = Some(GuildId::new(1));
+        msg.message_reference = Some(reference);
+        let mut ref_msg = serenity::Message::default();
+        ref_msg.author.id = serenity::UserId::new(99);
+        ref_msg.content = "".to_string();
+        msg.referenced_message = Some(Box::new(ref_msg));
+
+        let formatted = reply_field(Language::English, GuildId::new(1), &msg).unwrap();
+        assert_eq!(
+            formatted,
+            "<@99>: *[Media only]*\n[Jump to Message](https://discord.com/channels/1/2/3)"
+        );
     }
 }
