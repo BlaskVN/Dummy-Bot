@@ -53,12 +53,21 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 commands::presence::restore_presence(ctx, &setup_pool).await;
 
-                let rhai_manager = Arc::new(crate::core::RhaiManager::new(
+                let rule_engine = Arc::new(crate::core::RhaiRuleEngine::new(
                     &setup_config.rhai_modules_directory,
                 ));
-                if let Err(err) = rhai_manager.load_all().await {
+                if let Err(err) = rule_engine.load_all().await {
                     tracing::error!(error = %err, "Failed to load Rhai script modules");
                 }
+
+                let riot_api: Arc<dyn crate::valorant::RiotApiClient> =
+                    match &setup_config.riot_api_key {
+                        Some(key) => Arc::new(crate::valorant::HttpRiotApiClient::new(
+                            key.clone(),
+                            reqwest::Client::new(),
+                        )),
+                        None => Arc::new(crate::valorant::MockRiotApiClient),
+                    };
 
                 let data = Data {
                     config: setup_config,
@@ -71,7 +80,8 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     game_expiry_wakeup: Arc::new(Notify::new()),
                     automatic_beacons: Arc::new(RwLock::new(HashSet::new())),
                     manual_checkins: Arc::new(RwLock::new(HashSet::new())),
-                    rhai_manager,
+                    rule_engine,
+                    riot_api,
                 };
                 if let Err(error) =
                     crate::attendance::clear_stale_active_starts(&data.db_pool).await

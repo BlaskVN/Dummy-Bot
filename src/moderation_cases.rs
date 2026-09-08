@@ -91,7 +91,7 @@ pub trait DiscordModerationExecutor: Send + Sync {
         reason: &str,
     ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
 
-    fn send_moderation_channel_log(
+    fn post_moderation_case_notice(
         &self,
         channel_id: poise::serenity_prelude::ChannelId,
         summary: &str,
@@ -142,7 +142,7 @@ impl DiscordModerationExecutor for SerenityDiscordExecutor<'_> {
         }
     }
 
-    async fn send_moderation_channel_log(
+    async fn post_moderation_case_notice(
         &self,
         channel_id: poise::serenity_prelude::ChannelId,
         summary: &str,
@@ -166,6 +166,7 @@ pub struct ModerationRequest<'a> {
     pub reason: &'a str,
     pub evidence_url: Option<&'a str>,
     pub language: crate::i18n::Language,
+    pub denial: Option<crate::permissions::ModerationDenial>,
 }
 
 pub async fn execute_moderation_action<E: DiscordModerationExecutor>(
@@ -173,6 +174,9 @@ pub async fn execute_moderation_action<E: DiscordModerationExecutor>(
     pool: &SqlitePool,
     request: ModerationRequest<'_>,
 ) -> Result<ExecutedCase, ModerationExecutionError> {
+    if let Some(denial) = request.denial {
+        return Err(ModerationExecutionError::Denial(denial));
+    }
     let reason = request.reason.trim();
     if reason.is_empty() {
         return Err(ModerationExecutionError::EmptyReason);
@@ -240,7 +244,7 @@ pub async fn execute_moderation_action<E: DiscordModerationExecutor>(
     {
         let ch = poise::serenity_prelude::ChannelId::new(channel_id);
         if let Err(err) = executor
-            .send_moderation_channel_log(ch, &summary_text)
+            .post_moderation_case_notice(ch, &summary_text)
             .await
         {
             tracing::warn!(
@@ -664,7 +668,7 @@ mod tests {
             Ok(())
         }
 
-        async fn send_moderation_channel_log(
+        async fn post_moderation_case_notice(
             &self,
             channel_id: poise::serenity_prelude::ChannelId,
             summary: &str,
@@ -714,6 +718,7 @@ mod tests {
                 reason: "Violated rules",
                 evidence_url: Some("https://discord.com/channels/1/2/3"),
                 language: crate::i18n::Language::English,
+                denial: None,
             },
         )
         .await
@@ -772,6 +777,7 @@ mod tests {
                 reason: "   ",
                 evidence_url: None,
                 language: crate::i18n::Language::English,
+                denial: None,
             },
         )
         .await
@@ -790,6 +796,7 @@ mod tests {
                 reason: "Valid reason",
                 evidence_url: Some("https://discord.com/channels/999/2/3"),
                 language: crate::i18n::Language::English,
+                denial: None,
             },
         )
         .await
@@ -809,11 +816,34 @@ mod tests {
                 reason: "Valid reason",
                 evidence_url: None,
                 language: crate::i18n::Language::English,
+                denial: None,
             },
         )
         .await
         .unwrap_err();
         assert!(matches!(err3, ModerationExecutionError::DiscordFailed(_)));
+
+        // Simulated permission denial
+        let err4 = execute_moderation_action(
+            &executor,
+            &pool,
+            ModerationRequest {
+                guild_id: GuildId::new(1),
+                target: UserId::new(10),
+                moderator: UserId::new(20),
+                intent: ModerationIntent::Warn,
+                reason: "Valid reason",
+                evidence_url: None,
+                language: crate::i18n::Language::English,
+                denial: Some(crate::permissions::ModerationDenial::SelfTarget),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            err4,
+            ModerationExecutionError::Denial(crate::permissions::ModerationDenial::SelfTarget)
+        ));
 
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();

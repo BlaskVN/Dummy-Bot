@@ -60,6 +60,8 @@ pub struct Config {
     pub message_timestamp_format: String,
     pub attachment_max_bytes: u64,
     pub purge_attachment_max_total_bytes: u64,
+    pub riot_api_key: Option<String>,
+    pub riot_default_region: String,
     pub colors: EmbedColors,
 }
 
@@ -95,6 +97,11 @@ impl Config {
             message_timestamp_format: required("MESSAGE_TIMESTAMP_FORMAT")?,
             attachment_max_bytes: required("ATTACHMENT_MAX_BYTES")?,
             purge_attachment_max_total_bytes: required("PURGE_ATTACHMENT_MAX_TOTAL_BYTES")?,
+            riot_api_key: std::env::var("RIOT_API_KEY")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            riot_default_region: std::env::var("RIOT_DEFAULT_REGION")
+                .unwrap_or_else(|_| "ap".to_string()),
             colors: EmbedColors {
                 primary: hex_color("EMBED_COLOR_PRIMARY")?,
                 success: hex_color("EMBED_COLOR_SUCCESS")?,
@@ -138,6 +145,11 @@ impl Config {
         }
         if self.purge_attachment_max_total_bytes < self.attachment_max_bytes {
             bail!("PURGE_ATTACHMENT_MAX_TOTAL_BYTES must be at least ATTACHMENT_MAX_BYTES");
+        }
+        if crate::valorant::RiotRegion::try_parse(&self.riot_default_region).is_none() {
+            bail!(
+                "RIOT_DEFAULT_REGION must be a valid region code (e.g. ap, na, eu, kr, latam, br)"
+            );
         }
         Ok(())
     }
@@ -188,11 +200,21 @@ fn hex_color(name: &str) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::hex_color;
+    use crate::valorant::RiotRegion;
 
     #[test]
     fn parses_hex_color_formats() {
         unsafe { std::env::set_var("TEST_COLOR", "#12abEF") };
         assert_eq!(hex_color("TEST_COLOR").unwrap(), 0x12_AB_EF);
         unsafe { std::env::remove_var("TEST_COLOR") };
+    }
+
+    #[test]
+    fn validates_riot_region_codes() {
+        assert!(RiotRegion::try_parse("ap").is_some());
+        assert!(RiotRegion::try_parse("na").is_some());
+        assert!(RiotRegion::try_parse("euw").is_some());
+        assert!(RiotRegion::try_parse("kr").is_some());
+        assert!(RiotRegion::try_parse("invalid_region").is_none());
     }
 }

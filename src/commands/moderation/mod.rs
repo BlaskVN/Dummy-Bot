@@ -75,3 +75,47 @@ pub async fn handle_execution_error(
     }
     Ok(())
 }
+
+pub async fn execute_moderation_pipeline(
+    ctx: Context<'_>,
+    target_user_id: poise::serenity_prelude::UserId,
+    intent: crate::moderation_cases::ModerationIntent,
+    reason: Option<String>,
+    evidence_url: Option<String>,
+) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = ctx.data().language(guild_id).await;
+
+    let denial = crate::permissions::moderation_denial(ctx, target_user_id)?;
+    let default_reason = t(lang, TranslationKey::ModerationNoReason).to_string();
+    let final_reason = reason.unwrap_or(default_reason);
+
+    let executor = crate::moderation_cases::SerenityDiscordExecutor::new(ctx.http());
+    match crate::moderation_cases::execute_moderation_action(
+        &executor,
+        &ctx.data().db_pool,
+        crate::moderation_cases::ModerationRequest {
+            guild_id,
+            target: target_user_id,
+            moderator: ctx.author().id,
+            intent,
+            reason: &final_reason,
+            evidence_url: evidence_url.as_deref(),
+            language: lang,
+            denial,
+        },
+    )
+    .await
+    {
+        Ok(executed) => {
+            ui::reply(ctx, Tone::Success, executed.summary_text).await?;
+        }
+        Err(error) => {
+            handle_execution_error(ctx, lang, error).await?;
+        }
+    }
+
+    Ok(())
+}

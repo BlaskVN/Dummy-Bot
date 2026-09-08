@@ -34,13 +34,9 @@ pub async fn handle_message(
     ) {
         return Ok(());
     }
-    let timezone: Option<String> =
-        sqlx::query_scalar("SELECT iana_name FROM guild_timezone WHERE guild_id = ?")
-            .bind(guild_id.to_string())
-            .fetch_optional(&data.db_pool)
-            .await?
-            .flatten();
-    let Some(timezone) = timezone.and_then(|name| crate::timezone::parse(&name)) else {
+    let Some(session_expiry) =
+        crate::timezone::next_session_expiry(&data.db_pool, guild_id, chrono::Utc::now()).await?
+    else {
         return Ok(());
     };
 
@@ -97,9 +93,7 @@ pub async fn handle_message(
             .channel_id(primary),
         )
         .await?;
-    let expires_at = crate::timezone::next_five_am(chrono::Utc::now(), timezone)
-        .ok_or_else(|| anyhow::anyhow!("Could not calculate game session expiry"))?
-        .timestamp();
+    let expires_at = session_expiry.timestamp();
     if let Err(error) = create_game_activity(
         &data.db_pool,
         guild_id,

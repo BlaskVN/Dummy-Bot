@@ -1,11 +1,11 @@
 use crate::i18n::{TranslationKey, t, tf};
-use crate::message_log_health::{MessageLogHealth, mark_warning_sent, reconcile};
+use crate::message_log::{self, DiscordOutbox};
 use crate::permissions::missing_channel_permissions;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
-/// Configure edited and deleted message logging for this server.
+/// Configure edited and deleted message logging for this Guild.
 #[poise::command(
     slash_command,
     subcommands("enable", "disable", "status"),
@@ -17,7 +17,7 @@ pub async fn messagelog(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Enable message logging for this server.
+/// Enable message logging for this Guild.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn enable(
     ctx: Context<'_>,
@@ -45,41 +45,23 @@ pub async fn enable(
         return Ok(());
     }
 
-    // Insert or update config
-    sqlx::query(
-        "INSERT INTO message_log_config (guild_id, log_channel_id, enabled)
-         VALUES (?, ?, 1)
-         ON CONFLICT(guild_id) DO UPDATE SET log_channel_id = excluded.log_channel_id, enabled = 1",
-    )
-    .bind(guild_id.to_string())
-    .bind(log_channel.id.to_string())
-    .execute(&ctx.data().db_pool)
-    .await?;
+    let warning_panel = serenity::CreateMessage::new()
+        .embed(ui::panel(
+            ctx.data(),
+            Tone::Warning,
+            t(lang, TranslationKey::MessageLogDegradedWarning),
+        ))
+        .allowed_mentions(serenity::CreateAllowedMentions::new());
+    let outbox = DiscordOutbox::new(ctx.http());
 
-    let (_, warn) = reconcile(
+    message_log::enable_with_outbox(
         &ctx.data().db_pool,
         guild_id,
+        log_channel.id,
         ctx.data().config.message_content_enabled,
+        Some((&outbox, warning_panel)),
     )
     .await?;
-    if warn
-        && log_channel
-            .id
-            .send_message(
-                ctx.http(),
-                serenity::CreateMessage::new()
-                    .embed(ui::panel(
-                        ctx.data(),
-                        Tone::Warning,
-                        t(lang, TranslationKey::MessageLogDegradedWarning),
-                    ))
-                    .allowed_mentions(serenity::CreateAllowedMentions::new()),
-            )
-            .await
-            .is_ok()
-    {
-        mark_warning_sent(&ctx.data().db_pool, guild_id).await?;
-    }
 
     tracing::info!(
         guild = %guild_id,
@@ -97,7 +79,7 @@ pub async fn enable(
     Ok(())
 }
 
-/// Disable message logging for this server.
+/// Disable message logging for this Guild.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -106,13 +88,14 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
 
     let lang = ctx.data().language(guild_id).await;
 
-    // Update config to disabled
-    let result = sqlx::query("UPDATE message_log_config SET enabled = 0 WHERE guild_id = ?")
-        .bind(guild_id.to_string())
-        .execute(&ctx.data().db_pool)
-        .await?;
+    let disabled = message_log::disable(
+        &ctx.data().db_pool,
+        guild_id,
+        ctx.data().config.message_content_enabled,
+    )
+    .await?;
 
-    if result.rows_affected() == 0 {
+    if !disabled {
         let embed = ui::panel(
             ctx.data(),
             Tone::Warning,
@@ -121,12 +104,6 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         ctx.send(ui::embed_reply(embed)).await?;
         return Ok(());
     }
-    reconcile(
-        &ctx.data().db_pool,
-        guild_id,
-        ctx.data().config.message_content_enabled,
-    )
-    .await?;
 
     tracing::info!(
         guild = %guild_id,
@@ -145,7 +122,7 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Show current message logging status.
+/// Show this Guild's current message logging status.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -154,37 +131,11 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 
     let lang = ctx.data().language(guild_id).await;
 
-    let config = sqlx::query_as::<_, (String, i64, String)>(
-        "SELECT log_channel_id, enabled, health FROM message_log_config WHERE guild_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .fetch_optional(&ctx.data().db_pool)
-    .await?;
+    let config = message_log::get_config(&ctx.data().db_pool, guild_id).await?;
 
     match config {
-        Some((channel_id, enabled, health)) => {
-            let status = if enabled == 1 {
-                t(lang, TranslationKey::MessageLogStatusEnabled)
-            } else {
-                t(lang, TranslationKey::MessageLogStatusDisabled)
-            };
-
-            let status_label = t(lang, TranslationKey::MessageLogStatus);
-            let channel_text = tf(lang, TranslationKey::MessageLogChannel, &[&channel_id]);
-            let health = t(
-                lang,
-                match MessageLogHealth::parse(&health) {
-                    MessageLogHealth::Disabled => TranslationKey::MessageLogHealthDisabled,
-                    MessageLogHealth::Healthy => TranslationKey::MessageLogHealthHealthy,
-                    MessageLogHealth::Degraded => TranslationKey::MessageLogHealthDegraded,
-                },
-            );
-            let health_text = tf(lang, TranslationKey::MessageLogHealth, &[&health]);
-
-            let description = format!(
-                "{} {}\n{}\n{}",
-                status_label, status, channel_text, health_text
-            );
+        Some(config) => {
+            let description = message_log::format_status_description(lang, &config);
 
             let embed = ui::embed(ctx.data(), Tone::Primary)
                 .title(t(lang, TranslationKey::MessageLogStatusTitle))

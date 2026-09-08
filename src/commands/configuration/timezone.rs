@@ -3,7 +3,7 @@ use crate::timezone;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 
-/// Configure the time zone used for this server.
+/// Configure the time zone used for this guild.
 #[poise::command(
     slash_command,
     subcommands("set", "show", "clear"),
@@ -15,7 +15,7 @@ pub async fn timezone(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Set this server's IANA time zone.
+/// Set this guild's IANA time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
@@ -27,18 +27,14 @@ pub async fn set(
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
-    if timezone::parse(&iana_name).is_none() {
+    if timezone::set_timezone(&ctx.data().db_pool, guild_id, &iana_name)
+        .await
+        .is_err()
+    {
         ui::reply(ctx, Tone::Error, t(lang, TranslationKey::TimezoneInvalid)).await?;
         return Ok(());
     }
 
-    sqlx::query(
-        "INSERT INTO guild_timezone (guild_id, iana_name) VALUES (?, ?)\n         ON CONFLICT(guild_id) DO UPDATE SET iana_name = excluded.iana_name, updated_at = CURRENT_TIMESTAMP",
-    )
-    .bind(guild_id.to_string())
-    .bind(&iana_name)
-    .execute(&ctx.data().db_pool)
-    .await?;
     let message = tf(lang, TranslationKey::TimezoneSet, &[&iana_name]);
     ui::reply(ctx, Tone::Success, message).await?;
     Ok(())
@@ -107,20 +103,14 @@ async fn autocomplete_timezone(_ctx: Context<'_>, partial: &str) -> Vec<String> 
         .collect()
 }
 
-/// Show this server's configured time zone.
+/// Show this guild's configured time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
-    let value = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT iana_name FROM guild_timezone WHERE guild_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .fetch_optional(&ctx.data().db_pool)
-    .await?
-    .flatten();
+    let value = timezone::get_timezone_name(&ctx.data().db_pool, guild_id).await?;
     ui::reply(
         ctx,
         Tone::Neutral,
@@ -133,19 +123,14 @@ pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Reset this server to the default time zone.
+/// Reset this guild to the default time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
-    sqlx::query(
-        "INSERT INTO guild_timezone (guild_id, iana_name) VALUES (?, NULL)\n         ON CONFLICT(guild_id) DO UPDATE SET iana_name = NULL, updated_at = CURRENT_TIMESTAMP",
-    )
-        .bind(guild_id.to_string())
-        .execute(&ctx.data().db_pool)
-        .await?;
+    timezone::clear_timezone(&ctx.data().db_pool, guild_id).await?;
     ui::reply(ctx, Tone::Success, t(lang, TranslationKey::TimezoneCleared)).await?;
     Ok(())
 }

@@ -223,6 +223,17 @@ pub enum TranslationKey {
     ErrorNoPermission,
     ErrorGeneric,
     ErrorCooldown,
+
+    // VALORANT & Tracker
+    ValorantTrackerTitle,
+    ValorantTrackerLinkLabel,
+    ValorantTrackerUserLabel,
+    ValorantTrackerUnverifiedNotice,
+    ValorantTrackerSetSuccess,
+    ValorantTrackerRemovedSuccess,
+    ValorantTrackerNotFound,
+    ValorantTrackerInvalidUrl,
+    ValorantTrackerNotGuildMember,
 }
 
 impl TranslationKey {
@@ -264,6 +275,15 @@ impl TranslationKey {
             "ErrorNoPermission" => Some(Self::ErrorNoPermission),
             "ErrorGeneric" => Some(Self::ErrorGeneric),
             "ErrorCooldown" => Some(Self::ErrorCooldown),
+            "ValorantTrackerTitle" => Some(Self::ValorantTrackerTitle),
+            "ValorantTrackerLinkLabel" => Some(Self::ValorantTrackerLinkLabel),
+            "ValorantTrackerUserLabel" => Some(Self::ValorantTrackerUserLabel),
+            "ValorantTrackerUnverifiedNotice" => Some(Self::ValorantTrackerUnverifiedNotice),
+            "ValorantTrackerSetSuccess" => Some(Self::ValorantTrackerSetSuccess),
+            "ValorantTrackerRemovedSuccess" => Some(Self::ValorantTrackerRemovedSuccess),
+            "ValorantTrackerNotFound" => Some(Self::ValorantTrackerNotFound),
+            "ValorantTrackerInvalidUrl" => Some(Self::ValorantTrackerInvalidUrl),
+            "ValorantTrackerNotGuildMember" => Some(Self::ValorantTrackerNotGuildMember),
             _ => None,
         }
     }
@@ -654,6 +674,36 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ErrorCooldown,
         "Please wait {} seconds before using this command again.",
     );
+    en.insert(
+        TranslationKey::ValorantTrackerTitle,
+        "VALORANT Tracker Profile",
+    );
+    en.insert(TranslationKey::ValorantTrackerLinkLabel, "Tracker Link");
+    en.insert(TranslationKey::ValorantTrackerUserLabel, "User");
+    en.insert(
+        TranslationKey::ValorantTrackerUnverifiedNotice,
+        "User-provided external link — not verified by Riot or this bot",
+    );
+    en.insert(
+        TranslationKey::ValorantTrackerSetSuccess,
+        "VALORANT tracker profile link saved successfully.",
+    );
+    en.insert(
+        TranslationKey::ValorantTrackerRemovedSuccess,
+        "VALORANT tracker profile link removed.",
+    );
+    en.insert(
+        TranslationKey::ValorantTrackerNotFound,
+        "No VALORANT tracker profile link found for this user.",
+    );
+    en.insert(
+        TranslationKey::ValorantTrackerInvalidUrl,
+        "Invalid VALORANT tracker URL. Expected format: `https://tracker.gg/valorant/profile/riot/<name>%23<tag>/overview`",
+    );
+    en.insert(
+        TranslationKey::ValorantTrackerNotGuildMember,
+        "The requested user is not a member of this guild.",
+    );
     translations.insert(Language::English, en);
 
     // Vietnamese translations
@@ -1040,6 +1090,36 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(
         TranslationKey::ErrorCooldown,
         "Vui lòng đợi {} giây trước khi dùng lại lệnh này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantTrackerTitle,
+        "Hồ Sơ VALORANT Tracker",
+    );
+    vi.insert(TranslationKey::ValorantTrackerLinkLabel, "Liên kết Tracker");
+    vi.insert(TranslationKey::ValorantTrackerUserLabel, "Người dùng");
+    vi.insert(
+        TranslationKey::ValorantTrackerUnverifiedNotice,
+        "Liên kết ngoài do người dùng cung cấp — chưa được xác minh bởi Riot hoặc bot này",
+    );
+    vi.insert(
+        TranslationKey::ValorantTrackerSetSuccess,
+        "Đã lưu liên kết hồ sơ VALORANT tracker thành công.",
+    );
+    vi.insert(
+        TranslationKey::ValorantTrackerRemovedSuccess,
+        "Đã xóa liên kết hồ sơ VALORANT tracker.",
+    );
+    vi.insert(
+        TranslationKey::ValorantTrackerNotFound,
+        "Không tìm thấy liên kết hồ sơ VALORANT tracker cho người dùng này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantTrackerInvalidUrl,
+        "URL VALORANT tracker không hợp lệ. Định dạng yêu cầu: `https://tracker.gg/valorant/profile/riot/<tên>%23<tag>/overview`",
+    );
+    vi.insert(
+        TranslationKey::ValorantTrackerNotGuildMember,
+        "Người dùng được yêu cầu không phải là thành viên của máy chủ này.",
     );
     translations.insert(Language::Vietnamese, vi);
 
@@ -1442,6 +1522,36 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::ErrorCooldown,
         "このコマンドを再度使用するには{}秒お待ちください。",
+    );
+    ja.insert(
+        TranslationKey::ValorantTrackerTitle,
+        "VALORANT トラッカープロフィール",
+    );
+    ja.insert(TranslationKey::ValorantTrackerLinkLabel, "トラッカーリンク");
+    ja.insert(TranslationKey::ValorantTrackerUserLabel, "ユーザー");
+    ja.insert(
+        TranslationKey::ValorantTrackerUnverifiedNotice,
+        "ユーザー提供の外部リンクです — Riotまたはこのボットによる検証は行われていません",
+    );
+    ja.insert(
+        TranslationKey::ValorantTrackerSetSuccess,
+        "VALORANTトラッカープロフィールのリンクを保存しました。",
+    );
+    ja.insert(
+        TranslationKey::ValorantTrackerRemovedSuccess,
+        "VALORANTトラッカープロフィールのリンクを削除しました。",
+    );
+    ja.insert(
+        TranslationKey::ValorantTrackerNotFound,
+        "このユーザーのVALORANTトラッカープロフィールリンクが見つかりません。",
+    );
+    ja.insert(
+        TranslationKey::ValorantTrackerInvalidUrl,
+        "無効なVALORANTトラッカーURLです。形式: `https://tracker.gg/valorant/profile/riot/<名前>%23<タグ>/overview`",
+    );
+    ja.insert(
+        TranslationKey::ValorantTrackerNotGuildMember,
+        "指定されたユーザーはこのサーバーのメンバーではありません。",
     );
     translations.insert(Language::Japanese, ja);
 
