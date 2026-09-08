@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dummy Bot - Companion Website & Riot Sign On</title>
+  <style>
+    :root {
+      --bg-color: #0f141c;
+      --card-bg: #18202c;
+      --card-border: #263345;
+      --accent: #ff4655; /* VALORANT red */
+      --accent-hover: #e03b49;
+      --discord-blurple: #5865f2;
+      --discord-hover: #4752c4;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --success: #2ecc71;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: rgba(24, 32, 44, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .navbar {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .logo span {
+      color: var(--accent);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.25rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: #fff;
+    }
+
+    main {
+      max-width: 1000px;
+      margin: 2.5rem auto;
+      padding: 0 1.5rem;
+      flex: 1;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .hero h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.02em;
+    }
+
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.75rem;
+      margin-bottom: 3rem;
+    }
+
+    @media (min-width: 768px) {
+      .grid {
+        grid-template-columns: 3fr 2fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.75rem;
+    }
+
+    .card h2 {
+      font-size: 1.35rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card p {
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+
+    .rso-box {
+      background: #111722;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin: 1.25rem 0;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.25rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 6px;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s, transform 0.1s;
+      width: 100%;
+    }
+
+    .btn-rso {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-rso:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn:active {
+      transform: scale(0.99);
+    }
+
+    .field-group {
+      margin-bottom: 1rem;
+    }
+
+    .field-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .field-group input {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      background: #0b0f17;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.9rem;
+    }
+
+    .feature-list {
+      list-style: none;
+    }
+
+    .feature-list li {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.9rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .feature-list li:last-child {
+      border-bottom: none;
+    }
+
+    .feature-list strong {
+      color: var(--text-main);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      background: rgba(255, 70, 85, 0.15);
+      color: var(--accent);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .privacy-callout {
+      background: rgba(46, 204, 113, 0.1);
+      border-left: 3px solid var(--success);
+      padding: 1rem;
+      border-radius: 0 6px 6px 0;
+      margin: 1.25rem 0;
+      font-size: 0.88rem;
+    }
+
+    .privacy-callout strong {
+      color: var(--success);
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    footer {
+      background: #0b0f17;
+      border-top: 1px solid var(--card-border);
+      padding: 2rem 1.5rem;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+
+    .footer-content {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    @media (min-width: 768px) {
+      .footer-content {
+        flex-direction: row;
+        justify-content: space-between;
+      }
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    .footer-links a:hover {
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="navbar">
+      <a href="index.html" class="logo">
+        Dummy<span>Bot</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#rso">Riot Sign On</a></li>
+        <li><a href="#privacy">Privacy</a></li>
+        <li><a href="#unlinking">Unlink & Deletion</a></li>
+        <li><a href="privacy.html">Privacy Policy</a></li>
+        <li><a href="terms.html">Terms</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <span class="badge">Official Integration Companion</span>
+      <h1>Dummy Bot Companion</h1>
+      <p>Secure, policy-compliant Riot Sign On (RSO) authorization and data controls for your VALORANT profiles and Guild Leaderboards.</p>
+    </section>
+
+    <div class="grid">
+      <!-- Main Action: Riot Sign On -->
+      <div class="card" id="rso">
+        <h2>Riot Sign On (RSO) Authorization</h2>
+        <p>Authorize Dummy Bot to query your official VALORANT rank, RR, and competitive tier. Dummy Bot strictly adheres to Riot Games Developer Policies and never scrapes third-party websites.</p>
+
+        <div class="privacy-callout">
+          <strong>Privacy by Default</strong>
+          Connecting your Riot account does NOT automatically reveal your stats in any Discord server. Your profile remains private until you explicitly grant consent in that server using <code>/valorant visibility enable</code>.
+        </div>
+
+        <div class="rso-box">
+          <div class="field-group">
+            <label for="clientIdInput">Riot RSO Client ID</label>
+            <input type="text" id="clientIdInput" placeholder="Enter or keep default Client ID" value="" />
+          </div>
+          <div class="field-group">
+            <label for="redirectUriInput">Redirect URI</label>
+            <input type="text" id="redirectUriInput" value="https://blaskvn.github.io/Dummy-Bot/auth/callback" readonly />
+          </div>
+          <button type="button" class="btn btn-rso" id="btnAuth">
+            Connect with Riot Games
+          </button>
+        </div>
+
+        <p style="font-size: 0.85rem;">
+          Redirects to <code>https://auth.riotgames.com/authorize</code> with scope <code>openid</code>.
+        </p>
+      </div>
+
+      <!-- Quick Guidance & Rules -->
+      <div class="card">
+        <h2>Policy & Compliance</h2>
+        <ul class="feature-list">
+          <li>
+            <div>
+              <strong>Riot Games Approved</strong>
+              Uses official Riot Developer APIs with authorized player consent.
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>No Web Scraping</strong>
+              Fully compliant with Tracker Network policies. Third-party scraping is prohibited.
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Guild Visibility Controls</strong>
+              Members retain full control over which Discord servers can see their stats.
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Native Competitive Ordering</strong>
+              Rankings strictly reflect official Riot Competitive Tiers and Ranked Rating.
+            </div>
+          </li>
+        </ul>
+
+        <h2 style="margin-top: 1.5rem;" id="unlinking">Unlinking & Data Deletion</h2>
+        <p>You can unlink your Riot account and remove your records at any time:</p>
+        <ul class="feature-list">
+          <li>
+            <div>
+              <strong>In Discord:</strong> Type <code>/valorant unlink</code> to delete your linked Riot record instantly.
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Server Removal:</strong> When Dummy Bot leaves a Guild, all server-specific visibility settings are permanently removed.
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Manual Deletion:</strong> Contact the Bot Owner to request complete deletion of all associated user data.
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-content">
+      <div>
+        <p>Dummy Bot is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties.</p>
+        <p style="margin-top: 0.5rem;">Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.</p>
+      </div>
+      <div class="footer-links">
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="terms.html">Terms of Service</a>
+        <a href="auth/callback/index.html">Auth Callback</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('btnAuth').addEventListener('click', function() {
+      const clientId = document.getElementById('clientIdInput').value.trim();
+      const redirectUri = document.getElementById('redirectUriInput').value.trim();
+      if (!clientId) {
+        alert('Please provide a Riot RSO Client ID or run Dummy Bot in Discord to link your account.');
+        return;
+      }
+      const state = Math.random().toString(36).substring(2, 15);
+      const url = `https://auth.riotgames.com/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid&state=${state}`;
+      window.location.href = url;
+    });
+  </script>
+</body>
+</html>

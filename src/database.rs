@@ -163,6 +163,7 @@ pub async fn delete_guild_data(
         "guild_language",
         "message_log_config",
         "cached_message",
+        "valorant_guild_visibility",
     ] {
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM {table} WHERE guild_id = ?"
@@ -469,6 +470,7 @@ mod tests {
              INSERT INTO automod_observer_config (guild_id, enabled) VALUES ('1', 1), ('2', 1);
              INSERT INTO automod_execution (delivery_key, guild_id, user_id, rule_id, action_type, observed_at) VALUES ('one', '1', '3', '4', 1, 1), ('two', '2', '3', '4', 1, 1);
              INSERT INTO automod_suggestion (guild_id, user_id, rule_id, opened_at) VALUES ('1', '3', '4', 1), ('2', '3', '4', 1);
+             INSERT INTO valorant_guild_visibility (guild_id, user_id, visible) VALUES ('1', '3', 1), ('2', '3', 1);
              INSERT INTO donation_config (id, message) VALUES (1, 'global');"
         ).execute(&pool).await.unwrap();
         let guild = poise::serenity_prelude::GuildId::new(1);
@@ -484,7 +486,8 @@ mod tests {
                     (SELECT COUNT(*) FROM moderation_case WHERE guild_id = '1') +
                     (SELECT COUNT(*) FROM automod_observer_config WHERE guild_id = '1') +
                     (SELECT COUNT(*) FROM automod_execution WHERE guild_id = '1') +
-                    (SELECT COUNT(*) FROM automod_suggestion WHERE guild_id = '1')",
+                    (SELECT COUNT(*) FROM automod_suggestion WHERE guild_id = '1') +
+                    (SELECT COUNT(*) FROM valorant_guild_visibility WHERE guild_id = '1')",
         )
         .fetch_one(&pool)
         .await

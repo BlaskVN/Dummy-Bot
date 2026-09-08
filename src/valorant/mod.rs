@@ -1,8 +1,11 @@
 pub mod riot_api;
-pub mod tracker;
+pub mod storage;
 
-pub use riot_api::{HttpRiotApiClient, MockRiotApiClient, RiotApiClient, RiotRegion};
-pub use tracker::{
-    TrackerUrlError, get_tracker_profile, parse_and_normalize_tracker_url, remove_tracker_profile,
-    set_tracker_profile,
+pub use riot_api::{
+    CompetitiveTier, HttpRiotApiClient, LeaderboardPlayer, LeaderboardResponse, MockRiotApiClient,
+    PlayerRankedData, RiotApiClient, RiotRegion,
+};
+pub use storage::{
+    LinkedRiotAccount, get_guild_visibility, get_linked_account, list_guild_visible_accounts,
+    remove_linked_account, set_guild_visibility, set_linked_account,
 };

@@ -62,6 +62,9 @@ pub struct Config {
     pub purge_attachment_max_total_bytes: u64,
     pub riot_api_key: Option<String>,
     pub riot_default_region: String,
+    pub riot_rso_client_id: Option<String>,
+    pub riot_rso_client_secret: Option<String>,
+    pub riot_rso_redirect_uri: Option<String>,
     pub colors: EmbedColors,
 }
 
@@ -102,6 +105,15 @@ impl Config {
                 .filter(|s| !s.trim().is_empty()),
             riot_default_region: std::env::var("RIOT_DEFAULT_REGION")
                 .unwrap_or_else(|_| "ap".to_string()),
+            riot_rso_client_id: std::env::var("RIOT_RSO_CLIENT_ID")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            riot_rso_client_secret: std::env::var("RIOT_RSO_CLIENT_SECRET")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            riot_rso_redirect_uri: std::env::var("RIOT_RSO_REDIRECT_URI")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
             colors: EmbedColors {
                 primary: hex_color("EMBED_COLOR_PRIMARY")?,
                 success: hex_color("EMBED_COLOR_SUCCESS")?,
@@ -216,5 +228,40 @@ mod tests {
         assert!(RiotRegion::try_parse("euw").is_some());
         assert!(RiotRegion::try_parse("kr").is_some());
         assert!(RiotRegion::try_parse("invalid_region").is_none());
+    }
+
+    #[test]
+    fn parses_riot_rso_config_vars() {
+        unsafe {
+            std::env::set_var("TEST_RSO_CLIENT_ID", "dummy-client-123");
+            std::env::set_var("TEST_RSO_CLIENT_SECRET", "dummy-secret-456");
+            std::env::set_var(
+                "TEST_RSO_REDIRECT_URI",
+                "https://blaskvn.github.io/Dummy-Bot/auth/callback",
+            );
+        }
+
+        let client_id = std::env::var("TEST_RSO_CLIENT_ID")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        let client_secret = std::env::var("TEST_RSO_CLIENT_SECRET")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        let redirect_uri = std::env::var("TEST_RSO_REDIRECT_URI")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
+        assert_eq!(client_id.as_deref(), Some("dummy-client-123"));
+        assert_eq!(client_secret.as_deref(), Some("dummy-secret-456"));
+        assert_eq!(
+            redirect_uri.as_deref(),
+            Some("https://blaskvn.github.io/Dummy-Bot/auth/callback")
+        );
+
+        unsafe {
+            std::env::remove_var("TEST_RSO_CLIENT_ID");
+            std::env::remove_var("TEST_RSO_CLIENT_SECRET");
+            std::env::remove_var("TEST_RSO_REDIRECT_URI");
+        }
     }
 }

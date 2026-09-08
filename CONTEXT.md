@@ -72,13 +72,9 @@ _Avoid_: Voice Channel, Moderation Channel
 A connection to an external game's service for retrieving or presenting game-specific data.
 _Avoid_: Game Plugin
 
-**Tracker Profile Link**:
-A tracker.gg URL voluntarily attached once to a Discord user's bot profile for navigation only and shared across Guilds rather than configured separately in each Guild. Members who share a Guild with its owner may view it. The bot neither verifies the profile nor imports data from it.
-_Avoid_: Linked Riot Account, Tracker Integration
-
 **Linked Riot Account**:
 A Riot account that a member has explicitly connected through Riot Sign On, permitting policy-compliant access to that member's VALORANT data.
-_Avoid_: Tracker Profile Link, Riot ID Text
+_Avoid_: Unverified Account, Riot ID Text
 
 **Guild Profile Visibility**:
 A member's per-Guild consent for bot commands to display data from their Linked Riot Account. Linking alone leaves the profile hidden in every Guild.

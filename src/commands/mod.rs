@@ -207,16 +207,28 @@ fn get_command_descriptions(name: &str) -> (String, String) {
         )),
         "info" => Some(("Xem thông tin chi tiết.", "詳細情報を表示します。")),
         "valorant" => Some((
-            "Quản lý liên kết hồ sơ VALORANT tracker cho thành viên.",
-            "メンバーの VALORANT トラッカープロフィールリンクを管理します。",
+            "Xem hồ sơ rank và bảng xếp hạng VALORANT chính thức.",
+            "公式 VALORANT ランクプロフィールおよびリーダーボードを確認します。",
         )),
-        "tracker" => Some((
-            "Quản lý và xem liên kết hồ sơ VALORANT tracker.gg.",
-            "VALORANT tracker.gg プロフィールリンクを管理・閲覧します。",
+        "profile" => Some((
+            "Xem hồ sơ xếp hạng và chỉ số VALORANT của thành viên.",
+            "メンバーの VALORANT ランクと戦績を表示します。",
         )),
-        "remove" => Some((
-            "Xóa liên kết hồ sơ đã lưu.",
-            "保存されているプロフィールリンクを削除します。",
+        "leaderboard" => Some((
+            "Bảng xếp hạng VALORANT của các thành viên trong máy chủ.",
+            "サーバー内メンバーの VALORANT リーダーボードを表示します。",
+        )),
+        "visibility" => Some((
+            "Cấu hình quyền riêng tư hiển thị hồ sơ trong máy chủ này.",
+            "このサーバーでのプロフィール公開設定を管理します。",
+        )),
+        "link" => Some((
+            "Liên kết tài khoản Riot với hồ sơ Discord của bạn.",
+            "Riot アカウントを Discord プロフィールに連携します。",
+        )),
+        "unlink" => Some((
+            "Hủy liên kết tài khoản Riot khỏi hồ sơ Discord.",
+            "Discord プロフィールから Riot アカウントの連携を解除します。",
         )),
         _ => None,
     };
@@ -266,9 +278,13 @@ fn get_param_descriptions(cmd_name: &str, param_name: &str) -> (String, String) 
             "Từ tiếng Anh 5 chữ cái bạn muốn đoán.",
             "推測する 5文字の英単語。",
         )),
-        (_, "url") => Some((
-            "Đường dẫn liên kết hồ sơ tracker.gg.",
-            "tracker.gg プロフィールの URL。",
+        (_, "riot_id") => Some((
+            "Riot ID của bạn theo định dạng Tên#TAG (ví dụ: TenZ#0001).",
+            "名前#タグ形式の Riot ID（例：TenZ#0001）。",
+        )),
+        (_, "region") => Some((
+            "Khu vực tài khoản VALORANT (ap, na, eu, kr, latam, br).",
+            "VALORANT アカウントの地域（ap, na, eu, kr, latam, br）。",
         )),
         _ => None,
     };

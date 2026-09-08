@@ -97,6 +97,87 @@ pub struct LeaderboardResponse {
     pub players: Vec<LeaderboardPlayer>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum CompetitiveTier {
+    Unranked = 0,
+    Iron1 = 1,
+    Iron2 = 2,
+    Iron3 = 3,
+    Bronze1 = 4,
+    Bronze2 = 5,
+    Bronze3 = 6,
+    Silver1 = 7,
+    Silver2 = 8,
+    Silver3 = 9,
+    Gold1 = 10,
+    Gold2 = 11,
+    Gold3 = 12,
+    Platinum1 = 13,
+    Platinum2 = 14,
+    Platinum3 = 15,
+    Diamond1 = 16,
+    Diamond2 = 17,
+    Diamond3 = 18,
+    Ascendant1 = 19,
+    Ascendant2 = 20,
+    Ascendant3 = 21,
+    Immortal1 = 22,
+    Immortal2 = 23,
+    Immortal3 = 24,
+    Radiant = 25,
+}
+
+impl CompetitiveTier {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Unranked => "Unranked",
+            Self::Iron1 => "Iron 1",
+            Self::Iron2 => "Iron 2",
+            Self::Iron3 => "Iron 3",
+            Self::Bronze1 => "Bronze 1",
+            Self::Bronze2 => "Bronze 2",
+            Self::Bronze3 => "Bronze 3",
+            Self::Silver1 => "Silver 1",
+            Self::Silver2 => "Silver 2",
+            Self::Silver3 => "Silver 3",
+            Self::Gold1 => "Gold 1",
+            Self::Gold2 => "Gold 2",
+            Self::Gold3 => "Gold 3",
+            Self::Platinum1 => "Platinum 1",
+            Self::Platinum2 => "Platinum 2",
+            Self::Platinum3 => "Platinum 3",
+            Self::Diamond1 => "Diamond 1",
+            Self::Diamond2 => "Diamond 2",
+            Self::Diamond3 => "Diamond 3",
+            Self::Ascendant1 => "Ascendant 1",
+            Self::Ascendant2 => "Ascendant 2",
+            Self::Ascendant3 => "Ascendant 3",
+            Self::Immortal1 => "Immortal 1",
+            Self::Immortal2 => "Immortal 2",
+            Self::Immortal3 => "Immortal 3",
+            Self::Radiant => "Radiant",
+        }
+    }
+}
+
+impl std::fmt::Display for CompetitiveTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerRankedData {
+    pub puuid: String,
+    pub game_name: String,
+    pub tag_line: String,
+    pub tier: CompetitiveTier,
+    pub ranked_rating: u32,
+    pub number_of_wins: u32,
+}
+
 /// Seam for official Riot Games Developer API interactions.
 ///
 /// Note (ADR-0004): Automated VALORANT player data is strictly handled through Riot's
@@ -115,6 +196,12 @@ pub trait RiotApiClient: Send + Sync {
         size: u32,
         start_index: u32,
     ) -> BoxFuture<'a, Result<LeaderboardResponse>>;
+
+    fn get_player_ranked<'a>(
+        &'a self,
+        region: RiotRegion,
+        puuid: &'a str,
+    ) -> BoxFuture<'a, Result<PlayerRankedData>>;
 }
 
 /// Production HTTP Riot API client using reqwest with X-Riot-Token.
@@ -182,6 +269,18 @@ impl RiotApiClient for HttpRiotApiClient {
             self.get_json(&url).await
         })
     }
+
+    fn get_player_ranked<'a>(
+        &'a self,
+        region: RiotRegion,
+        puuid: &'a str,
+    ) -> BoxFuture<'a, Result<PlayerRankedData>> {
+        Box::pin(async move {
+            let base = region.api_endpoint();
+            let url = format!("{base}/val/ranked/v1/players/{puuid}");
+            self.get_json(&url).await
+        })
+    }
 }
 
 /// Offline mock Riot API client for deterministic tests and deployments without an active API key.
@@ -232,6 +331,59 @@ impl RiotApiClient for MockRiotApiClient {
             })
         })
     }
+
+    fn get_player_ranked<'a>(
+        &'a self,
+        _region: RiotRegion,
+        puuid: &'a str,
+    ) -> BoxFuture<'a, Result<PlayerRankedData>> {
+        Box::pin(async move {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(puuid, &mut hasher);
+            let hash = std::hash::Hasher::finish(&hasher);
+
+            let tiers = [
+                CompetitiveTier::Iron1,
+                CompetitiveTier::Iron2,
+                CompetitiveTier::Iron3,
+                CompetitiveTier::Bronze1,
+                CompetitiveTier::Bronze2,
+                CompetitiveTier::Bronze3,
+                CompetitiveTier::Silver1,
+                CompetitiveTier::Silver2,
+                CompetitiveTier::Silver3,
+                CompetitiveTier::Gold1,
+                CompetitiveTier::Gold2,
+                CompetitiveTier::Gold3,
+                CompetitiveTier::Platinum1,
+                CompetitiveTier::Platinum2,
+                CompetitiveTier::Platinum3,
+                CompetitiveTier::Diamond1,
+                CompetitiveTier::Diamond2,
+                CompetitiveTier::Diamond3,
+                CompetitiveTier::Ascendant1,
+                CompetitiveTier::Ascendant2,
+                CompetitiveTier::Ascendant3,
+                CompetitiveTier::Immortal1,
+                CompetitiveTier::Immortal2,
+                CompetitiveTier::Immortal3,
+                CompetitiveTier::Radiant,
+            ];
+            let tier_idx = (hash % (tiers.len() as u64)) as usize;
+            let tier = tiers[tier_idx];
+            let ranked_rating = (hash % 100) as u32;
+            let number_of_wins = ((hash % 120) + 5) as u32;
+
+            Ok(PlayerRankedData {
+                puuid: puuid.to_string(),
+                game_name: format!("Agent{}", &puuid[..puuid.len().min(4)]),
+                tag_line: "VAL".to_string(),
+                tier,
+                ranked_rating,
+                number_of_wins,
+            })
+        })
+    }
 }
 
 #[cfg(test)]
@@ -258,6 +410,20 @@ mod tests {
             leaderboard.players[0].game_name.as_deref(),
             Some("ProPlayer1")
         );
+    }
+
+    #[tokio::test]
+    async fn mock_riot_api_client_returns_player_ranked_data() {
+        let client = MockRiotApiClient;
+        let data = client
+            .get_player_ranked(RiotRegion::Ap, "puuid-test-1")
+            .await
+            .unwrap();
+        assert_eq!(data.puuid, "puuid-test-1");
+        assert_ne!(data.tier, CompetitiveTier::Unranked);
+        assert!(!data.tier.name().is_empty());
+        assert!(data.ranked_rating <= 100);
+        assert!(data.number_of_wins > 0);
     }
 
     #[test]

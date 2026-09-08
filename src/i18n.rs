@@ -224,16 +224,31 @@ pub enum TranslationKey {
     ErrorGeneric,
     ErrorCooldown,
 
-    // VALORANT & Tracker
-    ValorantTrackerTitle,
-    ValorantTrackerLinkLabel,
-    ValorantTrackerUserLabel,
-    ValorantTrackerUnverifiedNotice,
-    ValorantTrackerSetSuccess,
-    ValorantTrackerRemovedSuccess,
-    ValorantTrackerNotFound,
-    ValorantTrackerInvalidUrl,
-    ValorantTrackerNotGuildMember,
+    // VALORANT & Official Riot Player Data (ADR-0004)
+    ValorantProfileTitle,
+    ValorantProfilePlayerLabel,
+    ValorantProfileRankLabel,
+    ValorantProfileRRLabel,
+    ValorantProfileWinsLabel,
+    ValorantProfileNotLinkedSelf,
+    ValorantProfileNotLinkedOther,
+    ValorantProfileHiddenOther,
+    ValorantProfileVisibilityNoteHidden,
+    ValorantProfileVisibilityNoteVisible,
+    ValorantProfileNotGuildMember,
+    ValorantLeaderboardTitle,
+    ValorantLeaderboardEmpty,
+    ValorantVisibilityTitle,
+    ValorantVisibilityEnabled,
+    ValorantVisibilityDisabled,
+    ValorantVisibilityStatusEnabled,
+    ValorantVisibilityStatusDisabled,
+    ValorantVisibilityNotLinked,
+    ValorantLinkSuccess,
+    ValorantLinkInvalidFormat,
+    ValorantLinkInvalidRegion,
+    ValorantUnlinkSuccess,
+    ValorantUnlinkNotFound,
 }
 
 impl TranslationKey {
@@ -275,15 +290,34 @@ impl TranslationKey {
             "ErrorNoPermission" => Some(Self::ErrorNoPermission),
             "ErrorGeneric" => Some(Self::ErrorGeneric),
             "ErrorCooldown" => Some(Self::ErrorCooldown),
-            "ValorantTrackerTitle" => Some(Self::ValorantTrackerTitle),
-            "ValorantTrackerLinkLabel" => Some(Self::ValorantTrackerLinkLabel),
-            "ValorantTrackerUserLabel" => Some(Self::ValorantTrackerUserLabel),
-            "ValorantTrackerUnverifiedNotice" => Some(Self::ValorantTrackerUnverifiedNotice),
-            "ValorantTrackerSetSuccess" => Some(Self::ValorantTrackerSetSuccess),
-            "ValorantTrackerRemovedSuccess" => Some(Self::ValorantTrackerRemovedSuccess),
-            "ValorantTrackerNotFound" => Some(Self::ValorantTrackerNotFound),
-            "ValorantTrackerInvalidUrl" => Some(Self::ValorantTrackerInvalidUrl),
-            "ValorantTrackerNotGuildMember" => Some(Self::ValorantTrackerNotGuildMember),
+            "ValorantProfileTitle" => Some(Self::ValorantProfileTitle),
+            "ValorantProfilePlayerLabel" => Some(Self::ValorantProfilePlayerLabel),
+            "ValorantProfileRankLabel" => Some(Self::ValorantProfileRankLabel),
+            "ValorantProfileRRLabel" => Some(Self::ValorantProfileRRLabel),
+            "ValorantProfileWinsLabel" => Some(Self::ValorantProfileWinsLabel),
+            "ValorantProfileNotLinkedSelf" => Some(Self::ValorantProfileNotLinkedSelf),
+            "ValorantProfileNotLinkedOther" => Some(Self::ValorantProfileNotLinkedOther),
+            "ValorantProfileHiddenOther" => Some(Self::ValorantProfileHiddenOther),
+            "ValorantProfileVisibilityNoteHidden" => {
+                Some(Self::ValorantProfileVisibilityNoteHidden)
+            }
+            "ValorantProfileVisibilityNoteVisible" => {
+                Some(Self::ValorantProfileVisibilityNoteVisible)
+            }
+            "ValorantProfileNotGuildMember" => Some(Self::ValorantProfileNotGuildMember),
+            "ValorantLeaderboardTitle" => Some(Self::ValorantLeaderboardTitle),
+            "ValorantLeaderboardEmpty" => Some(Self::ValorantLeaderboardEmpty),
+            "ValorantVisibilityTitle" => Some(Self::ValorantVisibilityTitle),
+            "ValorantVisibilityEnabled" => Some(Self::ValorantVisibilityEnabled),
+            "ValorantVisibilityDisabled" => Some(Self::ValorantVisibilityDisabled),
+            "ValorantVisibilityStatusEnabled" => Some(Self::ValorantVisibilityStatusEnabled),
+            "ValorantVisibilityStatusDisabled" => Some(Self::ValorantVisibilityStatusDisabled),
+            "ValorantVisibilityNotLinked" => Some(Self::ValorantVisibilityNotLinked),
+            "ValorantLinkSuccess" => Some(Self::ValorantLinkSuccess),
+            "ValorantLinkInvalidFormat" => Some(Self::ValorantLinkInvalidFormat),
+            "ValorantLinkInvalidRegion" => Some(Self::ValorantLinkInvalidRegion),
+            "ValorantUnlinkSuccess" => Some(Self::ValorantUnlinkSuccess),
+            "ValorantUnlinkNotFound" => Some(Self::ValorantUnlinkNotFound),
             _ => None,
         }
     }
@@ -675,34 +709,88 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Please wait {} seconds before using this command again.",
     );
     en.insert(
-        TranslationKey::ValorantTrackerTitle,
-        "VALORANT Tracker Profile",
+        TranslationKey::ValorantProfileTitle,
+        "VALORANT Player Profile",
     );
-    en.insert(TranslationKey::ValorantTrackerLinkLabel, "Tracker Link");
-    en.insert(TranslationKey::ValorantTrackerUserLabel, "User");
+    en.insert(TranslationKey::ValorantProfilePlayerLabel, "Player");
+    en.insert(TranslationKey::ValorantProfileRankLabel, "Rank");
+    en.insert(TranslationKey::ValorantProfileRRLabel, "Ranked Rating (RR)");
+    en.insert(TranslationKey::ValorantProfileWinsLabel, "Act Wins");
     en.insert(
-        TranslationKey::ValorantTrackerUnverifiedNotice,
-        "User-provided external link — not verified by Riot or this bot",
-    );
-    en.insert(
-        TranslationKey::ValorantTrackerSetSuccess,
-        "VALORANT tracker profile link saved successfully.",
+        TranslationKey::ValorantProfileNotLinkedSelf,
+        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
     );
     en.insert(
-        TranslationKey::ValorantTrackerRemovedSuccess,
-        "VALORANT tracker profile link removed.",
+        TranslationKey::ValorantProfileNotLinkedOther,
+        "This member has not linked a Riot account.",
     );
     en.insert(
-        TranslationKey::ValorantTrackerNotFound,
-        "No VALORANT tracker profile link found for this user.",
+        TranslationKey::ValorantProfileHiddenOther,
+        "This member has kept their VALORANT profile hidden in this server (Guild Profile Visibility is disabled).",
     );
     en.insert(
-        TranslationKey::ValorantTrackerInvalidUrl,
-        "Invalid VALORANT tracker URL. Expected format: `https://tracker.gg/valorant/profile/riot/<name>%23<tag>/overview`",
+        TranslationKey::ValorantProfileVisibilityNoteHidden,
+        "Your profile is currently hidden from other members in this server. Use `/valorant visibility enable` to make it visible.",
     );
     en.insert(
-        TranslationKey::ValorantTrackerNotGuildMember,
+        TranslationKey::ValorantProfileVisibilityNoteVisible,
+        "Your profile is visible to other members on the server leaderboard.",
+    );
+    en.insert(
+        TranslationKey::ValorantProfileNotGuildMember,
         "The requested user is not a member of this guild.",
+    );
+    en.insert(
+        TranslationKey::ValorantLeaderboardTitle,
+        "Guild VALORANT Leaderboard",
+    );
+    en.insert(
+        TranslationKey::ValorantLeaderboardEmpty,
+        "No server members have enabled Guild Profile Visibility yet. Link your account with `/valorant link` and enable visibility with `/valorant visibility enable` to appear here!",
+    );
+    en.insert(
+        TranslationKey::ValorantVisibilityTitle,
+        "Guild Profile Visibility",
+    );
+    en.insert(
+        TranslationKey::ValorantVisibilityEnabled,
+        "Guild Profile Visibility has been enabled for this server. Your rank and stats will now be visible to members and on the server leaderboard.",
+    );
+    en.insert(
+        TranslationKey::ValorantVisibilityDisabled,
+        "Guild Profile Visibility has been disabled for this server. Your rank and stats are now hidden from other members.",
+    );
+    en.insert(
+        TranslationKey::ValorantVisibilityStatusEnabled,
+        "Guild Profile Visibility is currently **enabled** in this server.",
+    );
+    en.insert(
+        TranslationKey::ValorantVisibilityStatusDisabled,
+        "Guild Profile Visibility is currently **disabled** in this server.",
+    );
+    en.insert(
+        TranslationKey::ValorantVisibilityNotLinked,
+        "You must link your Riot account with `/valorant link` before configuring profile visibility.",
+    );
+    en.insert(
+        TranslationKey::ValorantLinkSuccess,
+        "Riot account **{}** successfully linked! By default, your profile is hidden in all servers. Use `/valorant visibility enable` to show your stats in this server.",
+    );
+    en.insert(
+        TranslationKey::ValorantLinkInvalidFormat,
+        "Invalid Riot ID format. Please use `GameName#TAG` (e.g. `TenZ#0001`).",
+    );
+    en.insert(
+        TranslationKey::ValorantLinkInvalidRegion,
+        "Invalid region. Supported regions: `ap`, `na`, `eu`, `kr`, `latam`, `br`.",
+    );
+    en.insert(
+        TranslationKey::ValorantUnlinkSuccess,
+        "Your linked Riot account has been removed and all server visibility settings cleared.",
+    );
+    en.insert(
+        TranslationKey::ValorantUnlinkNotFound,
+        "You do not have a linked Riot account.",
     );
     translations.insert(Language::English, en);
 
@@ -1092,34 +1180,91 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Vui lòng đợi {} giây trước khi dùng lại lệnh này.",
     );
     vi.insert(
-        TranslationKey::ValorantTrackerTitle,
-        "Hồ Sơ VALORANT Tracker",
+        TranslationKey::ValorantProfileTitle,
+        "Hồ Sơ Người Chơi VALORANT",
     );
-    vi.insert(TranslationKey::ValorantTrackerLinkLabel, "Liên kết Tracker");
-    vi.insert(TranslationKey::ValorantTrackerUserLabel, "Người dùng");
+    vi.insert(TranslationKey::ValorantProfilePlayerLabel, "Người chơi");
+    vi.insert(TranslationKey::ValorantProfileRankLabel, "Bậc xếp hạng");
+    vi.insert(TranslationKey::ValorantProfileRRLabel, "Điểm xếp hạng (RR)");
     vi.insert(
-        TranslationKey::ValorantTrackerUnverifiedNotice,
-        "Liên kết ngoài do người dùng cung cấp — chưa được xác minh bởi Riot hoặc bot này",
-    );
-    vi.insert(
-        TranslationKey::ValorantTrackerSetSuccess,
-        "Đã lưu liên kết hồ sơ VALORANT tracker thành công.",
+        TranslationKey::ValorantProfileWinsLabel,
+        "Trận thắng trong Act",
     );
     vi.insert(
-        TranslationKey::ValorantTrackerRemovedSuccess,
-        "Đã xóa liên kết hồ sơ VALORANT tracker.",
+        TranslationKey::ValorantProfileNotLinkedSelf,
+        "Bạn chưa liên kết tài khoản Riot. Hãy dùng `/valorant link <riot_id>` để liên kết tài khoản.",
     );
     vi.insert(
-        TranslationKey::ValorantTrackerNotFound,
-        "Không tìm thấy liên kết hồ sơ VALORANT tracker cho người dùng này.",
+        TranslationKey::ValorantProfileNotLinkedOther,
+        "Thành viên này chưa liên kết tài khoản Riot.",
     );
     vi.insert(
-        TranslationKey::ValorantTrackerInvalidUrl,
-        "URL VALORANT tracker không hợp lệ. Định dạng yêu cầu: `https://tracker.gg/valorant/profile/riot/<tên>%23<tag>/overview`",
+        TranslationKey::ValorantProfileHiddenOther,
+        "Thành viên này đang ẩn hồ sơ VALORANT trong máy chủ này (Guild Profile Visibility đang tắt).",
     );
     vi.insert(
-        TranslationKey::ValorantTrackerNotGuildMember,
+        TranslationKey::ValorantProfileVisibilityNoteHidden,
+        "Hồ sơ của bạn đang ẩn với các thành viên khác trong máy chủ này. Dùng `/valorant visibility enable` để hiển thị.",
+    );
+    vi.insert(
+        TranslationKey::ValorantProfileVisibilityNoteVisible,
+        "Hồ sơ của bạn đang hiển thị cho các thành viên khác trên bảng xếp hạng máy chủ.",
+    );
+    vi.insert(
+        TranslationKey::ValorantProfileNotGuildMember,
         "Người dùng được yêu cầu không phải là thành viên của máy chủ này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantLeaderboardTitle,
+        "Bảng Xếp Hạng VALORANT Máy Chủ",
+    );
+    vi.insert(
+        TranslationKey::ValorantLeaderboardEmpty,
+        "Chưa có thành viên nào bật hiển thị hồ sơ trong máy chủ này. Hãy liên kết tài khoản bằng `/valorant link` và bật hiển thị với `/valorant visibility enable` để tham gia!",
+    );
+    vi.insert(
+        TranslationKey::ValorantVisibilityTitle,
+        "Quyền Riêng Tư Hồ Sơ Máy Chủ",
+    );
+    vi.insert(
+        TranslationKey::ValorantVisibilityEnabled,
+        "Đã bật hiển thị hồ sơ cho máy chủ này. Rank và chỉ số của bạn sẽ hiển thị cho các thành viên và trên bảng xếp hạng máy chủ.",
+    );
+    vi.insert(
+        TranslationKey::ValorantVisibilityDisabled,
+        "Đã tắt hiển thị hồ sơ cho máy chủ này. Rank và chỉ số của bạn hiện đã được ẩn với các thành viên khác.",
+    );
+    vi.insert(
+        TranslationKey::ValorantVisibilityStatusEnabled,
+        "Hiển thị hồ sơ hiện đang **bật** trong máy chủ này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantVisibilityStatusDisabled,
+        "Hiển thị hồ sơ hiện đang **tắt** trong máy chủ này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantVisibilityNotLinked,
+        "Bạn cần liên kết tài khoản Riot bằng `/valorant link` trước khi cấu hình quyền riêng tư hiển thị.",
+    );
+    vi.insert(
+        TranslationKey::ValorantLinkSuccess,
+        "Đã liên kết thành công tài khoản Riot **{}**! Theo mặc định, hồ sơ của bạn sẽ ẩn ở mọi máy chủ. Dùng `/valorant visibility enable` để bật hiển thị tại máy chủ này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantLinkInvalidFormat,
+        "Định dạng Riot ID không hợp lệ. Vui lòng nhập theo dạng `Tên#TAG` (ví dụ: `TenZ#0001`).",
+    );
+    vi.insert(
+        TranslationKey::ValorantLinkInvalidRegion,
+        "Khu vực không hợp lệ. Các khu vực hỗ trợ: `ap`, `na`, `eu`, `kr`, `latam`, `br`.",
+    );
+    vi.insert(
+        TranslationKey::ValorantUnlinkSuccess,
+        "Đã hủy liên kết tài khoản Riot và xóa toàn bộ cài đặt hiển thị trên các máy chủ.",
+    );
+    vi.insert(
+        TranslationKey::ValorantUnlinkNotFound,
+        "Bạn chưa có tài khoản Riot nào được liên kết.",
     );
     translations.insert(Language::Vietnamese, vi);
 
@@ -1524,34 +1669,88 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "このコマンドを再度使用するには{}秒お待ちください。",
     );
     ja.insert(
-        TranslationKey::ValorantTrackerTitle,
-        "VALORANT トラッカープロフィール",
+        TranslationKey::ValorantProfileTitle,
+        "VALORANT プレイヤープロフィール",
     );
-    ja.insert(TranslationKey::ValorantTrackerLinkLabel, "トラッカーリンク");
-    ja.insert(TranslationKey::ValorantTrackerUserLabel, "ユーザー");
+    ja.insert(TranslationKey::ValorantProfilePlayerLabel, "プレイヤー");
+    ja.insert(TranslationKey::ValorantProfileRankLabel, "ランク");
+    ja.insert(TranslationKey::ValorantProfileRRLabel, "ランク評価値 (RR)");
+    ja.insert(TranslationKey::ValorantProfileWinsLabel, "Act 勝利数");
     ja.insert(
-        TranslationKey::ValorantTrackerUnverifiedNotice,
-        "ユーザー提供の外部リンクです — Riotまたはこのボットによる検証は行われていません",
-    );
-    ja.insert(
-        TranslationKey::ValorantTrackerSetSuccess,
-        "VALORANTトラッカープロフィールのリンクを保存しました。",
+        TranslationKey::ValorantProfileNotLinkedSelf,
+        "Riot アカウントがまだ連携されていません。`/valorant link <riot_id>` でアカウントを連携してください。",
     );
     ja.insert(
-        TranslationKey::ValorantTrackerRemovedSuccess,
-        "VALORANTトラッカープロフィールのリンクを削除しました。",
+        TranslationKey::ValorantProfileNotLinkedOther,
+        "このメンバーは Riot アカウントを連携していません。",
     );
     ja.insert(
-        TranslationKey::ValorantTrackerNotFound,
-        "このユーザーのVALORANTトラッカープロフィールリンクが見つかりません。",
+        TranslationKey::ValorantProfileHiddenOther,
+        "このメンバーはこのサーバーで VALORANT プロフィールを非公開にしています (Guild Profile Visibility が無効)。",
     );
     ja.insert(
-        TranslationKey::ValorantTrackerInvalidUrl,
-        "無効なVALORANTトラッカーURLです。形式: `https://tracker.gg/valorant/profile/riot/<名前>%23<タグ>/overview`",
+        TranslationKey::ValorantProfileVisibilityNoteHidden,
+        "あなたのプロフィールは現在このサーバーの他メンバーから非公開です。`/valorant visibility enable` で公開できます。",
     );
     ja.insert(
-        TranslationKey::ValorantTrackerNotGuildMember,
+        TranslationKey::ValorantProfileVisibilityNoteVisible,
+        "あなたのプロフィールはサーバーリーダーボードで公開されています。",
+    );
+    ja.insert(
+        TranslationKey::ValorantProfileNotGuildMember,
         "指定されたユーザーはこのサーバーのメンバーではありません。",
+    );
+    ja.insert(
+        TranslationKey::ValorantLeaderboardTitle,
+        "サーバー VALORANT リーダーボード",
+    );
+    ja.insert(
+        TranslationKey::ValorantLeaderboardEmpty,
+        "このサーバーでプロフィール公開を有効にしているメンバーがまだいません。`/valorant link` で連携し `/valorant visibility enable` で公開設定を行ってください！",
+    );
+    ja.insert(
+        TranslationKey::ValorantVisibilityTitle,
+        "サーバープロフィール公開設定",
+    );
+    ja.insert(
+        TranslationKey::ValorantVisibilityEnabled,
+        "このサーバーでのプロフィール公開を有効にしました。ランクと戦績がメンバーおよびリーダーボードに表示されます。",
+    );
+    ja.insert(
+        TranslationKey::ValorantVisibilityDisabled,
+        "このサーバーでのプロフィール公開を無効にしました。ランクと戦績は非公開になりました。",
+    );
+    ja.insert(
+        TranslationKey::ValorantVisibilityStatusEnabled,
+        "このサーバーでのプロフィール公開は現在 **有効** です。",
+    );
+    ja.insert(
+        TranslationKey::ValorantVisibilityStatusDisabled,
+        "このサーバーでのプロフィール公開は現在 **無効** です。",
+    );
+    ja.insert(
+        TranslationKey::ValorantVisibilityNotLinked,
+        "公開設定を行う前に、`/valorant link` で Riot アカウントを連携してください。",
+    );
+    ja.insert(
+        TranslationKey::ValorantLinkSuccess,
+        "Riot アカウント **{}** を連携しました！初期設定ではすべてのサーバーで非公開です。このサーバーで公開するには `/valorant visibility enable` を使用してください。",
+    );
+    ja.insert(
+        TranslationKey::ValorantLinkInvalidFormat,
+        "無効な Riot ID 形式です。`名前#タグ` の形式で入力してください（例：`TenZ#0001`）。",
+    );
+    ja.insert(
+        TranslationKey::ValorantLinkInvalidRegion,
+        "無効な地域です。対応地域: `ap`, `na`, `eu`, `kr`, `latam`, `br`。",
+    );
+    ja.insert(
+        TranslationKey::ValorantUnlinkSuccess,
+        "Riot アカウントの連携を解除し、すべてのサーバー公開設定を削除しました。",
+    );
+    ja.insert(
+        TranslationKey::ValorantUnlinkNotFound,
+        "連携されている Riot アカウントはありません。",
     );
     translations.insert(Language::Japanese, ja);
 

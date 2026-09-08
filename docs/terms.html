@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms of Service - Dummy Bot</title>
+  <style>
+    :root {
+      --bg-color: #0f141c;
+      --card-bg: #18202c;
+      --card-border: #263345;
+      --accent: #ff4655;
+      --accent-hover: #e03b49;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: rgba(24, 32, 44, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .navbar {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .logo span {
+      color: var(--accent);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.25rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: #fff;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 2.5rem auto;
+      padding: 0 1.5rem;
+      flex: 1;
+    }
+
+    .content-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 2.5rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+
+    .meta {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 1rem;
+    }
+
+    h2 {
+      font-size: 1.3rem;
+      margin-top: 1.75rem;
+      margin-bottom: 0.75rem;
+      color: #fff;
+    }
+
+    p, ul, ol {
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+
+    ul, ol {
+      padding-left: 1.5rem;
+    }
+
+    li {
+      margin-bottom: 0.4rem;
+    }
+
+    strong {
+      color: var(--text-main);
+    }
+
+    .legal-notice {
+      background: #111722;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin: 1.5rem 0;
+      font-size: 0.9rem;
+    }
+
+    footer {
+      background: #0b0f17;
+      border-top: 1px solid var(--card-border);
+      padding: 1.5rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+      margin: 0 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="navbar">
+      <a href="index.html" class="logo">
+        Dummy<span>Bot</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="privacy.html">Privacy Policy</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <main>
+    <div class="content-card">
+      <h1>Terms of Service</h1>
+      <div class="meta">Last updated: September 2026</div>
+
+      <h2>1. Acceptance of Terms</h2>
+      <p>By inviting Dummy Bot to your Discord server, interacting with its slash commands, or utilizing this companion website, you agree to comply with and be bound by these Terms of Service.</p>
+
+      <h2>2. Riot Games Legal Notice & Disclaimer</h2>
+      <div class="legal-notice">
+        <strong>Official Riot Games Notice:</strong>
+        Dummy Bot is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
+      </div>
+
+      <h2>3. Permitted Usage & User Conduct</h2>
+      <p>You agree to use Dummy Bot in accordance with Discord's Terms of Service and Community Guidelines. In particular:</p>
+      <ul>
+        <li>You will not attempt to exploit, reverse engineer, or disrupt the bot's services or API integrations.</li>
+        <li>You will not use Dummy Bot to harass, stalk, or doxx other players.</li>
+        <li>Guild administrators are responsible for managing bot permissions within their respective servers.</li>
+      </ul>
+
+      <h2>4. Availability & Warranty Disclaimer</h2>
+      <p>Dummy Bot is provided "as is" and "as available" without warranties of any kind, whether express or implied. We do not guarantee uninterrupted or error-free operation, particularly when external third-party services (such as Discord or Riot Games APIs) experience outages or maintenance.</p>
+
+      <h2>5. Termination</h2>
+      <p>You may terminate your usage of Dummy Bot at any time by kicking or banning the bot from your Discord server, or by unlinking your account using <code>/valorant unlink</code>.</p>
+    </div>
+  </main>
+
+  <footer>
+    <p>Dummy Bot is not endorsed by Riot Games, Inc.</p>
+    <p style="margin-top: 0.25rem;">
+      <a href="index.html">Home</a> &bull;
+      <a href="privacy.html">Privacy Policy</a> &bull;
+      <a href="terms.html">Terms of Service</a>
+    </p>
+  </footer>
+</body>
+</html>
