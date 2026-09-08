@@ -3,7 +3,7 @@ use crate::timezone;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 
-/// Configure the time zone used for this server.
+/// Configure the time zone used for this guild.
 #[poise::command(
     slash_command,
     subcommands("set", "show", "clear"),
@@ -15,7 +15,7 @@ pub async fn timezone(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Set this server's IANA time zone.
+/// Set this guild's IANA time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
@@ -103,7 +103,7 @@ async fn autocomplete_timezone(_ctx: Context<'_>, partial: &str) -> Vec<String> 
         .collect()
 }
 
-/// Show this server's configured time zone.
+/// Show this guild's configured time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
@@ -123,7 +123,7 @@ pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Reset this server to the default time zone.
+/// Reset this guild to the default time zone.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx

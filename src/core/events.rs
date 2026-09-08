@@ -1,14 +1,14 @@
-use crate::core::engine::{RhaiRuleEngine, RuleEngine};
+use crate::core::engine::RuleEngine;
 use crate::core::models::{RuleContext, RuleDecision};
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 
 pub struct CoreEventBus {
-    rule_engine: Arc<RhaiRuleEngine>,
+    rule_engine: Arc<dyn RuleEngine>,
 }
 
 impl CoreEventBus {
-    pub fn new(rule_engine: Arc<RhaiRuleEngine>) -> Self {
+    pub fn new(rule_engine: Arc<dyn RuleEngine>) -> Self {
         Self { rule_engine }
     }
 
@@ -17,17 +17,10 @@ impl CoreEventBus {
             return None;
         }
 
-        let guild_id = message
-            .guild_id
-            .map(|g| g.get().to_string())
-            .unwrap_or_default();
-        let author_id = message.author.id.get().to_string();
-        let content = message.content.clone();
-
         let ctx = RuleContext {
-            content,
-            author_id,
-            guild_id,
+            content: message.content.clone(),
+            author_id: message.author.id,
+            guild_id: message.guild_id,
         };
 
         match self.rule_engine.evaluate_content(&ctx).await {
@@ -57,27 +50,44 @@ impl CoreEventBus {
             }
         }
     }
+}
 
-    pub async fn dispatch_voice_state_update(
-        &self,
-        old: Option<&serenity::VoiceState>,
-        new: &serenity::VoiceState,
-    ) {
-        let user_id = new.user_id.get().to_string();
-        let guild_id = new
-            .guild_id
-            .map(|g| g.get().to_string())
-            .unwrap_or_default();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::engine::MockRuleEngine;
+    use poise::serenity_prelude::{GuildId, Message, MessageId, User, UserId};
 
-        let old_channel = old.and_then(|v| v.channel_id).map(|c| c.get().to_string());
-        let new_channel = new.channel_id.map(|c| c.get().to_string());
+    #[tokio::test]
+    async fn core_event_bus_dispatches_clean_message_via_mock_engine() {
+        let mock = Arc::new(MockRuleEngine::new(RuleDecision::Pass));
+        let bus = CoreEventBus::new(mock);
 
-        tracing::trace!(
-            user_id = %user_id,
-            guild_id = %guild_id,
-            ?old_channel,
-            ?new_channel,
-            "Dispatched voice state update to Rhai core bus"
-        );
+        let mut message = Message::default();
+        message.id = MessageId::new(100);
+        message.author = User::default();
+        message.author.id = UserId::new(200);
+        message.author.bot = false;
+        message.guild_id = Some(GuildId::new(300));
+        message.content = "hello world".to_string();
+
+        let decision = bus.dispatch_message(&message).await;
+        assert_eq!(decision, Some(RuleDecision::Pass));
+    }
+
+    #[tokio::test]
+    async fn core_event_bus_ignores_bot_messages() {
+        let mock = Arc::new(MockRuleEngine::new(RuleDecision::FlagSuggestion {
+            rule_id: "rule".into(),
+            reason: "bad".into(),
+            should_warn: true,
+        }));
+        let bus = CoreEventBus::new(mock);
+
+        let mut message = Message::default();
+        message.author.bot = true;
+
+        let decision = bus.dispatch_message(&message).await;
+        assert_eq!(decision, None);
     }
 }

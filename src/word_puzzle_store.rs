@@ -60,7 +60,6 @@ struct PendingCredit {
     guild_id: String,
     user_id: String,
     completed_at: i64,
-    iana_name: Option<String>,
 }
 
 pub async fn create_session(
@@ -325,16 +324,20 @@ pub async fn award_pending_credits(pool: &SqlitePool, now: i64, limit: i64) -> R
     if limit <= 0 {
         return Ok(0);
     }
-    let pending: Vec<PendingCredit> = sqlx::query_as("SELECT c.session_id, c.guild_id, c.user_id, c.completed_at, t.iana_name FROM word_puzzle_completion c LEFT JOIN guild_timezone t ON t.guild_id = c.guild_id WHERE c.credit_processed_at IS NULL ORDER BY c.completed_at, c.session_id, c.user_id LIMIT ?")
-        .bind(limit).fetch_all(pool).await?;
+    let pending: Vec<PendingCredit> = sqlx::query_as(
+        "SELECT session_id, guild_id, user_id, completed_at FROM word_puzzle_completion WHERE credit_processed_at IS NULL ORDER BY completed_at, session_id, user_id LIMIT ?"
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
     let mut awarded = 0;
     for completion in pending {
         let guild = completion.guild_id.parse::<u64>().ok().map(GuildId::new);
         let user = completion.user_id.parse::<u64>().ok().map(UserId::new);
-        let timezone = completion
-            .iana_name
-            .as_deref()
-            .and_then(crate::timezone::parse);
+        let timezone = match guild {
+            Some(g) => crate::timezone::get_timezone(pool, g).await?,
+            None => None,
+        };
         if let (Some(guild), Some(user), Some(timezone), Some(completed)) = (
             guild,
             user,

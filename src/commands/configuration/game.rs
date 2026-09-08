@@ -46,7 +46,7 @@ pub async fn set(
         ui::reply(
             ctx,
             Tone::Warning,
-            "Configure the server time zone before enabling game sessions.",
+            "Configure the guild time zone before enabling game sessions.",
         )
         .await?;
         return Ok(());

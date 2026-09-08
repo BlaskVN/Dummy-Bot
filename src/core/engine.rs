@@ -1,18 +1,18 @@
 use crate::core::models::{RuleContext, RuleDecision};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use rhai::{AST, Dynamic, Engine, Map, Scope};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use tokio::sync::RwLock;
 
-/// Seam for rule evaluation across message events.
-pub trait RuleEngine: Send + Sync {
-    fn evaluate_content(
-        &self,
-        ctx: &RuleContext,
-    ) -> impl std::future::Future<Output = Result<RuleDecision>> + Send;
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-    fn reload(&self) -> impl std::future::Future<Output = Result<()>> + Send;
+/// Object-safe seam for rule evaluation across message events.
+pub trait RuleEngine: Send + Sync {
+    fn evaluate_content<'a>(&'a self, ctx: &'a RuleContext) -> BoxFuture<'a, Result<RuleDecision>>;
+    fn reload<'a>(&'a self) -> BoxFuture<'a, Result<()>>;
 }
 
 pub struct RhaiRuleEngine {
@@ -21,15 +21,13 @@ pub struct RhaiRuleEngine {
     ast_cache: RwLock<HashMap<String, AST>>,
 }
 
-pub type RhaiManager = RhaiRuleEngine;
-
 impl RhaiRuleEngine {
     pub fn new<P: AsRef<Path>>(modules_dir: P) -> Self {
         let mut engine = Engine::new();
         engine.set_max_operations(100_000);
         engine.set_max_call_levels(50);
 
-        // Register host native bindings (logger and i18n)
+        // Register host native logger bindings
         crate::core::bindings::register_all(&mut engine);
 
         Self {
@@ -67,29 +65,28 @@ impl RhaiRuleEngine {
     }
 
     /// Reload all module scripts (Hot-reload)
-    pub async fn reload(&self) -> Result<()> {
+    pub async fn reload_scripts(&self) -> Result<()> {
         tracing::info!("Hot-reloading all Rhai script modules...");
         self.load_all().await
     }
 
-    /// Call a function in a specific loaded Rhai module script
-    pub async fn call_fn<T: Clone + Send + Sync + 'static>(
+    async fn call_fn<T: Clone + Send + Sync + 'static>(
         &self,
         module_name: &str,
         fn_name: &str,
         args: impl rhai::FuncArgs,
-    ) -> Result<Option<T>> {
+    ) -> Result<T> {
         let ast = {
             let cache = self.ast_cache.read().await;
-            match cache.get(module_name) {
-                Some(ast) => ast.clone(),
-                None => return Ok(None),
-            }
+            cache
+                .get(module_name)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Module '{module_name}' not loaded"))?
         };
 
         let mut scope = Scope::new();
         match self.engine.call_fn::<T>(&mut scope, &ast, fn_name, args) {
-            Ok(result) => Ok(Some(result)),
+            Ok(result) => Ok(result),
             Err(err) => {
                 tracing::error!(module = %module_name, function = %fn_name, error = %err, "Rhai script execution failed");
                 Err(anyhow::anyhow!(
@@ -102,7 +99,7 @@ impl RhaiRuleEngine {
         }
     }
 
-    /// Compiles a script directly into the AST cache for testing or dynamic loading.
+    #[cfg(test)]
     pub async fn insert_module(&self, name: &str, script: &str) -> Result<()> {
         let ast = self
             .engine
@@ -115,56 +112,102 @@ impl RhaiRuleEngine {
 }
 
 impl RuleEngine for RhaiRuleEngine {
-    async fn evaluate_content(&self, ctx: &RuleContext) -> Result<RuleDecision> {
-        let result: Option<Dynamic> = self
-            .call_fn(
-                "automod",
-                "inspect_message",
-                (
-                    ctx.content.clone(),
-                    ctx.author_id.clone(),
-                    ctx.guild_id.clone(),
-                ),
-            )
-            .await?;
+    fn evaluate_content<'a>(&'a self, ctx: &'a RuleContext) -> BoxFuture<'a, Result<RuleDecision>> {
+        Box::pin(async move {
+            let author_id = ctx.author_id.to_string();
+            let guild_id = ctx.guild_id.map(|g| g.to_string()).unwrap_or_default();
 
-        let Some(dynamic) = result else {
-            return Ok(RuleDecision::Pass);
-        };
+            let dynamic: Dynamic = self
+                .call_fn(
+                    "automod",
+                    "inspect_message",
+                    (ctx.content.clone(), author_id, guild_id),
+                )
+                .await?;
 
-        if let Some(map) = dynamic.try_cast::<Map>() {
+            let map = dynamic.try_cast::<Map>().ok_or_else(|| {
+                anyhow::anyhow!("inspect_message must return a map, received other type")
+            })?;
+
             let action = map
                 .get("action")
                 .and_then(|v| v.clone().into_string().ok())
-                .unwrap_or_default();
+                .ok_or_else(|| {
+                    anyhow::anyhow!("inspect_message map missing 'action' string field")
+                })?;
 
-            if action == "flag_suggestion" {
-                let rule_id = map
-                    .get("rule_id")
-                    .and_then(|v| v.clone().into_string().ok())
-                    .unwrap_or_else(|| "general_rule".to_string());
-                let reason = map
-                    .get("reason")
-                    .and_then(|v| v.clone().into_string().ok())
-                    .unwrap_or_else(|| "Automod flagged".to_string());
-                let should_warn = map
-                    .get("should_warn")
-                    .and_then(|v| v.as_bool().ok())
-                    .unwrap_or(false);
+            match action.as_str() {
+                "flag_suggestion" => {
+                    let rule_id = map
+                        .get("rule_id")
+                        .and_then(|v| v.clone().into_string().ok())
+                        .unwrap_or_else(|| "general_rule".to_string());
+                    let reason = map
+                        .get("reason")
+                        .and_then(|v| v.clone().into_string().ok())
+                        .unwrap_or_else(|| "Automod flagged".to_string());
+                    let should_warn = map
+                        .get("should_warn")
+                        .and_then(|v| v.as_bool().ok())
+                        .unwrap_or(false);
 
-                return Ok(RuleDecision::FlagSuggestion {
-                    rule_id,
-                    reason,
-                    should_warn,
-                });
+                    Ok(RuleDecision::FlagSuggestion {
+                        rule_id,
+                        reason,
+                        should_warn,
+                    })
+                }
+                "pass" => Ok(RuleDecision::Pass),
+                other => bail!("Unknown rule decision action: {other}"),
             }
-        }
-
-        Ok(RuleDecision::Pass)
+        })
     }
 
-    async fn reload(&self) -> Result<()> {
-        self.reload().await
+    fn reload<'a>(&'a self) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move { self.reload_scripts().await })
+    }
+}
+
+/// In-memory mock rule engine for seam substitution in unit tests.
+#[cfg(test)]
+pub struct MockRuleEngine {
+    decision: std::sync::Mutex<RuleDecision>,
+    reload_count: std::sync::atomic::AtomicUsize,
+}
+
+#[cfg(test)]
+impl MockRuleEngine {
+    pub fn new(initial_decision: RuleDecision) -> Self {
+        Self {
+            decision: std::sync::Mutex::new(initial_decision),
+            reload_count: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    pub fn set_decision(&self, decision: RuleDecision) {
+        *self.decision.lock().unwrap() = decision;
+    }
+
+    pub fn reload_count(&self) -> usize {
+        self.reload_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[cfg(test)]
+impl RuleEngine for MockRuleEngine {
+    fn evaluate_content<'a>(
+        &'a self,
+        _ctx: &'a RuleContext,
+    ) -> BoxFuture<'a, Result<RuleDecision>> {
+        Box::pin(async move { Ok(self.decision.lock().unwrap().clone()) })
+    }
+
+    fn reload<'a>(&'a self) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            self.reload_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        })
     }
 }
 
@@ -172,6 +215,8 @@ impl RuleEngine for RhaiRuleEngine {
 mod tests {
     use super::*;
     use crate::core::models::{RuleContext, RuleDecision};
+    use poise::serenity_prelude::{GuildId, UserId};
+    use std::sync::Arc;
 
     fn make_test_dir(prefix: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -202,8 +247,8 @@ mod tests {
 
         let ctx = RuleContext {
             content: "Hello everyone, how are you?".to_string(),
-            author_id: "12345".to_string(),
-            guild_id: "67890".to_string(),
+            author_id: UserId::new(12345),
+            guild_id: Some(GuildId::new(67890)),
         };
 
         let decision = engine.evaluate_content(&ctx).await.unwrap();
@@ -236,8 +281,8 @@ mod tests {
 
         let ctx = RuleContext {
             content: "This message contains badword_test here!".to_string(),
-            author_id: "12345".to_string(),
-            guild_id: "67890".to_string(),
+            author_id: UserId::new(12345),
+            guild_id: Some(GuildId::new(67890)),
         };
 
         let decision = engine.evaluate_content(&ctx).await.unwrap();
@@ -269,8 +314,8 @@ mod tests {
 
         let ctx = RuleContext {
             content: "test".to_string(),
-            author_id: "1".to_string(),
-            guild_id: "2".to_string(),
+            author_id: UserId::new(1),
+            guild_id: Some(GuildId::new(2)),
         };
 
         let result = engine.evaluate_content(&ctx).await;
@@ -282,18 +327,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_automod_module_returns_pass() {
+    async fn missing_automod_module_returns_error() {
         let temp_dir = make_test_dir("missing");
         let engine = RhaiRuleEngine::new(&temp_dir);
 
         let ctx = RuleContext {
             content: "clean text".to_string(),
-            author_id: "1".to_string(),
-            guild_id: "2".to_string(),
+            author_id: UserId::new(1),
+            guild_id: Some(GuildId::new(2)),
         };
 
-        let decision = engine.evaluate_content(&ctx).await.unwrap();
-        assert_eq!(decision, RuleDecision::Pass);
+        let result = engine.evaluate_content(&ctx).await;
+        assert!(
+            result.is_err(),
+            "Expected error when automod module is missing"
+        );
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+    }
+
+    #[tokio::test]
+    async fn malformed_script_output_returns_error() {
+        let temp_dir = make_test_dir("malformed");
+        let engine = RhaiRuleEngine::new(&temp_dir);
+        let bad_script = r#"
+            fn inspect_message(content, author_id, guild_id) {
+                return 42; // Returns integer instead of map
+            }
+        "#;
+        engine.insert_module("automod", bad_script).await.unwrap();
+
+        let ctx = RuleContext {
+            content: "clean text".to_string(),
+            author_id: UserId::new(1),
+            guild_id: Some(GuildId::new(2)),
+        };
+
+        let result = engine.evaluate_content(&ctx).await;
+        assert!(result.is_err(), "Expected error on non-map return");
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     }
 
@@ -314,8 +384,8 @@ mod tests {
 
         let ctx = RuleContext {
             content: "danger".to_string(),
-            author_id: "1".to_string(),
-            guild_id: "2".to_string(),
+            author_id: UserId::new(1),
+            guild_id: Some(GuildId::new(2)),
         };
         assert_eq!(
             engine.evaluate_content(&ctx).await.unwrap(),
@@ -345,5 +415,22 @@ mod tests {
             }
         );
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+    }
+
+    #[tokio::test]
+    async fn mock_rule_engine_substitution_via_seam() {
+        let mock: Arc<dyn RuleEngine> = Arc::new(MockRuleEngine::new(RuleDecision::Pass));
+        let ctx = RuleContext {
+            content: "anything".to_string(),
+            author_id: UserId::new(10),
+            guild_id: Some(GuildId::new(20)),
+        };
+
+        assert_eq!(
+            mock.evaluate_content(&ctx).await.unwrap(),
+            RuleDecision::Pass
+        );
+
+        mock.reload().await.unwrap();
     }
 }

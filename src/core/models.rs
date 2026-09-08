@@ -1,8 +1,10 @@
+use poise::serenity_prelude::{GuildId, UserId};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleContext {
     pub content: String,
-    pub author_id: String,
-    pub guild_id: String,
+    pub author_id: UserId,
+    pub guild_id: Option<GuildId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

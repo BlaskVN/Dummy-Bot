@@ -10,7 +10,7 @@ pub async fn reload_modules(ctx: Context<'_>) -> Result<(), Error> {
         None => ctx.data().default_language(),
     };
 
-    match ctx.data().rhai_manager.reload().await {
+    match ctx.data().rule_engine.reload().await {
         Ok(()) => {
             let msg = match lang {
                 Language::Vietnamese => "Tất cả Rhai script modules đã được nạp lại thành công!",

@@ -34,12 +34,11 @@ pub async fn handle_message(
     ) {
         return Ok(());
     }
-    if crate::timezone::get_timezone(&data.db_pool, guild_id)
-        .await?
-        .is_none()
-    {
+    let Some(session_expiry) =
+        crate::timezone::next_session_expiry(&data.db_pool, guild_id, chrono::Utc::now()).await?
+    else {
         return Ok(());
-    }
+    };
 
     let _creation = data.game_session_creation.lock().await;
     if let Some(event_id) = active_game_activity(&data.db_pool, guild_id, &config.game_key).await? {
@@ -94,11 +93,7 @@ pub async fn handle_message(
             .channel_id(primary),
         )
         .await?;
-    let expires_at =
-        crate::timezone::next_session_expiry(&data.db_pool, guild_id, chrono::Utc::now())
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Could not calculate game session expiry"))?
-            .timestamp();
+    let expires_at = session_expiry.timestamp();
     if let Err(error) = create_game_activity(
         &data.db_pool,
         guild_id,
