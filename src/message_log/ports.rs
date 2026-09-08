@@ -11,6 +11,17 @@ pub trait MessageLogOutbox: Send + Sync {
         channel_id: ChannelId,
         builder: serenity::CreateMessage,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
+
+    fn send_attachment(
+        &self,
+        channel_id: ChannelId,
+        attachment: serenity::CreateAttachment,
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        self.send_message(
+            channel_id,
+            serenity::CreateMessage::new().add_file(attachment),
+        )
+    }
 }
 
 /// Seam for fetching remote message attachments.
@@ -23,6 +34,7 @@ pub trait AttachmentFetcher: Send + Sync {
 }
 
 /// Live Discord outbox utilizing Serenity's HTTP client.
+#[derive(Clone, Copy)]
 pub struct DiscordOutbox<'a> {
     pub http: &'a serenity::Http,
 }
@@ -45,6 +57,7 @@ impl<'a> MessageLogOutbox for DiscordOutbox<'a> {
 }
 
 /// Live attachment fetcher with byte limits and CDN host validation.
+#[derive(Clone)]
 pub struct HttpAttachmentFetcher {
     client: reqwest::Client,
     semaphore: Option<Arc<tokio::sync::Semaphore>>,
@@ -149,6 +162,7 @@ impl MessageLogOutbox for InMemoryOutbox {
     }
 }
 
+#[derive(Clone)]
 pub struct MockAttachmentFetcher {
     pub canned_bytes: Vec<u8>,
 }

@@ -6,10 +6,14 @@ use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, Context, MessageId, MessageUpdateEvent};
 
 fn make_service<'a>(
+    ctx: &'a Context,
     data: &'a Data,
-    outbox: &'a DiscordOutbox<'a>,
-    fetcher: &'a HttpAttachmentFetcher,
 ) -> MessageLogService<'a, DiscordOutbox<'a>, HttpAttachmentFetcher> {
+    let outbox = DiscordOutbox::new(&ctx.http);
+    let fetcher = HttpAttachmentFetcher::new(
+        data.attachment_client.clone(),
+        Some(data.attachment_downloads.clone()),
+    );
     MessageLogService::new(
         &data.db_pool,
         outbox,
@@ -28,12 +32,7 @@ fn make_service<'a>(
 }
 
 pub async fn reconcile_all_health(ctx: &Context, data: &Data) {
-    let outbox = DiscordOutbox::new(&ctx.http);
-    let fetcher = HttpAttachmentFetcher::new(
-        data.attachment_client.clone(),
-        Some(data.attachment_downloads.clone()),
-    );
-    let service = make_service(data, &outbox, &fetcher);
+    let service = make_service(ctx, data);
     service
         .reconcile_all_health(|guild_id| data.language(guild_id))
         .await;
@@ -60,17 +59,12 @@ pub async fn handle_message_delete(
         return;
     };
     let lang = data.language(guild_id).await;
-    let outbox = DiscordOutbox::new(&ctx.http);
-    let fetcher = HttpAttachmentFetcher::new(
-        data.attachment_client.clone(),
-        Some(data.attachment_downloads.clone()),
-    );
-    let service = make_service(data, &outbox, &fetcher);
     let ram_msg = ctx
         .cache
         .message(channel_id, deleted_message_id)
         .map(|m| m.clone());
 
+    let service = make_service(ctx, data);
     service
         .handle_message_delete(lang, channel_id, deleted_message_id, guild_id, ram_msg)
         .await;
@@ -83,12 +77,7 @@ pub async fn archive_purge_attachments(
     messages: &[serenity::Message],
     data: &Data,
 ) {
-    let outbox = DiscordOutbox::new(&ctx.http);
-    let fetcher = HttpAttachmentFetcher::new(
-        data.attachment_client.clone(),
-        Some(data.attachment_downloads.clone()),
-    );
-    let service = make_service(data, &outbox, &fetcher);
+    let service = make_service(ctx, data);
     service.archive_purge_attachments(guild_id, messages).await;
 }
 
@@ -103,12 +92,7 @@ pub async fn handle_message_update(
         return;
     };
     let lang = data.language(guild_id).await;
-    let outbox = DiscordOutbox::new(&ctx.http);
-    let fetcher = HttpAttachmentFetcher::new(
-        data.attachment_client.clone(),
-        Some(data.attachment_downloads.clone()),
-    );
-    let service = make_service(data, &outbox, &fetcher);
+    let service = make_service(ctx, data);
     service
         .handle_message_update(lang, old_message, event)
         .await;
@@ -126,12 +110,7 @@ pub async fn handle_message_delete_bulk(
         return;
     };
     let lang = data.language(guild_id).await;
-    let outbox = DiscordOutbox::new(&ctx.http);
-    let fetcher = HttpAttachmentFetcher::new(
-        data.attachment_client.clone(),
-        Some(data.attachment_downloads.clone()),
-    );
-    let service = make_service(data, &outbox, &fetcher);
+    let service = make_service(ctx, data);
     service
         .handle_message_delete_bulk(lang, channel_id, deleted_message_ids, guild_id, |ch, id| {
             ctx.cache.message(ch, id).map(|m| m.clone())

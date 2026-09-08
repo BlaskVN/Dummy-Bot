@@ -2,7 +2,7 @@
 
 Moderation slash commands (`warn`, `kick`, `ban`, `timeout`) previously duplicated authorization checks, hierarchy denial evaluations, Discord action dispatching, database case creation, summary rendering, and error logging across 4 separate handler implementations.
 
-We consolidated the execution flow behind a single deep pipeline entrypoint `execute_moderation_pipeline` in `commands/moderation/mod.rs` and deepened `execute_moderation_action` in `moderation_cases.rs` to encapsulate denial verification.
+We consolidated the execution flow behind a single deep pipeline entrypoint `execute_moderation_pipeline` in `commands/moderation/mod.rs` which evaluates `permissions::moderation_denial` and deepened `execute_moderation_action` in `moderation_cases.rs` to process denial states atomically alongside input validation and Discord execution.
 
 This provides:
 1. Complete locality for moderation authorization and case creation.

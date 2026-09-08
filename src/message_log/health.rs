@@ -26,6 +26,15 @@ pub async fn get_config(pool: &SqlitePool, guild_id: GuildId) -> Result<Option<M
     }
 }
 
+/// Fetch the configured and enabled message log channel for a guild, if any.
+pub async fn get_log_channel(pool: &SqlitePool, guild_id: GuildId) -> Result<Option<ChannelId>> {
+    let config = get_config(pool, guild_id).await?;
+    match config {
+        Some(cfg) if cfg.enabled => Ok(Some(cfg.channel_id)),
+        _ => Ok(None),
+    }
+}
+
 /// Enable message logging for a guild, persisting channel configuration and reconciling initial health.
 pub async fn enable(
     pool: &SqlitePool,
@@ -72,6 +81,28 @@ pub async fn enable_with_outbox<O: super::ports::MessageLogOutbox>(
         mark_warning_sent(pool, guild_id).await?;
     }
     Ok((health, warn))
+}
+
+/// Convenience helper to fetch a guild's message log status and localized description.
+pub async fn status(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    lang: crate::i18n::Language,
+) -> Result<(MessageLogHealth, String)> {
+    let health = current_health(pool, guild_id).await?;
+    let config = get_config(pool, guild_id).await?;
+    let desc = match config {
+        Some(cfg) => format_status_description(lang, &cfg),
+        None => format_status_description(
+            lang,
+            &MessageLogConfig {
+                channel_id: ChannelId::new(0),
+                enabled: false,
+                health: MessageLogHealth::Disabled,
+            },
+        ),
+    };
+    Ok((health, desc))
 }
 
 pub fn format_status_description(lang: crate::i18n::Language, config: &MessageLogConfig) -> String {

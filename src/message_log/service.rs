@@ -15,18 +15,13 @@ use super::ports::{AttachmentFetcher, MessageLogOutbox};
 
 pub struct MessageLogService<'a, O: MessageLogOutbox, F: AttachmentFetcher> {
     pub pool: &'a SqlitePool,
-    pub outbox: &'a O,
-    pub fetcher: &'a F,
+    pub outbox: O,
+    pub fetcher: F,
     pub options: MessageLogOptions,
 }
 
 impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> {
-    pub fn new(
-        pool: &'a SqlitePool,
-        outbox: &'a O,
-        fetcher: &'a F,
-        options: MessageLogOptions,
-    ) -> Self {
+    pub fn new(pool: &'a SqlitePool, outbox: O, fetcher: F, options: MessageLogOptions) -> Self {
         Self {
             pool,
             outbox,
@@ -126,7 +121,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         guild_id: GuildId,
         ram_message: Option<serenity::Message>,
     ) {
-        let log_channel_id = match database::message_log_channel(self.pool, guild_id).await {
+        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
             Ok(Some(channel)) => channel,
             Ok(None) => return,
             Err(e) => {
@@ -221,12 +216,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                 .await
             {
                 Ok(file) => {
-                    let attach_builder = serenity::CreateMessage::new().add_file(file);
-                    if let Err(e) = self
-                        .outbox
-                        .send_message(log_channel_id, attach_builder)
-                        .await
-                    {
+                    if let Err(e) = self.outbox.send_attachment(log_channel_id, file).await {
                         tracing::warn!(filename = %attachment.filename, %e, "Failed to send logged attachment");
                     }
                 }
@@ -262,46 +252,36 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         };
 
         let serenity_msg;
-        let (is_bot, author_id, author_face, old_content, sent_at_unix) = if let Some(message) =
-            old_message
-        {
-            serenity_msg = Some(message);
-            (
-                message.author.bot,
-                message.author.id.to_string(),
-                message.author.face(),
-                message.content.clone(),
-                message.timestamp.unix_timestamp(),
-            )
-        } else if let Ok(Some(db_msg)) =
-            database::load_cached_message(self.pool, &event.id.to_string()).await
-        {
-            serenity_msg = None;
-            (
-                db_msg.is_bot,
-                db_msg.author_id,
-                db_msg.author_avatar_url,
-                db_msg.content,
-                db_msg.created_at,
-            )
-        } else {
-            if current_health(self.pool, guild_id).await.ok() == Some(MessageLogHealth::Degraded)
-                && let Ok(Some(log_channel)) =
-                    database::message_log_channel(self.pool, guild_id).await
+        let (is_bot, author_id, author_face, old_content, sent_at_unix) =
+            if let Some(message) = old_message {
+                serenity_msg = Some(message);
+                (
+                    message.author.bot,
+                    message.author.id.to_string(),
+                    message.author.face(),
+                    message.content.clone(),
+                    message.timestamp.unix_timestamp(),
+                )
+            } else if let Ok(Some(db_msg)) =
+                database::load_cached_message(self.pool, &event.id.to_string()).await
             {
-                let embed = build_metadata_embed(
-                    lang,
-                    event.channel_id,
-                    TranslationKey::MessageEditedTitle,
-                    self.options.warning_color,
-                );
-                let builder = serenity::CreateMessage::new()
-                    .embed(embed)
-                    .allowed_mentions(serenity::CreateAllowedMentions::new());
-                let _ = self.outbox.send_message(log_channel, builder).await;
-            }
-            return;
-        };
+                serenity_msg = None;
+                (
+                    db_msg.is_bot,
+                    db_msg.author_id,
+                    db_msg.author_avatar_url,
+                    db_msg.content,
+                    db_msg.created_at,
+                )
+            } else {
+                // When Healthy, Discord sends update events for non-content edits (pins, embeds).
+                // Without cached original content, diffing is impossible, so logging would trigger
+                // false-positive edit notices. When Degraded, the bot has no content intent and falls
+                // back to metadata-only notice.
+                self.send_degraded_edit_fallback(lang, guild_id, event.channel_id)
+                    .await;
+                return;
+            };
 
         if is_bot {
             return;
@@ -310,22 +290,8 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         let new_content = match &event.content {
             Some(content) => content,
             None => {
-                if current_health(self.pool, guild_id).await.ok()
-                    == Some(MessageLogHealth::Degraded)
-                    && let Ok(Some(log_channel)) =
-                        database::message_log_channel(self.pool, guild_id).await
-                {
-                    let embed = build_metadata_embed(
-                        lang,
-                        event.channel_id,
-                        TranslationKey::MessageEditedTitle,
-                        self.options.warning_color,
-                    );
-                    let builder = serenity::CreateMessage::new()
-                        .embed(embed)
-                        .allowed_mentions(serenity::CreateAllowedMentions::new());
-                    let _ = self.outbox.send_message(log_channel, builder).await;
-                }
+                self.send_degraded_edit_fallback(lang, guild_id, event.channel_id)
+                    .await;
                 return;
             }
         };
@@ -341,7 +307,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             let _ = database::save_cached_message(self.pool, &db_msg).await;
         }
 
-        let log_channel_id = match database::message_log_channel(self.pool, guild_id).await {
+        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
             Ok(Some(channel)) => channel,
             Ok(None) => return,
             Err(e) => {
@@ -385,7 +351,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
     ) where
         R: Fn(ChannelId, MessageId) -> Option<serenity::Message>,
     {
-        let log_channel_id = match database::message_log_channel(self.pool, guild_id).await {
+        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
             Ok(Some(channel)) => channel,
             Ok(None) => return,
             Err(e) => {
@@ -457,7 +423,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             return;
         }
 
-        let log_channel_id = match database::message_log_channel(self.pool, guild_id).await {
+        let log_channel_id = match health::get_log_channel(self.pool, guild_id).await {
             Ok(Some(channel)) => channel,
             Ok(None) => return,
             Err(error) => {
@@ -498,14 +464,13 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                     .await
                 {
                     Ok(file) => {
-                        let builder = serenity::CreateMessage::new().add_file(file);
-                        if let Err(error) = self.outbox.send_message(log_channel_id, builder).await
+                        if let Err(error) = self.outbox.send_attachment(log_channel_id, file).await
                         {
                             tracing::warn!(
                                 message_id = %message.id,
                                 filename = %attachment.filename,
                                 %error,
-                                "Failed to archive purged attachment"
+                                "Failed to send purge attachment"
                             );
                         }
                     }
@@ -519,6 +484,28 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                     }
                 }
             }
+        }
+    }
+
+    async fn send_degraded_edit_fallback(
+        &self,
+        lang: Language,
+        guild_id: GuildId,
+        channel_id: ChannelId,
+    ) {
+        if current_health(self.pool, guild_id).await.ok() == Some(MessageLogHealth::Degraded)
+            && let Ok(Some(log_channel)) = health::get_log_channel(self.pool, guild_id).await
+        {
+            let embed = build_metadata_embed(
+                lang,
+                channel_id,
+                TranslationKey::MessageEditedTitle,
+                self.options.warning_color,
+            );
+            let builder = serenity::CreateMessage::new()
+                .embed(embed)
+                .allowed_mentions(serenity::CreateAllowedMentions::new());
+            let _ = self.outbox.send_message(log_channel, builder).await;
         }
     }
 }

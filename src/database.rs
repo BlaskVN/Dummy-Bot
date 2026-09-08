@@ -119,20 +119,7 @@ pub async fn message_log_channel(
     pool: &SqlitePool,
     guild_id: poise::serenity_prelude::GuildId,
 ) -> Result<Option<poise::serenity_prelude::ChannelId>> {
-    let row = sqlx::query_as::<_, (String, i64)>(
-        "SELECT log_channel_id, enabled FROM message_log_config WHERE guild_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .fetch_optional(pool)
-    .await
-    .context("Failed to load message log configuration")?;
-
-    match row {
-        Some((channel, 1)) => Ok(Some(poise::serenity_prelude::ChannelId::new(
-            channel.parse().context("Invalid stored log channel ID")?,
-        ))),
-        _ => Ok(None),
-    }
+    crate::message_log::get_log_channel(pool, guild_id).await
 }
 
 pub async fn delete_guild_data(

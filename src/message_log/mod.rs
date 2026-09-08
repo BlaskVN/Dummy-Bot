@@ -11,7 +11,7 @@ pub use formatting::{
 };
 pub use health::{
     current_health, disable, enable, enable_with_outbox, format_status_description, get_config,
-    load_enabled_guilds, mark_warning_sent, reconcile,
+    get_log_channel, load_enabled_guilds, mark_warning_sent, reconcile, status,
 };
 pub use models::{MessageLogConfig, MessageLogHealth, MessageLogOptions};
 pub use ports::{
@@ -49,8 +49,12 @@ mod tests {
         let outbox = InMemoryOutbox::new();
         let fetcher = MockAttachmentFetcher::new(vec![1, 2, 3]);
 
-        let service =
-            MessageLogService::new(&pool, &outbox, &fetcher, MessageLogOptions::default());
+        let service = MessageLogService::new(
+            &pool,
+            outbox.clone(),
+            fetcher.clone(),
+            MessageLogOptions::default(),
+        );
 
         // 1. Simulate incoming message
         let record = database::CachedMessageRecord {
@@ -119,8 +123,12 @@ mod tests {
         let outbox = InMemoryOutbox::new();
         let fetcher = MockAttachmentFetcher::new(vec![]);
 
-        let service =
-            MessageLogService::new(&pool, &outbox, &fetcher, MessageLogOptions::default());
+        let service = MessageLogService::new(
+            &pool,
+            outbox.clone(),
+            fetcher.clone(),
+            MessageLogOptions::default(),
+        );
 
         service
             .handle_message_delete(
@@ -157,8 +165,12 @@ mod tests {
         let outbox = InMemoryOutbox::new();
         let fetcher = MockAttachmentFetcher::new(vec![]);
 
-        let service =
-            MessageLogService::new(&pool, &outbox, &fetcher, MessageLogOptions::default());
+        let service = MessageLogService::new(
+            &pool,
+            outbox.clone(),
+            fetcher.clone(),
+            MessageLogOptions::default(),
+        );
 
         // User message
         database::save_cached_message(
@@ -240,8 +252,8 @@ mod tests {
 
         let service = MessageLogService::new(
             &pool,
-            &outbox,
-            &fetcher,
+            outbox.clone(),
+            fetcher.clone(),
             MessageLogOptions {
                 attachment_max_bytes: 500,
                 purge_attachment_max_total_bytes: 2000,
@@ -289,8 +301,8 @@ mod tests {
 
         let service = MessageLogService::new(
             &pool,
-            &outbox,
-            &fetcher,
+            outbox.clone(),
+            fetcher.clone(),
             MessageLogOptions {
                 attachment_max_bytes: 50,
                 purge_attachment_max_total_bytes: 1000,
