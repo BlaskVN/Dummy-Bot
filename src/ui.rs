@@ -64,17 +64,20 @@ pub async fn reply<'a>(
     ctx: Context<'a>,
     tone: Tone,
     description: impl Into<String>,
-) -> Result<poise::ReplyHandle<'a>, serenity::Error> {
-    ctx.send(reply_builder(ctx.data(), tone, description)).await
+) -> Result<poise::ReplyHandle<'a>, crate::Error> {
+    ctx.send(reply_builder(ctx.data(), tone, description))
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn private_reply<'a>(
     ctx: Context<'a>,
     tone: Tone,
     description: impl Into<String>,
-) -> Result<poise::ReplyHandle<'a>, serenity::Error> {
+) -> Result<poise::ReplyHandle<'a>, crate::Error> {
     ctx.send(reply_builder(ctx.data(), tone, description).ephemeral(true))
         .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

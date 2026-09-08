@@ -208,7 +208,7 @@ async fn send_session_link(
     channel_id: serenity::ChannelId,
     guild_id: serenity::GuildId,
     event_id: serenity::ScheduledEventId,
-) -> Result<(), serenity::Error> {
+) -> Result<(), crate::Error> {
     channel_id
         .send_message(
             ctx,

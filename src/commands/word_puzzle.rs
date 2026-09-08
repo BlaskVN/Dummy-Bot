@@ -234,7 +234,7 @@ async fn guild_context(ctx: Context<'_>) -> Result<(serenity::GuildId, Language)
     Ok((guild_id, ctx.data().language(guild_id).await))
 }
 
-async fn send_private(ctx: Context<'_>, content: String) -> Result<(), serenity::Error> {
+async fn send_private(ctx: Context<'_>, content: String) -> Result<(), Error> {
     ui::private_reply(ctx, Tone::Neutral, content).await?;
     Ok(())
 }

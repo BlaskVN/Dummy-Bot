@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 pub mod activity_aggregate;
 pub mod activity_privacy;
 pub mod app;
