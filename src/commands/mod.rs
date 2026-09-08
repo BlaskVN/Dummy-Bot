@@ -5,6 +5,7 @@ pub mod general;
 pub mod moderation;
 pub mod presence;
 pub mod reload_modules;
+pub mod valorant;
 pub mod voice;
 pub mod word_puzzle;
 
@@ -20,6 +21,7 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
     commands.push(presence::presence());
     commands.push(word_puzzle::word_puzzle());
     commands.push(reload_modules::reload_modules());
+    commands.push(valorant::valorant());
     apply_localizations(&mut commands);
     commands
 }
@@ -204,6 +206,18 @@ fn get_command_descriptions(name: &str) -> (String, String) {
             "初期セットアップを行います。",
         )),
         "info" => Some(("Xem thông tin chi tiết.", "詳細情報を表示します。")),
+        "valorant" => Some((
+            "Quản lý liên kết hồ sơ VALORANT tracker cho thành viên.",
+            "メンバーの VALORANT トラッカープロフィールリンクを管理します。",
+        )),
+        "tracker" => Some((
+            "Quản lý và xem liên kết hồ sơ VALORANT tracker.gg.",
+            "VALORANT tracker.gg プロフィールリンクを管理・閲覧します。",
+        )),
+        "remove" => Some((
+            "Xóa liên kết hồ sơ đã lưu.",
+            "保存されているプロフィールリンクを削除します。",
+        )),
         _ => None,
     };
 
@@ -251,6 +265,10 @@ fn get_param_descriptions(cmd_name: &str, param_name: &str) -> (String, String) 
         ("word-puzzle", "word") => Some((
             "Từ tiếng Anh 5 chữ cái bạn muốn đoán.",
             "推測する 5文字の英単語。",
+        )),
+        (_, "url") => Some((
+            "Đường dẫn liên kết hồ sơ tracker.gg.",
+            "tracker.gg プロフィールの URL。",
         )),
         _ => None,
     };
@@ -323,10 +341,11 @@ mod tests {
             "presence",
             "connect",
             "reload_modules",
+            "valorant",
         ] {
             assert!(names.contains(&representative), "missing /{representative}");
         }
         assert!(!names.contains(&"setprefix"));
-        assert!(!names.contains(&"valorant"));
+        assert!(names.contains(&"valorant"));
     }
 }

@@ -33,6 +33,7 @@ pub struct Data {
         Arc<RwLock<HashSet<(serenity::GuildId, serenity::ChannelId, serenity::UserId)>>>,
     pub manual_checkins: Arc<RwLock<HashSet<ManualCheckIn>>>,
     pub rule_engine: Arc<dyn crate::core::RuleEngine>,
+    pub riot_api: Arc<dyn crate::valorant::RiotApiClient>,
 }
 
 impl Data {

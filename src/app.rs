@@ -60,6 +60,15 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     tracing::error!(error = %err, "Failed to load Rhai script modules");
                 }
 
+                let riot_api: Arc<dyn crate::valorant::RiotApiClient> =
+                    match &setup_config.riot_api_key {
+                        Some(key) => Arc::new(crate::valorant::HttpRiotApiClient::new(
+                            key.clone(),
+                            reqwest::Client::new(),
+                        )),
+                        None => Arc::new(crate::valorant::MockRiotApiClient),
+                    };
+
                 let data = Data {
                     config: setup_config,
                     db_pool: setup_pool,
@@ -72,6 +81,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     automatic_beacons: Arc::new(RwLock::new(HashSet::new())),
                     manual_checkins: Arc::new(RwLock::new(HashSet::new())),
                     rule_engine,
+                    riot_api,
                 };
                 if let Err(error) =
                     crate::attendance::clear_stale_active_starts(&data.db_pool).await
