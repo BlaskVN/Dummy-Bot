@@ -1,19 +1,20 @@
-use crate::core::engine::RhaiManager;
+use crate::core::engine::{RhaiRuleEngine, RuleEngine};
+use crate::core::models::{RuleContext, RuleDecision};
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 
 pub struct CoreEventBus {
-    rhai_manager: Arc<RhaiManager>,
+    rule_engine: Arc<RhaiRuleEngine>,
 }
 
 impl CoreEventBus {
-    pub fn new(rhai_manager: Arc<RhaiManager>) -> Self {
-        Self { rhai_manager }
+    pub fn new(rule_engine: Arc<RhaiRuleEngine>) -> Self {
+        Self { rule_engine }
     }
 
-    pub async fn dispatch_message(&self, message: &serenity::Message) {
+    pub async fn dispatch_message(&self, message: &serenity::Message) -> Option<RuleDecision> {
         if message.author.bot {
-            return;
+            return None;
         }
 
         let guild_id = message
@@ -23,13 +24,37 @@ impl CoreEventBus {
         let author_id = message.author.id.get().to_string();
         let content = message.content.clone();
 
-        // Call inspect_message in automod module
-        if let Ok(Some(result)) = self
-            .rhai_manager
-            .call_fn::<rhai::Map>("automod", "inspect_message", (content, author_id, guild_id))
-            .await
-        {
-            tracing::debug!(?result, "AutoMod Rhai module inspection result");
+        let ctx = RuleContext {
+            content,
+            author_id,
+            guild_id,
+        };
+
+        match self.rule_engine.evaluate_content(&ctx).await {
+            Ok(decision) => {
+                match &decision {
+                    RuleDecision::FlagSuggestion {
+                        rule_id,
+                        reason,
+                        should_warn,
+                    } => {
+                        tracing::warn!(
+                            %rule_id,
+                            %reason,
+                            should_warn,
+                            "AutoMod rule engine flagged message"
+                        );
+                    }
+                    RuleDecision::Pass => {
+                        tracing::debug!("AutoMod rule engine inspection passed");
+                    }
+                }
+                Some(decision)
+            }
+            Err(err) => {
+                tracing::error!(error = %err, "Failed to evaluate rule engine for message");
+                None
+            }
         }
     }
 

@@ -39,13 +39,10 @@ pub async fn set(
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
-    let timezone: Option<String> =
-        sqlx::query_scalar("SELECT iana_name FROM guild_timezone WHERE guild_id = ?")
-            .bind(guild_id.to_string())
-            .fetch_optional(&ctx.data().db_pool)
-            .await?
-            .flatten();
-    if timezone.is_none() {
+    if crate::timezone::get_timezone(&ctx.data().db_pool, guild_id)
+        .await?
+        .is_none()
+    {
         ui::reply(
             ctx,
             Tone::Warning,

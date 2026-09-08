@@ -1,13 +1,12 @@
-// AutoMod Rhai Module v3.0.0
-// Controls word filtering, spam detection rules, and moderation suggestion dispatching
+// AutoMod Rhai Rule Module
+// Controls word filtering, toxic pattern detection, and moderation suggestion dispatching
 
 fn inspect_message(content, author_id, guild_id) {
-    log_info("AutoMod module evaluating message from user " + author_id + " in guild " + guild_id);
+    log_info("AutoMod rule evaluating message from user " + author_id + " in guild " + guild_id);
     
-    // Example rule logic in Rhai
     let lower_content = content.to_lower();
     
-    // Check for blocked words or toxic patterns
+    // Check for blocked words or patterns
     if lower_content.contains("badword_test") {
         log_warn("AutoMod detected blocked content in guild " + guild_id);
         return #{
@@ -21,9 +20,4 @@ fn inspect_message(content, author_id, guild_id) {
     return #{
         action: "pass"
     };
-}
-
-fn on_automod_execution(event_data) {
-    log_info("AutoMod execution trigger received: " + event_data.rule_id);
-    // Process auto-moderation recommendation or suggestion
 }

@@ -35,14 +35,9 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
             MessageLogHealth::Disabled,
         ),
     };
-    let timezone = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT iana_name FROM guild_timezone WHERE guild_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .fetch_optional(&ctx.data().db_pool)
-    .await?
-    .flatten()
-    .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
+    let timezone = crate::timezone::get_timezone_name(&ctx.data().db_pool, guild_id)
+        .await?
+        .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
     let moderation_channel = sqlx::query_scalar::<_, String>(
         "SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?",
     )

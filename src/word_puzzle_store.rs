@@ -646,8 +646,7 @@ mod tests {
     #[tokio::test]
     async fn persists_same_answer_and_private_guesses_for_all_participants() {
         let (pool, directory) = test_pool("boards").await;
-        sqlx::query("INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('1', 'UTC')")
-            .execute(&pool)
+        crate::timezone::set_timezone(&pool, GuildId::new(1), "UTC")
             .await
             .unwrap();
         let created = create_session(
@@ -720,8 +719,12 @@ mod tests {
         use chrono::TimeZone;
 
         let (pool, directory) = test_pool("credit").await;
-        sqlx::query("INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('1', 'Asia/Bangkok'), ('2', 'America/New_York')")
-            .execute(&pool).await.unwrap();
+        crate::timezone::set_timezone(&pool, GuildId::new(1), "Asia/Bangkok")
+            .await
+            .unwrap();
+        crate::timezone::set_timezone(&pool, GuildId::new(2), "America/New_York")
+            .await
+            .unwrap();
         crate::activity_privacy::opt_out(&pool, GuildId::new(1), UserId::new(5))
             .await
             .unwrap();
