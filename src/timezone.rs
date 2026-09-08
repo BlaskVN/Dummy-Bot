@@ -40,7 +40,15 @@ pub fn next_five_am(now: DateTime<Utc>, timezone: Tz) -> Option<DateTime<Utc>> {
 /// Retrieve the parsed IANA time zone for a guild.
 pub async fn get_timezone(pool: &SqlitePool, guild_id: GuildId) -> Result<Option<Tz>> {
     let name = get_timezone_name(pool, guild_id).await?;
-    Ok(name.as_deref().and_then(parse))
+    match name {
+        Some(name) => {
+            let tz = parse(&name).ok_or_else(|| {
+                anyhow::anyhow!("Invalid persisted IANA time zone '{name}' for guild {guild_id}")
+            })?;
+            Ok(Some(tz))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Retrieve the configured IANA time zone name string for a guild.
@@ -73,15 +81,12 @@ pub async fn set_timezone(pool: &SqlitePool, guild_id: GuildId, iana_name: &str)
     Ok(())
 }
 
-/// Reset a guild's configured time zone to default.
+/// Clear a guild's configured time zone.
 pub async fn clear_timezone(pool: &SqlitePool, guild_id: GuildId) -> Result<()> {
-    sqlx::query(
-        "INSERT INTO guild_timezone (guild_id, iana_name) VALUES (?, NULL)
-         ON CONFLICT(guild_id) DO UPDATE SET iana_name = NULL, updated_at = CURRENT_TIMESTAMP",
-    )
-    .bind(guild_id.to_string())
-    .execute(pool)
-    .await?;
+    sqlx::query("DELETE FROM guild_timezone WHERE guild_id = ?")
+        .bind(guild_id.to_string())
+        .execute(pool)
+        .await?;
 
     Ok(())
 }
@@ -211,6 +216,25 @@ mod tests {
             expiry,
             Some(Utc.with_ymd_and_hms(2025, 3, 9, 9, 0, 0).unwrap())
         );
+
+        pool.close().await;
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn get_timezone_errors_on_invalid_persisted_name() {
+        let (pool, dir) = setup_test_pool().await;
+        let guild_id = GuildId::new(500);
+
+        sqlx::query(
+            "INSERT INTO guild_timezone (guild_id, iana_name) VALUES ('500', 'Corrupted/Zone')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let result = get_timezone(&pool, guild_id).await;
+        assert!(result.is_err());
 
         pool.close().await;
         let _ = tokio::fs::remove_dir_all(&dir).await;

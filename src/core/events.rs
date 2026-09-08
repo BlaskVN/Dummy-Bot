@@ -17,10 +17,12 @@ impl CoreEventBus {
             return None;
         }
 
+        let guild_id = message.guild_id?;
+
         let ctx = RuleContext {
             content: message.content.clone(),
             author_id: message.author.id,
-            guild_id: message.guild_id,
+            guild_id,
         };
 
         match self.rule_engine.evaluate_content(&ctx).await {
@@ -35,11 +37,11 @@ impl CoreEventBus {
                             %rule_id,
                             %reason,
                             should_warn,
-                            "AutoMod rule engine flagged message"
+                            "Message rule engine flagged message"
                         );
                     }
                     RuleDecision::Pass => {
-                        tracing::debug!("AutoMod rule engine inspection passed");
+                        tracing::debug!("Message rule inspection passed");
                     }
                 }
                 Some(decision)
@@ -86,6 +88,20 @@ mod tests {
 
         let mut message = Message::default();
         message.author.bot = true;
+        message.guild_id = Some(GuildId::new(300));
+
+        let decision = bus.dispatch_message(&message).await;
+        assert_eq!(decision, None);
+    }
+
+    #[tokio::test]
+    async fn core_event_bus_ignores_non_guild_messages() {
+        let mock = Arc::new(MockRuleEngine::new(RuleDecision::Pass));
+        let bus = CoreEventBus::new(mock);
+
+        let mut message = Message::default();
+        message.author.bot = false;
+        message.guild_id = None;
 
         let decision = bus.dispatch_message(&message).await;
         assert_eq!(decision, None);

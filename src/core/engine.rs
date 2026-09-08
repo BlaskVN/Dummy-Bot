@@ -64,12 +64,6 @@ impl RhaiRuleEngine {
         Ok(())
     }
 
-    /// Reload all module scripts (Hot-reload)
-    pub async fn reload_scripts(&self) -> Result<()> {
-        tracing::info!("Hot-reloading all Rhai script modules...");
-        self.load_all().await
-    }
-
     async fn call_fn<T: Clone + Send + Sync + 'static>(
         &self,
         module_name: &str,
@@ -115,11 +109,23 @@ impl RuleEngine for RhaiRuleEngine {
     fn evaluate_content<'a>(&'a self, ctx: &'a RuleContext) -> BoxFuture<'a, Result<RuleDecision>> {
         Box::pin(async move {
             let author_id = ctx.author_id.to_string();
-            let guild_id = ctx.guild_id.map(|g| g.to_string()).unwrap_or_default();
+            let guild_id = ctx.guild_id.to_string();
+
+            // Support either "rules" (preferred) or legacy "automod" module name
+            let module_name = {
+                let cache = self.ast_cache.read().await;
+                if cache.contains_key("rules") {
+                    "rules"
+                } else if cache.contains_key("automod") {
+                    "automod"
+                } else {
+                    bail!("Rule script module not loaded in rule engine");
+                }
+            };
 
             let dynamic: Dynamic = self
                 .call_fn(
-                    "automod",
+                    module_name,
                     "inspect_message",
                     (ctx.content.clone(), author_id, guild_id),
                 )
@@ -145,7 +151,7 @@ impl RuleEngine for RhaiRuleEngine {
                     let reason = map
                         .get("reason")
                         .and_then(|v| v.clone().into_string().ok())
-                        .unwrap_or_else(|| "Automod flagged".to_string());
+                        .unwrap_or_else(|| "Message rule flagged".to_string());
                     let should_warn = map
                         .get("should_warn")
                         .and_then(|v| v.as_bool().ok())
@@ -164,7 +170,10 @@ impl RuleEngine for RhaiRuleEngine {
     }
 
     fn reload<'a>(&'a self) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move { self.reload_scripts().await })
+        Box::pin(async move {
+            tracing::info!("Hot-reloading rule script modules...");
+            self.load_all().await
+        })
     }
 }
 
@@ -232,23 +241,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn evaluates_automod_pass_for_clean_message() {
+    async fn evaluates_rule_pass_for_clean_message() {
         let temp_dir = make_test_dir("clean-msg");
         let engine = RhaiRuleEngine::new(&temp_dir);
-        let automod_script = r#"
+        let rules_script = r#"
             fn inspect_message(content, author_id, guild_id) {
                 return #{ action: "pass" };
             }
         "#;
-        engine
-            .insert_module("automod", automod_script)
-            .await
-            .unwrap();
+        engine.insert_module("rules", rules_script).await.unwrap();
 
         let ctx = RuleContext {
             content: "Hello everyone, how are you?".to_string(),
             author_id: UserId::new(12345),
-            guild_id: Some(GuildId::new(67890)),
+            guild_id: GuildId::new(67890),
         };
 
         let decision = engine.evaluate_content(&ctx).await.unwrap();
@@ -257,10 +263,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn evaluates_automod_flag_suggestion_for_badword() {
+    async fn evaluates_rule_flag_suggestion_for_badword() {
         let temp_dir = make_test_dir("badword");
         let engine = RhaiRuleEngine::new(&temp_dir);
-        let automod_script = r#"
+        let rules_script = r#"
             fn inspect_message(content, author_id, guild_id) {
                 let lower = content.to_lower();
                 if lower.contains("badword_test") {
@@ -274,15 +280,12 @@ mod tests {
                 return #{ action: "pass" };
             }
         "#;
-        engine
-            .insert_module("automod", automod_script)
-            .await
-            .unwrap();
+        engine.insert_module("rules", rules_script).await.unwrap();
 
         let ctx = RuleContext {
             content: "This message contains badword_test here!".to_string(),
             author_id: UserId::new(12345),
-            guild_id: Some(GuildId::new(67890)),
+            guild_id: GuildId::new(67890),
         };
 
         let decision = engine.evaluate_content(&ctx).await.unwrap();
@@ -308,14 +311,14 @@ mod tests {
             }
         "#;
         engine
-            .insert_module("automod", infinite_loop_script)
+            .insert_module("rules", infinite_loop_script)
             .await
             .unwrap();
 
         let ctx = RuleContext {
             content: "test".to_string(),
             author_id: UserId::new(1),
-            guild_id: Some(GuildId::new(2)),
+            guild_id: GuildId::new(2),
         };
 
         let result = engine.evaluate_content(&ctx).await;
@@ -327,20 +330,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_automod_module_returns_error() {
+    async fn missing_rule_module_returns_error() {
         let temp_dir = make_test_dir("missing");
         let engine = RhaiRuleEngine::new(&temp_dir);
 
         let ctx = RuleContext {
             content: "clean text".to_string(),
             author_id: UserId::new(1),
-            guild_id: Some(GuildId::new(2)),
+            guild_id: GuildId::new(2),
         };
 
         let result = engine.evaluate_content(&ctx).await;
         assert!(
             result.is_err(),
-            "Expected error when automod module is missing"
+            "Expected error when rule module is missing"
         );
         let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     }
@@ -354,12 +357,12 @@ mod tests {
                 return 42; // Returns integer instead of map
             }
         "#;
-        engine.insert_module("automod", bad_script).await.unwrap();
+        engine.insert_module("rules", bad_script).await.unwrap();
 
         let ctx = RuleContext {
             content: "clean text".to_string(),
             author_id: UserId::new(1),
-            guild_id: Some(GuildId::new(2)),
+            guild_id: GuildId::new(2),
         };
 
         let result = engine.evaluate_content(&ctx).await;
@@ -370,7 +373,7 @@ mod tests {
     #[tokio::test]
     async fn hot_reloading_updates_rules() {
         let temp_dir = make_test_dir("reload");
-        let script_file = temp_dir.join("automod.rhai");
+        let script_file = temp_dir.join("rules.rhai");
 
         tokio::fs::write(
             &script_file,
@@ -385,7 +388,7 @@ mod tests {
         let ctx = RuleContext {
             content: "danger".to_string(),
             author_id: UserId::new(1),
-            guild_id: Some(GuildId::new(2)),
+            guild_id: GuildId::new(2),
         };
         assert_eq!(
             engine.evaluate_content(&ctx).await.unwrap(),
@@ -423,7 +426,7 @@ mod tests {
         let ctx = RuleContext {
             content: "anything".to_string(),
             author_id: UserId::new(10),
-            guild_id: Some(GuildId::new(20)),
+            guild_id: GuildId::new(20),
         };
 
         assert_eq!(
@@ -432,5 +435,6 @@ mod tests {
         );
 
         mock.reload().await.unwrap();
+        assert!(mock.reload().await.is_ok());
     }
 }

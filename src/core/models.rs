@@ -4,7 +4,7 @@ use poise::serenity_prelude::{GuildId, UserId};
 pub struct RuleContext {
     pub content: String,
     pub author_id: UserId,
-    pub guild_id: Option<GuildId>,
+    pub guild_id: GuildId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
