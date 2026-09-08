@@ -28,42 +28,75 @@ jobs:
       - name: Run Tests
         run: cargo test --locked
 
-  release:
-    name: Build & Publish Release
-    needs: check
+  build:
+    name: Build (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            use_cross: false
+          - target: aarch64-unknown-linux-gnu
+            use_cross: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Cache Rust build & dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-release"
+          shared-key: "release-${{ matrix.target }}"
+
+      - name: Install Target Toolchain
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install Cross
+        if: matrix.use_cross
         uses: taiki-e/install-action@cross
 
-      - name: Build
+      - name: Build Binary
         run: |
-          cross build --release --locked --target x86_64-unknown-linux-gnu
-          cross build --release --locked --target aarch64-unknown-linux-gnu
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
 
       - name: Package
         run: |
-          mkdir dist
+          mkdir -p dist
           stage=$(mktemp -d)
-          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-            asset="dummy-bot-${GITHUB_REF_NAME}-${target}"
-            package="${stage}/${asset}"
-            mkdir -p "${package}/systemd"
-            install -m 0755 "target/${target}/release/rust_discord_bot" "dist/${asset}"
-            install -m 0755 "dist/${asset}" "${package}/rust_discord_bot"
-            install -m 0755 deploy.sh "${package}/deploy.sh"
-            install -m 0644 LICENSE README.md README.vi.md .env.example .deploy.env.example config.env "${package}/"
-            install -m 0644 systemd/discord-bot.service.template "${package}/systemd/"
-            cp -r modules "${package}/"
-            tar -czf "dist/${asset}.tar.gz" -C "${stage}" "${asset}"
-          done
+          asset="dummy-bot-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          package="${stage}/${asset}"
+          mkdir -p "${package}/systemd"
+          install -m 0755 "target/${{ matrix.target }}/release/rust_discord_bot" "dist/${asset}"
+          install -m 0755 "dist/${asset}" "${package}/rust_discord_bot"
+          install -m 0755 deploy.sh "${package}/deploy.sh"
+          install -m 0644 LICENSE README.md README.vi.md .env.example .deploy.env.example config.env "${package}/"
+          install -m 0644 systemd/discord-bot.service.template "${package}/systemd/"
+          cp -r modules "${package}/"
+          tar -czf "dist/${asset}.tar.gz" -C "${stage}" "${asset}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.target }}
+          path: dist/*
+          retention-days: 1
+
+  publish:
+    name: Publish Release
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: artifacts-*
+          merge-multiple: true
+          path: dist
 
       - name: Publish
         env:
