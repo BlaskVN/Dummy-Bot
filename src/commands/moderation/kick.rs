@@ -1,6 +1,8 @@
-use super::{case_summary, denial_translation, send_case_summary};
+use super::{denial_translation, handle_execution_error};
 use crate::i18n::{TranslationKey, t};
-use crate::moderation_cases::{ModerationAction, create_case, valid_evidence_url};
+use crate::moderation_cases::{
+    ModerationIntent, ModerationRequest, SerenityDiscordExecutor, execute_moderation_action,
+};
 use crate::permissions::moderation_denial;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
@@ -31,56 +33,31 @@ pub async fn kick(
         ui::reply(ctx, Tone::Error, t(lang, denial_translation(denial))).await?;
         return Ok(());
     }
-    if evidence
-        .as_deref()
-        .is_some_and(|url| !valid_evidence_url(url, guild_id))
-    {
-        ui::reply(
-            ctx,
-            Tone::Error,
-            t(lang, TranslationKey::ModerationInvalidEvidence),
-        )
-        .await?;
-        return Ok(());
-    }
 
     let reason = reason.unwrap_or_else(|| t(lang, TranslationKey::ModerationNoReason).to_string());
-    member.kick_with_reason(&ctx.http(), &reason).await?;
+    let executor = SerenityDiscordExecutor::new(ctx.http());
 
-    let case_number = match create_case(
+    match execute_moderation_action(
+        &executor,
         &ctx.data().db_pool,
-        guild_id,
-        ModerationAction::Kick,
-        member.user.id,
-        ctx.author().id,
-        &reason,
-        evidence.as_deref(),
+        ModerationRequest {
+            guild_id,
+            target: member.user.id,
+            moderator: ctx.author().id,
+            intent: ModerationIntent::Kick,
+            reason: &reason,
+            evidence_url: evidence.as_deref(),
+            language: lang,
+        },
     )
     .await
     {
-        Ok(number) => number,
-        Err(error) => {
-            tracing::error!(%guild_id, target = %member.user.id, moderator = %ctx.author().id, %error, "Discord kick succeeded but moderation case creation failed");
-            ui::reply(
-                ctx,
-                Tone::Warning,
-                t(lang, TranslationKey::ModerationActionCaseFailed),
-            )
-            .await?;
-            return Ok(());
+        Ok(executed) => {
+            ui::reply(ctx, Tone::Success, executed.summary_text).await?;
         }
-    };
-    let summary = case_summary(
-        lang,
-        case_number,
-        TranslationKey::ModerationActionKick,
-        member.user.id,
-        ctx.author().id,
-        &reason,
-    );
-    ui::reply(ctx, Tone::Success, &summary).await?;
-    if let Err(error) = send_case_summary(ctx, guild_id, &summary).await {
-        tracing::warn!(%guild_id, case_number, %error, "Failed to send moderation case summary");
+        Err(error) => {
+            handle_execution_error(ctx, lang, error).await?;
+        }
     }
 
     Ok(())

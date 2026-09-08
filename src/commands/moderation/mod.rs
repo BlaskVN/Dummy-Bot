@@ -6,11 +6,10 @@ pub mod purge;
 pub mod timeout;
 pub mod warn;
 
-use crate::i18n::{Language, TranslationKey, t, tf};
+use crate::i18n::{Language, TranslationKey, t};
 use crate::permissions::ModerationDenial;
 use crate::ui::{self, Tone};
 use crate::{Context, Data, Error};
-use poise::serenity_prelude as serenity;
 
 pub fn all() -> Vec<poise::Command<Data, Error>> {
     vec![
@@ -24,7 +23,7 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
     ]
 }
 
-fn denial_translation(denial: ModerationDenial) -> TranslationKey {
+pub fn denial_translation(denial: ModerationDenial) -> TranslationKey {
     match denial {
         ModerationDenial::SelfTarget => TranslationKey::ModerationCannotTargetSelf,
         ModerationDenial::UserHierarchy => TranslationKey::ModerationUserHierarchy,
@@ -32,47 +31,47 @@ fn denial_translation(denial: ModerationDenial) -> TranslationKey {
     }
 }
 
-fn case_summary(
-    language: Language,
-    case_number: i64,
-    action: TranslationKey,
-    target: serenity::UserId,
-    moderator: serenity::UserId,
-    reason: &str,
-) -> String {
-    tf(
-        language,
-        TranslationKey::ModerationCaseSummary,
-        &[
-            &case_number,
-            &t(language, action),
-            &target,
-            &moderator,
-            &reason,
-        ],
-    )
-}
-
-async fn send_case_summary(
+pub async fn handle_execution_error(
     ctx: Context<'_>,
-    guild_id: serenity::GuildId,
-    summary: &str,
+    lang: Language,
+    error: crate::moderation_cases::ModerationExecutionError,
 ) -> Result<(), Error> {
-    let Some(channel): Option<String> =
-        sqlx::query_scalar("SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?")
-            .bind(guild_id.to_string())
-            .fetch_optional(&ctx.data().db_pool)
-            .await?
-    else {
-        return Ok(());
-    };
-    serenity::ChannelId::new(channel.parse()?)
-        .send_message(
-            ctx.http(),
-            serenity::CreateMessage::new()
-                .embed(ui::panel(ctx.data(), Tone::Neutral, summary))
-                .allowed_mentions(serenity::CreateAllowedMentions::new()),
-        )
-        .await?;
+    match error {
+        crate::moderation_cases::ModerationExecutionError::Denial(denial) => {
+            ui::reply(ctx, Tone::Error, t(lang, denial_translation(denial))).await?;
+        }
+        crate::moderation_cases::ModerationExecutionError::EmptyReason => {
+            ui::reply(
+                ctx,
+                Tone::Error,
+                t(lang, TranslationKey::ModerationReasonRequired),
+            )
+            .await?;
+        }
+        crate::moderation_cases::ModerationExecutionError::InvalidEvidence => {
+            ui::reply(
+                ctx,
+                Tone::Error,
+                t(lang, TranslationKey::ModerationInvalidEvidence),
+            )
+            .await?;
+        }
+        crate::moderation_cases::ModerationExecutionError::DatabaseFailedAfterDiscordAction {
+            ..
+        } => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ModerationActionCaseFailed),
+            )
+            .await?;
+        }
+        crate::moderation_cases::ModerationExecutionError::DiscordFailed(err) => {
+            return Err(err.into());
+        }
+        crate::moderation_cases::ModerationExecutionError::Other(err) => {
+            return Err(err.into());
+        }
+    }
     Ok(())
 }
