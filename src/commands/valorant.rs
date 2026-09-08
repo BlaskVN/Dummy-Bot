@@ -1,6 +1,6 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::ui::{self, Tone};
-use crate::valorant::RiotRegion;
+use crate::valorant::{RiotApiError, RiotRegion};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;
@@ -72,11 +72,29 @@ pub async fn profile(
         return Ok(());
     }
 
-    let stats = ctx
+    let stats = match ctx
         .data()
         .riot_api
         .get_player_ranked(account.region, &account.puuid)
-        .await?;
+        .await
+    {
+        Ok(s) => s,
+        Err(err) => {
+            tracing::warn!(
+                err = %err,
+                puuid = %account.puuid,
+                user_id = %target_user_id,
+                "Failed to load player ranked data"
+            );
+            let key = match err.downcast_ref::<RiotApiError>() {
+                Some(RiotApiError::Forbidden) => TranslationKey::ValorantProfileForbidden,
+                Some(RiotApiError::NotFound) => TranslationKey::ValorantProfileUnranked,
+                _ => TranslationKey::ValorantProfileApiError,
+            };
+            ui::reply(ctx, Tone::Warning, t(lang, key)).await?;
+            return Ok(());
+        }
+    };
 
     let title = t(lang, TranslationKey::ValorantProfileTitle);
     let player_label = t(lang, TranslationKey::ValorantProfilePlayerLabel);
@@ -149,30 +167,34 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
     for acc in visible_accounts {
         let api = Arc::clone(&riot_api);
         join_set.spawn(async move {
-            match api.get_player_ranked(acc.region, &acc.puuid).await {
-                Ok(stats) => Some((acc, stats)),
-                Err(err) => {
-                    tracing::warn!(%err, user_id = %acc.user_id, "Failed to load player ranked data for leaderboard");
-                    None
-                }
-            }
+            let res = api.get_player_ranked(acc.region, &acc.puuid).await;
+            (acc, res)
         });
     }
 
     let mut ranked_entries = Vec::new();
+    let mut had_forbidden = false;
     while let Some(res) = join_set.join_next().await {
-        if let Ok(Some(entry)) = res {
-            ranked_entries.push(entry);
+        if let Ok((acc, res)) = res {
+            match res {
+                Ok(stats) => ranked_entries.push((acc, stats)),
+                Err(err) => {
+                    if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
+                        had_forbidden = true;
+                    }
+                    tracing::warn!(%err, user_id = %acc.user_id, "Failed to load player ranked data for leaderboard");
+                }
+            }
         }
     }
 
     if ranked_entries.is_empty() {
-        ui::reply(
-            ctx,
-            Tone::Primary,
-            t(lang, TranslationKey::ValorantLeaderboardEmpty),
-        )
-        .await?;
+        let key = if had_forbidden {
+            TranslationKey::ValorantProfileForbidden
+        } else {
+            TranslationKey::ValorantLeaderboardApiError
+        };
+        ui::reply(ctx, Tone::Warning, t(lang, key)).await?;
         return Ok(());
     }
 
@@ -343,14 +365,43 @@ pub async fn link(
         None => RiotRegion::Ap,
     };
 
-    let puuid = format!("puuid-{}-{}", ctx.author().id, riot_region.as_str());
+    let linked_account = match ctx
+        .data()
+        .riot_api
+        .get_account_by_riot_id(riot_region, game_name, tag_line)
+        .await
+    {
+        Ok(acc) => acc,
+        Err(err) => {
+            if let Some(RiotApiError::NotFound) = err.downcast_ref::<RiotApiError>() {
+                let full_id = format!("{game_name}#{tag_line}");
+                let msg = tf(lang, TranslationKey::ValorantLinkNotFound, &[&full_id]);
+                ui::reply(ctx, Tone::Error, msg).await?;
+                return Ok(());
+            }
+
+            tracing::warn!(
+                %err,
+                %game_name,
+                %tag_line,
+                "Failed to verify Riot account with Riot API"
+            );
+            ui::reply(
+                ctx,
+                Tone::Error,
+                t(lang, TranslationKey::ValorantLinkApiError),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
 
     let linked = crate::valorant::set_linked_account(
         &ctx.data().db_pool,
         ctx.author().id,
-        &puuid,
-        game_name,
-        tag_line,
+        &linked_account.puuid,
+        &linked_account.game_name,
+        &linked_account.tag_line,
         riot_region,
     )
     .await?;

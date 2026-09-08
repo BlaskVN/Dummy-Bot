@@ -245,8 +245,14 @@ pub enum TranslationKey {
     ValorantVisibilityStatusDisabled,
     ValorantVisibilityNotLinked,
     ValorantLinkSuccess,
+    ValorantLinkNotFound,
     ValorantLinkInvalidFormat,
     ValorantLinkInvalidRegion,
+    ValorantProfileApiError,
+    ValorantProfileForbidden,
+    ValorantProfileUnranked,
+    ValorantLinkApiError,
+    ValorantLeaderboardApiError,
     ValorantUnlinkSuccess,
     ValorantUnlinkNotFound,
 }
@@ -314,8 +320,14 @@ impl TranslationKey {
             "ValorantVisibilityStatusDisabled" => Some(Self::ValorantVisibilityStatusDisabled),
             "ValorantVisibilityNotLinked" => Some(Self::ValorantVisibilityNotLinked),
             "ValorantLinkSuccess" => Some(Self::ValorantLinkSuccess),
+            "ValorantLinkNotFound" => Some(Self::ValorantLinkNotFound),
             "ValorantLinkInvalidFormat" => Some(Self::ValorantLinkInvalidFormat),
             "ValorantLinkInvalidRegion" => Some(Self::ValorantLinkInvalidRegion),
+            "ValorantProfileApiError" => Some(Self::ValorantProfileApiError),
+            "ValorantProfileForbidden" => Some(Self::ValorantProfileForbidden),
+            "ValorantProfileUnranked" => Some(Self::ValorantProfileUnranked),
+            "ValorantLinkApiError" => Some(Self::ValorantLinkApiError),
+            "ValorantLeaderboardApiError" => Some(Self::ValorantLeaderboardApiError),
             "ValorantUnlinkSuccess" => Some(Self::ValorantUnlinkSuccess),
             "ValorantUnlinkNotFound" => Some(Self::ValorantUnlinkNotFound),
             _ => None,
@@ -777,12 +789,36 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Riot account **{}** successfully linked! By default, your profile is hidden in all servers. Use `/valorant visibility enable` to show your stats in this server.",
     );
     en.insert(
+        TranslationKey::ValorantLinkNotFound,
+        "Riot account **{}** was not found on Riot Games. Please check the spelling and tag line.",
+    );
+    en.insert(
         TranslationKey::ValorantLinkInvalidFormat,
         "Invalid Riot ID format. Please use `GameName#TAG` (e.g. `TenZ#0001`).",
     );
     en.insert(
         TranslationKey::ValorantLinkInvalidRegion,
         "Invalid region. Supported regions: `ap`, `na`, `eu`, `kr`, `latam`, `br`.",
+    );
+    en.insert(
+        TranslationKey::ValorantProfileApiError,
+        "Unable to retrieve VALORANT ranked statistics from Riot Games API.",
+    );
+    en.insert(
+        TranslationKey::ValorantProfileForbidden,
+        "Access to VALORANT ranked MMR is restricted by Riot Games API policy (Developer Key limitation or requires Production RSO access).",
+    );
+    en.insert(
+        TranslationKey::ValorantProfileUnranked,
+        "This player currently has no recorded competitive rank data for this episode/act.",
+    );
+    en.insert(
+        TranslationKey::ValorantLinkApiError,
+        "Failed to verify Riot ID with Riot Games API. Please check your Riot ID or try again later.",
+    );
+    en.insert(
+        TranslationKey::ValorantLeaderboardApiError,
+        "Unable to load Guild VALORANT Leaderboard from Riot Games API at this time. Please try again later.",
     );
     en.insert(
         TranslationKey::ValorantUnlinkSuccess,
@@ -1251,12 +1287,36 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Đã liên kết thành công tài khoản Riot **{}**! Theo mặc định, hồ sơ của bạn sẽ ẩn ở mọi máy chủ. Dùng `/valorant visibility enable` để bật hiển thị tại máy chủ này.",
     );
     vi.insert(
+        TranslationKey::ValorantLinkNotFound,
+        "Không tìm thấy tài khoản Riot **{}** trên hệ thống Riot Games. Vui lòng kiểm tra lại Tên và TAG.",
+    );
+    vi.insert(
         TranslationKey::ValorantLinkInvalidFormat,
         "Định dạng Riot ID không hợp lệ. Vui lòng nhập theo dạng `Tên#TAG` (ví dụ: `TenZ#0001`).",
     );
     vi.insert(
         TranslationKey::ValorantLinkInvalidRegion,
         "Khu vực không hợp lệ. Các khu vực hỗ trợ: `ap`, `na`, `eu`, `kr`, `latam`, `br`.",
+    );
+    vi.insert(
+        TranslationKey::ValorantProfileApiError,
+        "Không thể lấy thông tin xếp hạng VALORANT từ Riot Games API.",
+    );
+    vi.insert(
+        TranslationKey::ValorantProfileForbidden,
+        "Truy cập dữ liệu xếp hạng VALORANT bị giới hạn bởi chính sách Riot Games API (giới hạn Developer Key hoặc yêu cầu quyền Production RSO).",
+    );
+    vi.insert(
+        TranslationKey::ValorantProfileUnranked,
+        "Người chơi này hiện chưa có dữ liệu xếp hạng thi đấu trong hồi/màn này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantLinkApiError,
+        "Không thể xác minh Riot ID với Riot Games API. Vui lòng kiểm tra lại Riot ID hoặc thử lại sau.",
+    );
+    vi.insert(
+        TranslationKey::ValorantLeaderboardApiError,
+        "Hiện không thể tải Bảng xếp hạng VALORANT máy chủ từ Riot Games API. Vui lòng thử lại sau.",
     );
     vi.insert(
         TranslationKey::ValorantUnlinkSuccess,
@@ -1737,12 +1797,36 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Riot アカウント **{}** を連携しました！初期設定ではすべてのサーバーで非公開です。このサーバーで公開するには `/valorant visibility enable` を使用してください。",
     );
     ja.insert(
+        TranslationKey::ValorantLinkNotFound,
+        "Riot アカウント「**{}**」が Riot Games 上に見つかりませんでした。名前とタグラインをご確認ください。",
+    );
+    ja.insert(
         TranslationKey::ValorantLinkInvalidFormat,
         "無効な Riot ID 形式です。`名前#タグ` の形式で入力してください（例：`TenZ#0001`）。",
     );
     ja.insert(
         TranslationKey::ValorantLinkInvalidRegion,
         "無効な地域です。対応地域: `ap`, `na`, `eu`, `kr`, `latam`, `br`。",
+    );
+    ja.insert(
+        TranslationKey::ValorantProfileApiError,
+        "Riot Games API から VALORANT ランク統計を取得できませんでした。",
+    );
+    ja.insert(
+        TranslationKey::ValorantProfileForbidden,
+        "VALORANT ランク MMR へのアクセスは Riot Games API ポリシーにより制限されています（開発者キー制限または本番 RSO 権限が必要です）。",
+    );
+    ja.insert(
+        TranslationKey::ValorantProfileUnranked,
+        "このプレイヤーの現在のコンペティティブランクデータは見つかりませんでした。",
+    );
+    ja.insert(
+        TranslationKey::ValorantLinkApiError,
+        "Riot Games API で Riot ID を確認できませんでした。Riot ID を確認するか、後でもう一度お試しください。",
+    );
+    ja.insert(
+        TranslationKey::ValorantLeaderboardApiError,
+        "現在 Riot Games API からサーバー VALORANT リーダーボードを読み込めません。後でもう一度お試しください。",
     );
     ja.insert(
         TranslationKey::ValorantUnlinkSuccess,

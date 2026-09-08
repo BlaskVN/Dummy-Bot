@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
@@ -50,6 +50,23 @@ impl RiotRegion {
             Self::Na => "https://na.api.riotgames.com",
         }
     }
+
+    pub fn account_cluster_endpoint(&self) -> &'static str {
+        match self {
+            Self::Ap | Self::Kr => "https://asia.api.riotgames.com",
+            Self::Br | Self::Latam | Self::Na => "https://americas.api.riotgames.com",
+            Self::Eu => "https://europe.api.riotgames.com",
+        }
+    }
+}
+
+/// Official Riot Account details from Account-V1.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RiotAccount {
+    pub puuid: String,
+    pub game_name: String,
+    pub tag_line: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -202,7 +219,39 @@ pub trait RiotApiClient: Send + Sync {
         region: RiotRegion,
         puuid: &'a str,
     ) -> BoxFuture<'a, Result<PlayerRankedData>>;
+
+    fn get_account_by_riot_id<'a>(
+        &'a self,
+        region: RiotRegion,
+        game_name: &'a str,
+        tag_line: &'a str,
+    ) -> BoxFuture<'a, Result<RiotAccount>>;
 }
+
+/// Structured domain errors for Riot Games API interactions.
+#[derive(Debug)]
+pub enum RiotApiError {
+    NotFound,
+    Forbidden,
+    Api {
+        status: reqwest::StatusCode,
+        message: String,
+    },
+    Transport(reqwest::Error),
+}
+
+impl std::fmt::Display for RiotApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "Riot account or data not found (404)"),
+            Self::Forbidden => write!(f, "Riot API access forbidden (403)"),
+            Self::Api { status, message } => write!(f, "Riot API error {status}: {message}"),
+            Self::Transport(err) => write!(f, "Network error communicating with Riot API: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for RiotApiError {}
 
 /// Production HTTP Riot API client using reqwest with X-Riot-Token.
 pub struct HttpRiotApiClient {
@@ -222,12 +271,19 @@ impl HttpRiotApiClient {
             .header("X-Riot-Token", &self.api_key)
             .send()
             .await
+            .map_err(RiotApiError::Transport)
             .with_context(|| format!("Failed to send GET request to {url}"))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            bail!("Riot API returned error status {status}: {text}");
+            let message = resp.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Err(RiotApiError::NotFound.into());
+            }
+            if status == reqwest::StatusCode::FORBIDDEN {
+                return Err(RiotApiError::Forbidden.into());
+            }
+            return Err(RiotApiError::Api { status, message }.into());
         }
 
         let text = resp
@@ -281,11 +337,93 @@ impl RiotApiClient for HttpRiotApiClient {
             self.get_json(&url).await
         })
     }
+
+    fn get_account_by_riot_id<'a>(
+        &'a self,
+        region: RiotRegion,
+        game_name: &'a str,
+        tag_line: &'a str,
+    ) -> BoxFuture<'a, Result<RiotAccount>> {
+        Box::pin(async move {
+            let base = region.account_cluster_endpoint();
+            let mut url = reqwest::Url::parse(base)
+                .with_context(|| format!("Invalid account cluster endpoint URL: {base}"))?;
+            url.path_segments_mut()
+                .map_err(|_| anyhow::anyhow!("Cannot format path segments on {base}"))?
+                .extend(&[
+                    "riot",
+                    "account",
+                    "v1",
+                    "accounts",
+                    "by-riot-id",
+                    game_name,
+                    tag_line,
+                ]);
+            self.get_json(url.as_str()).await
+        })
+    }
 }
 
 /// Offline mock Riot API client for deterministic tests and deployments without an active API key.
 #[derive(Default)]
 pub struct MockRiotApiClient;
+
+impl MockRiotApiClient {
+    pub fn generate_mock_player_ranked(
+        puuid: &str,
+        game_name: Option<&str>,
+        tag_line: Option<&str>,
+    ) -> PlayerRankedData {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(puuid, &mut hasher);
+        let hash = std::hash::Hasher::finish(&hasher);
+
+        let tiers = [
+            CompetitiveTier::Iron1,
+            CompetitiveTier::Iron2,
+            CompetitiveTier::Iron3,
+            CompetitiveTier::Bronze1,
+            CompetitiveTier::Bronze2,
+            CompetitiveTier::Bronze3,
+            CompetitiveTier::Silver1,
+            CompetitiveTier::Silver2,
+            CompetitiveTier::Silver3,
+            CompetitiveTier::Gold1,
+            CompetitiveTier::Gold2,
+            CompetitiveTier::Gold3,
+            CompetitiveTier::Platinum1,
+            CompetitiveTier::Platinum2,
+            CompetitiveTier::Platinum3,
+            CompetitiveTier::Diamond1,
+            CompetitiveTier::Diamond2,
+            CompetitiveTier::Diamond3,
+            CompetitiveTier::Ascendant1,
+            CompetitiveTier::Ascendant2,
+            CompetitiveTier::Ascendant3,
+            CompetitiveTier::Immortal1,
+            CompetitiveTier::Immortal2,
+            CompetitiveTier::Immortal3,
+            CompetitiveTier::Radiant,
+        ];
+        let tier_idx = (hash % (tiers.len() as u64)) as usize;
+        let tier = tiers[tier_idx];
+        let ranked_rating = (hash % 100) as u32;
+        let number_of_wins = ((hash % 120) + 5) as u32;
+
+        PlayerRankedData {
+            puuid: puuid.to_string(),
+            game_name: game_name
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("Agent{}", &puuid[..puuid.len().min(4)])),
+            tag_line: tag_line
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "VAL".to_string()),
+            tier,
+            ranked_rating,
+            number_of_wins,
+        }
+    }
+}
 
 impl RiotApiClient for MockRiotApiClient {
     fn get_platform_status<'a>(
@@ -337,50 +475,25 @@ impl RiotApiClient for MockRiotApiClient {
         _region: RiotRegion,
         puuid: &'a str,
     ) -> BoxFuture<'a, Result<PlayerRankedData>> {
+        Box::pin(async move { Ok(Self::generate_mock_player_ranked(puuid, None, None)) })
+    }
+
+    fn get_account_by_riot_id<'a>(
+        &'a self,
+        _region: RiotRegion,
+        game_name: &'a str,
+        tag_line: &'a str,
+    ) -> BoxFuture<'a, Result<RiotAccount>> {
         Box::pin(async move {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            std::hash::Hash::hash(puuid, &mut hasher);
+            std::hash::Hash::hash(game_name, &mut hasher);
+            std::hash::Hash::hash(tag_line, &mut hasher);
             let hash = std::hash::Hasher::finish(&hasher);
 
-            let tiers = [
-                CompetitiveTier::Iron1,
-                CompetitiveTier::Iron2,
-                CompetitiveTier::Iron3,
-                CompetitiveTier::Bronze1,
-                CompetitiveTier::Bronze2,
-                CompetitiveTier::Bronze3,
-                CompetitiveTier::Silver1,
-                CompetitiveTier::Silver2,
-                CompetitiveTier::Silver3,
-                CompetitiveTier::Gold1,
-                CompetitiveTier::Gold2,
-                CompetitiveTier::Gold3,
-                CompetitiveTier::Platinum1,
-                CompetitiveTier::Platinum2,
-                CompetitiveTier::Platinum3,
-                CompetitiveTier::Diamond1,
-                CompetitiveTier::Diamond2,
-                CompetitiveTier::Diamond3,
-                CompetitiveTier::Ascendant1,
-                CompetitiveTier::Ascendant2,
-                CompetitiveTier::Ascendant3,
-                CompetitiveTier::Immortal1,
-                CompetitiveTier::Immortal2,
-                CompetitiveTier::Immortal3,
-                CompetitiveTier::Radiant,
-            ];
-            let tier_idx = (hash % (tiers.len() as u64)) as usize;
-            let tier = tiers[tier_idx];
-            let ranked_rating = (hash % 100) as u32;
-            let number_of_wins = ((hash % 120) + 5) as u32;
-
-            Ok(PlayerRankedData {
-                puuid: puuid.to_string(),
-                game_name: format!("Agent{}", &puuid[..puuid.len().min(4)]),
-                tag_line: "VAL".to_string(),
-                tier,
-                ranked_rating,
-                number_of_wins,
+            Ok(RiotAccount {
+                puuid: format!("mock-puuid-{:x}", hash),
+                game_name: game_name.to_string(),
+                tag_line: tag_line.to_string(),
             })
         })
     }
@@ -486,5 +599,77 @@ mod tests {
         assert_eq!(resp.players[0].number_of_wins, 42);
         assert_eq!(resp.players[0].game_name.as_deref(), Some("Viper"));
         assert_eq!(resp.players[0].tag_line.as_deref(), Some("001"));
+    }
+
+    #[test]
+    fn account_cluster_endpoint_mapping_covers_clusters() {
+        assert_eq!(
+            RiotRegion::Ap.account_cluster_endpoint(),
+            "https://asia.api.riotgames.com"
+        );
+        assert_eq!(
+            RiotRegion::Kr.account_cluster_endpoint(),
+            "https://asia.api.riotgames.com"
+        );
+        assert_eq!(
+            RiotRegion::Na.account_cluster_endpoint(),
+            "https://americas.api.riotgames.com"
+        );
+        assert_eq!(
+            RiotRegion::Br.account_cluster_endpoint(),
+            "https://americas.api.riotgames.com"
+        );
+        assert_eq!(
+            RiotRegion::Latam.account_cluster_endpoint(),
+            "https://americas.api.riotgames.com"
+        );
+        assert_eq!(
+            RiotRegion::Eu.account_cluster_endpoint(),
+            "https://europe.api.riotgames.com"
+        );
+    }
+
+    #[test]
+    fn deserializes_riot_account_json() {
+        let json = r#"{
+            "puuid": "test-puuid-123",
+            "gameName": "Blask",
+            "tagLine": "3107"
+        }"#;
+        let acc: RiotAccount = serde_json::from_str(json).unwrap();
+        assert_eq!(acc.puuid, "test-puuid-123");
+        assert_eq!(acc.game_name, "Blask");
+        assert_eq!(acc.tag_line, "3107");
+    }
+
+    #[tokio::test]
+    async fn mock_riot_api_client_returns_account_by_riot_id() {
+        let client = MockRiotApiClient;
+        let acc = client
+            .get_account_by_riot_id(RiotRegion::Ap, "Blask", "3107")
+            .await
+            .unwrap();
+        assert_eq!(acc.game_name, "Blask");
+        assert_eq!(acc.tag_line, "3107");
+        assert!(!acc.puuid.is_empty());
+    }
+
+    #[test]
+    fn riot_api_error_downcasting_and_display() {
+        let err: anyhow::Error = RiotApiError::Forbidden.into();
+        assert!(matches!(
+            err.downcast_ref::<RiotApiError>(),
+            Some(RiotApiError::Forbidden)
+        ));
+        assert_eq!(
+            err.downcast_ref::<RiotApiError>().unwrap().to_string(),
+            "Riot API access forbidden (403)"
+        );
+
+        let err: anyhow::Error = RiotApiError::NotFound.into();
+        assert!(matches!(
+            err.downcast_ref::<RiotApiError>(),
+            Some(RiotApiError::NotFound)
+        ));
     }
 }
