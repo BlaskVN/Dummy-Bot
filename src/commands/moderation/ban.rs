@@ -1,9 +1,6 @@
-use super::{denial_translation, handle_execution_error};
-use crate::i18n::{TranslationKey, t, tf};
-use crate::moderation_cases::{
-    ModerationIntent, ModerationRequest, SerenityDiscordExecutor, execute_moderation_action,
-};
-use crate::permissions::moderation_denial;
+use super::execute_moderation_pipeline;
+use crate::i18n::{TranslationKey, tf};
+use crate::moderation_cases::ModerationIntent;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -27,19 +24,12 @@ pub async fn ban(
     #[rest]
     reason: Option<String>,
 ) -> Result<(), Error> {
-    let guild_id = ctx
-        .guild_id()
-        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
-    let lang = ctx.data().language(guild_id).await;
-
-    if let Some(denial) = moderation_denial(ctx, member.user.id)? {
-        ui::reply(ctx, Tone::Error, t(lang, denial_translation(denial))).await?;
-        return Ok(());
-    }
-
-    let reason = reason.unwrap_or_else(|| t(lang, TranslationKey::ModerationNoReason).to_string());
     let delete_days = delete_days.unwrap_or_default();
     if delete_days > ctx.data().config.ban_max_delete_days {
+        let guild_id = ctx
+            .guild_id()
+            .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+        let lang = ctx.data().language(guild_id).await;
         let message = tf(
             lang,
             TranslationKey::ModerationDeleteDaysRange,
@@ -49,32 +39,14 @@ pub async fn ban(
         return Ok(());
     }
 
-    let executor = SerenityDiscordExecutor::new(ctx.http());
-
-    match execute_moderation_action(
-        &executor,
-        &ctx.data().db_pool,
-        ModerationRequest {
-            guild_id,
-            target: member.user.id,
-            moderator: ctx.author().id,
-            intent: ModerationIntent::Ban {
-                delete_message_days: Some(delete_days),
-            },
-            reason: &reason,
-            evidence_url: evidence.as_deref(),
-            language: lang,
+    execute_moderation_pipeline(
+        ctx,
+        member.user.id,
+        ModerationIntent::Ban {
+            delete_message_days: Some(delete_days),
         },
+        reason,
+        evidence,
     )
     .await
-    {
-        Ok(executed) => {
-            ui::reply(ctx, Tone::Success, executed.summary_text).await?;
-        }
-        Err(error) => {
-            handle_execution_error(ctx, lang, error).await?;
-        }
-    }
-
-    Ok(())
 }

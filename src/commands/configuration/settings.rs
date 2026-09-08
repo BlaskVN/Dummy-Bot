@@ -3,7 +3,7 @@ use crate::message_log_health::MessageLogHealth;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 
-/// Show this server's current bot configuration.
+/// Show this Guild's current bot configuration.
 #[poise::command(
     slash_command,
     guild_only,
@@ -17,27 +17,22 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
 
     let lang = ctx.data().language(guild_id).await;
 
-    // Get log channel from message_log_config
-    let log_channel = sqlx::query_as::<_, (String, i64, String)>(
-        "SELECT log_channel_id, enabled, health FROM message_log_config WHERE guild_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .fetch_optional(&ctx.data().db_pool)
-    .await?;
+    // Get log channel from message_log service
+    let log_config = crate::message_log::get_config(&ctx.data().db_pool, guild_id).await?;
 
-    let (log_channel_display, log_health) = match log_channel {
-        Some((id, 1, health)) => (format!("<#{}>", id), health),
-        Some((id, _, health)) => (
+    let (log_channel_display, log_health) = match log_config {
+        Some(config) if config.enabled => (format!("<#{}>", config.channel_id), config.health),
+        Some(config) => (
             format!(
                 "<#{}> ({})",
-                id,
+                config.channel_id,
                 t(lang, TranslationKey::MessageLogStatusDisabled)
             ),
-            health,
+            config.health,
         ),
         None => (
             t(lang, TranslationKey::SettingsNotConfigured).to_string(),
-            "disabled".to_owned(),
+            MessageLogHealth::Disabled,
         ),
     };
     let timezone = sqlx::query_scalar::<_, Option<String>>(
@@ -63,14 +58,12 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
         TranslationKey::SettingsLogChannel,
         &[&log_channel_display],
     );
-    let log_health = t(
-        lang,
-        match MessageLogHealth::parse(&log_health) {
-            MessageLogHealth::Disabled => TranslationKey::MessageLogHealthDisabled,
-            MessageLogHealth::Healthy => TranslationKey::MessageLogHealthHealthy,
-            MessageLogHealth::Degraded => TranslationKey::MessageLogHealthDegraded,
-        },
-    );
+    let log_health_key = match log_health {
+        MessageLogHealth::Disabled => TranslationKey::MessageLogHealthDisabled,
+        MessageLogHealth::Healthy => TranslationKey::MessageLogHealthHealthy,
+        MessageLogHealth::Degraded => TranslationKey::MessageLogHealthDegraded,
+    };
+    let log_health = t(lang, log_health_key);
     let log_health_text = tf(lang, TranslationKey::MessageLogHealth, &[&log_health]);
     let timezone_text = tf(lang, TranslationKey::SettingsTimezone, &[&timezone]);
     let moderation_channel_text = tf(
