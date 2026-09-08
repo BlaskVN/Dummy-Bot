@@ -105,40 +105,34 @@ pub fn reply_field(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn build_deleted_message_embed(
     lang: Language,
-    channel_id: ChannelId,
-    author_id: &str,
-    author_face: &str,
-    content: &str,
-    sent_at_unix: i64,
+    view: &super::models::DeletedMessageView<'_>,
     preview_chars: usize,
     error_color: serenity::Colour,
-    reply_info: Option<String>,
 ) -> serenity::CreateEmbed {
-    let content_preview = if content.is_empty() {
+    let content_preview = if view.content.is_empty() {
         t(lang, TranslationKey::MessageMediaOnly).to_string()
     } else {
-        markdown_quote(content, preview_chars)
+        markdown_quote(view.content, preview_chars)
     };
 
-    let sent_at = format!("<t:{sent_at_unix}:f>");
+    let sent_at = format!("<t:{}:f>", view.sent_at_unix);
     let deleted_at = serenity::Timestamp::now();
     let deleted_at_str = format!("<t:{}:f>", deleted_at.unix_timestamp());
 
     let mut embed = serenity::CreateEmbed::new()
         .title(t(lang, TranslationKey::MessageDeleted))
-        .thumbnail(author_face)
+        .thumbnail(view.author_face)
         .color(error_color)
         .field(
             t(lang, TranslationKey::MessageAuthorLabel),
-            format!("<@{author_id}>"),
+            format!("<@{}>", view.author_id),
             true,
         )
         .field(
             t(lang, TranslationKey::MessageChannelLabel),
-            format!("<#{channel_id}>"),
+            format!("<#{}>", view.channel_id),
             true,
         )
         .field(
@@ -147,7 +141,7 @@ pub fn build_deleted_message_embed(
             false,
         );
 
-    if let Some(reply) = reply_info {
+    if let Some(reply) = &view.reply_info {
         embed = embed.field(t(lang, TranslationKey::MessageReplyTo), reply, false);
     }
 
@@ -158,6 +152,11 @@ pub fn build_deleted_message_embed(
             true,
         )
         .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
+        .field(
+            t(lang, TranslationKey::MessageJumpTo),
+            message_url(view.guild_id, view.channel_id, view.message_id),
+            false,
+        )
         .timestamp(deleted_at)
 }
 
@@ -239,31 +238,31 @@ pub fn build_bulk_delete_embeds(
     total_count: usize,
     cached_count: usize,
     bot_count: usize,
-    mut user_messages: Vec<(String, String, i64)>,
+    mut user_messages: Vec<super::models::PurgedMessageSummary>,
     timestamp_format: &str,
     preview_chars: usize,
     chunk_chars_limit: usize,
     warning_color: serenity::Colour,
 ) -> Vec<serenity::CreateMessage> {
-    user_messages.sort_by_key(|(_, _, ts)| *ts);
+    user_messages.sort_by_key(|msg| msg.created_at);
     let user_count = cached_count.saturating_sub(bot_count);
 
     let media_only = t(lang, TranslationKey::MessageMediaOnly);
     let mut all_lines: Vec<String> = Vec::new();
 
-    for (author, content, unix_ts) in &user_messages {
-        let ts_str = DateTime::from_timestamp(*unix_ts, 0)
+    for msg in &user_messages {
+        let ts_str = DateTime::from_timestamp(msg.created_at, 0)
             .map(|dt| dt.format(timestamp_format).to_string())
             .unwrap_or_else(|| t(lang, TranslationKey::MessageUnknownTimestamp).to_string());
 
-        let preview = if content.is_empty() {
+        let preview = if msg.content.is_empty() {
             media_only
         } else {
-            content
+            &msg.content
         };
         all_lines.push(markdown_message(
             &ts_str,
-            author,
+            &msg.author_name,
             preview,
             preview_chars.min(chunk_chars_limit),
         ));

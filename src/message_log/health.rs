@@ -42,24 +42,6 @@ pub async fn enable(
     log_channel_id: ChannelId,
     message_content_enabled: bool,
 ) -> Result<(MessageLogHealth, bool)> {
-    enable_with_outbox::<super::ports::InMemoryOutbox>(
-        pool,
-        guild_id,
-        log_channel_id,
-        message_content_enabled,
-        None,
-    )
-    .await
-}
-
-/// Enable message logging and automatically dispatch degraded warning through the outbox port.
-pub async fn enable_with_outbox<O: super::ports::MessageLogOutbox>(
-    pool: &SqlitePool,
-    guild_id: GuildId,
-    log_channel_id: ChannelId,
-    message_content_enabled: bool,
-    outbox: Option<(&O, poise::serenity_prelude::CreateMessage)>,
-) -> Result<(MessageLogHealth, bool)> {
     sqlx::query(
         "INSERT INTO message_log_config (guild_id, log_channel_id, enabled)
          VALUES (?, ?, 1)
@@ -70,7 +52,18 @@ pub async fn enable_with_outbox<O: super::ports::MessageLogOutbox>(
     .execute(pool)
     .await?;
 
-    let (health, warn) = reconcile(pool, guild_id, message_content_enabled).await?;
+    reconcile(pool, guild_id, message_content_enabled).await
+}
+
+/// Enable message logging and automatically dispatch degraded warning through the outbox port.
+pub async fn enable_with_outbox<O: super::ports::MessageLogOutbox>(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    log_channel_id: ChannelId,
+    message_content_enabled: bool,
+    outbox: Option<(&O, poise::serenity_prelude::CreateMessage)>,
+) -> Result<(MessageLogHealth, bool)> {
+    let (health, warn) = enable(pool, guild_id, log_channel_id, message_content_enabled).await?;
     if warn
         && let Some((outbox_impl, warning_msg)) = outbox
         && outbox_impl

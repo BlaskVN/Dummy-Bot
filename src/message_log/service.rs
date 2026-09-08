@@ -10,7 +10,9 @@ use super::formatting::{
     build_metadata_embed, fits_byte_budget, reply_field,
 };
 use super::health::{self, current_health, mark_warning_sent, reconcile};
-use super::models::{MessageLogHealth, MessageLogOptions};
+use super::models::{
+    DeletedMessageView, MessageLogHealth, MessageLogOptions, PurgedMessageSummary,
+};
 use super::ports::{AttachmentFetcher, MessageLogOutbox};
 
 pub struct MessageLogService<'a, O: MessageLogOutbox, F: AttachmentFetcher> {
@@ -189,16 +191,22 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             .as_ref()
             .and_then(|msg| reply_field(lang, guild_id, msg));
 
+        let view = DeletedMessageView {
+            guild_id,
+            channel_id,
+            message_id: deleted_message_id,
+            author_id: &author_id,
+            author_face: &author_face,
+            content: &content,
+            sent_at_unix,
+            reply_info: reply,
+        };
+
         let embed = build_deleted_message_embed(
             lang,
-            channel_id,
-            &author_id,
-            &author_face,
-            &content,
-            sent_at_unix,
+            &view,
             self.options.preview_chars,
             self.options.error_color,
-            reply,
         );
 
         let builder = serenity::CreateMessage::new()
@@ -362,7 +370,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
 
         let mut cached_count = 0;
         let mut bot_count = 0;
-        let mut user_messages: Vec<(String, String, i64)> = Vec::new();
+        let mut user_messages: Vec<PurgedMessageSummary> = Vec::new();
 
         for &msg_id in deleted_message_ids {
             if let Some(msg) = get_ram_message(channel_id, msg_id) {
@@ -372,7 +380,11 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                     bot_count += 1;
                 } else {
                     let unix_ts = msg.timestamp.unix_timestamp();
-                    user_messages.push((msg.author.name.clone(), msg.content.clone(), unix_ts));
+                    user_messages.push(PurgedMessageSummary {
+                        author_name: msg.author.name.clone(),
+                        content: msg.content.clone(),
+                        created_at: unix_ts,
+                    });
                 }
             } else if let Ok(Some(db_msg)) =
                 database::load_cached_message(self.pool, &msg_id.to_string()).await
@@ -382,7 +394,11 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                 if db_msg.is_bot {
                     bot_count += 1;
                 } else {
-                    user_messages.push((db_msg.author_name, db_msg.content, db_msg.created_at));
+                    user_messages.push(PurgedMessageSummary {
+                        author_name: db_msg.author_name,
+                        content: db_msg.content,
+                        created_at: db_msg.created_at,
+                    });
                 }
             }
         }

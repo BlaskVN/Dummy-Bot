@@ -58,3 +58,22 @@ impl Default for MessageLogOptions {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct PurgedMessageSummary {
+    pub author_name: String,
+    pub content: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeletedMessageView<'a> {
+    pub guild_id: poise::serenity_prelude::GuildId,
+    pub channel_id: ChannelId,
+    pub message_id: poise::serenity_prelude::MessageId,
+    pub author_id: &'a str,
+    pub author_face: &'a str,
+    pub content: &'a str,
+    pub sent_at_unix: i64,
+    pub reply_info: Option<String>,
+}

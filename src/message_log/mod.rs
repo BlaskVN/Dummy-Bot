@@ -13,12 +13,20 @@ pub use health::{
     current_health, disable, enable, enable_with_outbox, format_status_description, get_config,
     get_log_channel, load_enabled_guilds, mark_warning_sent, reconcile, status,
 };
-pub use models::{MessageLogConfig, MessageLogHealth, MessageLogOptions};
+pub use models::{
+    DeletedMessageView, MessageLogConfig, MessageLogHealth, MessageLogOptions, PurgedMessageSummary,
+};
 pub use ports::{
     AttachmentFetcher, DiscordOutbox, HttpAttachmentFetcher, InMemoryOutbox, MessageLogOutbox,
     MockAttachmentFetcher, SentMessageRecord, is_discord_cdn,
 };
 pub use service::MessageLogService;
+
+/// Convenience domain wrapper to persist an incoming non-bot message to SQLite cache.
+pub async fn ingest_message(pool: &sqlx::SqlitePool, message: &poise::serenity_prelude::Message) {
+    MessageLogService::<DiscordOutbox<'_>, HttpAttachmentFetcher>::save_message(pool, message)
+        .await;
+}
 
 #[cfg(test)]
 mod tests {

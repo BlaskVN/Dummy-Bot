@@ -246,4 +246,18 @@ mod tests {
         let overflow = fetcher.fetch_attachment(&att, 50).await;
         assert!(overflow.is_err());
     }
+
+    #[tokio::test]
+    async fn in_memory_outbox_records_attachments() {
+        let outbox = InMemoryOutbox::new();
+        let att = serenity::CreateAttachment::bytes(vec![1, 2, 3], "sample.png");
+        outbox
+            .send_attachment(ChannelId::new(99), att)
+            .await
+            .unwrap();
+
+        assert_eq!(outbox.sent_count().await, 1);
+        let records = outbox.get_messages().await;
+        assert_eq!(records[0].channel_id, ChannelId::new(99));
+    }
 }
