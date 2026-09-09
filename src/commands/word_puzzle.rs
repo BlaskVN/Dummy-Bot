@@ -1,8 +1,9 @@
 use crate::i18n::Language;
 use crate::ui::{self, Tone};
 use crate::word_puzzle::PuzzleState;
-use crate::word_puzzle_store::{Board, FinishedSession, SummaryEntry};
-use crate::{Context, Data, Error};
+use crate::word_puzzle_store::Board;
+pub use crate::word_puzzle_engine::format_summary;
+use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
 /// Play a collaborative five-letter English word puzzle.
@@ -166,7 +167,7 @@ pub async fn guess(
         ),
     )
     .await?;
-    award_and_deliver(ctx.serenity_context(), ctx.data(), now).await;
+    reconcile_and_deliver(ctx).await;
     Ok(())
 }
 
@@ -220,7 +221,7 @@ pub async fn finish(ctx: Context<'_>) -> Result<(), Error> {
         .await?
     {
         send_private(ctx, render(language, Text::Finished, &[])).await?;
-        award_and_deliver(ctx.serenity_context(), ctx.data(), now).await;
+        reconcile_and_deliver(ctx).await;
     } else {
         send_private(ctx, render(language, Text::FinishDenied, &[])).await?;
     }
@@ -240,71 +241,7 @@ async fn send_private(ctx: Context<'_>, content: String) -> Result<(), Error> {
 }
 
 async fn reconcile_and_deliver(ctx: Context<'_>) {
-    reconcile_and_deliver_all(ctx.serenity_context(), ctx.data()).await;
-}
-
-pub async fn reconcile_and_deliver_all(ctx: &serenity::Context, data: &Data) {
-    let now = chrono::Utc::now().timestamp();
-    if let Err(error) = crate::word_puzzle_store::reconcile_expired(&data.db_pool, now, 100).await {
-        tracing::error!(%error, "Could not reconcile expired Word Puzzles");
-    }
-    award_and_deliver(ctx, data, now).await;
-}
-
-async fn award_and_deliver(ctx: &serenity::Context, data: &Data, now: i64) {
-    if let Err(error) =
-        crate::word_puzzle_store::award_pending_credits(&data.db_pool, now, 500).await
-    {
-        tracing::error!(%error, "Could not award Word Puzzle credits");
-    }
-    deliver_finished(ctx, data, now).await;
-}
-
-async fn deliver_finished(ctx: &serenity::Context, data: &Data, now: i64) {
-    let sessions = match crate::word_puzzle_store::claim_finished(&data.db_pool, now, 20).await {
-        Ok(sessions) => sessions,
-        Err(error) => {
-            tracing::error!(%error, "Could not claim Word Puzzle summaries");
-            return;
-        }
-    };
-    for session in sessions {
-        if deliver_summary(ctx, data, &session).await.is_ok() {
-            if let Err(error) =
-                crate::word_puzzle_store::cleanup_delivered(&data.db_pool, session.id).await
-            {
-                tracing::error!(session_id = session.id, %error, "Could not clean delivered Word Puzzle");
-            }
-        } else if let Err(error) =
-            crate::word_puzzle_store::release_summary_claim(&data.db_pool, session.id).await
-        {
-            tracing::error!(session_id = session.id, %error, "Could not release Word Puzzle summary claim");
-        }
-    }
-}
-
-async fn deliver_summary(
-    ctx: &serenity::Context,
-    data: &Data,
-    session: &FinishedSession,
-) -> Result<(), Error> {
-    let guild_id = serenity::GuildId::new(session.guild_id.parse()?);
-    let channel_id = serenity::ChannelId::new(session.result_channel_id.parse()?);
-    let language = data.language(guild_id).await;
-    let rows = crate::word_puzzle_store::summary(&data.db_pool, session.id).await?;
-    channel_id
-        .send_message(
-            ctx,
-            serenity::CreateMessage::new()
-                .embed(ui::panel(
-                    data,
-                    Tone::Primary,
-                    format_summary(language, &session.answer, &rows),
-                ))
-                .allowed_mentions(serenity::CreateAllowedMentions::new()),
-        )
-        .await?;
-    Ok(())
+    crate::word_puzzle_engine::reconcile_and_deliver_discord(ctx.serenity_context(), ctx.data()).await;
 }
 
 fn format_board(board: &Board) -> String {
@@ -330,29 +267,6 @@ fn format_board(board: &Board) -> String {
         .join("\n")
 }
 
-fn format_summary(language: Language, answer: &str, rows: &[SummaryEntry]) -> String {
-    let rows = rows
-        .iter()
-        .map(|row| {
-            render(
-                language,
-                if row.status == "won" {
-                    Text::SummaryWon
-                } else {
-                    Text::SummaryLost
-                },
-                &[&row.user_id, &row.attempts],
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "{}\n{}\n{rows}",
-        render(language, Text::SummaryTitle, &[]),
-        render(language, Text::Answer, &[&answer.to_uppercase()])
-    )
-}
-
 #[derive(Debug, Clone, Copy)]
 #[repr(usize)]
 enum Text {
@@ -372,14 +286,10 @@ enum Text {
     NotParticipant,
     Finished,
     FinishDenied,
-    SummaryTitle,
-    Answer,
-    SummaryWon,
-    SummaryLost,
 }
 
 #[cfg(test)]
-const TEXT_KEYS: [Text; 20] = [
+const TEXT_KEYS: [Text; 16] = [
     Text::Created,
     Text::AlreadyOpen,
     Text::NoSession,
@@ -396,14 +306,10 @@ const TEXT_KEYS: [Text; 20] = [
     Text::NotParticipant,
     Text::Finished,
     Text::FinishDenied,
-    Text::SummaryTitle,
-    Text::Answer,
-    Text::SummaryWon,
-    Text::SummaryLost,
 ];
 
 fn template(language: Language, key: Text) -> &'static str {
-    const EN: [&str; 20] = [
+    const EN: [&str; 16] = [
         "Word Puzzle #{} created. Use `/word-puzzle join`, then the creator starts it.",
         "This server already has a Word Puzzle awaiting completion or summary delivery.",
         "There is no current Word Puzzle in this server.",
@@ -420,12 +326,8 @@ fn template(language: Language, key: Text) -> &'static str {
         "Join the puzzle before it starts to receive a board.",
         "Puzzle finished. The public result follows.",
         "Only the creator can finish a started puzzle.",
-        "**Word Puzzle complete**",
-        "Answer: **{}**",
-        "<@{}> — solved in {} attempt(s)",
-        "<@{}> — unsolved after {} attempt(s)",
     ];
-    const VI: [&str; 20] = [
+    const VI: [&str; 16] = [
         "Đã tạo Câu đố chữ #{}. Dùng `/word-puzzle join`, sau đó người tạo bắt đầu.",
         "Server này đã có một Câu đố chữ đang chờ hoàn tất hoặc gửi kết quả.",
         "Server này hiện không có Câu đố chữ.",
@@ -442,12 +344,8 @@ fn template(language: Language, key: Text) -> &'static str {
         "Hãy tham gia trước khi câu đố bắt đầu để nhận bảng.",
         "Câu đố đã kết thúc. Kết quả công khai sẽ xuất hiện ngay.",
         "Chỉ người tạo mới có thể kết thúc câu đố đã bắt đầu.",
-        "**Câu đố chữ đã hoàn tất**",
-        "Đáp án: **{}**",
-        "<@{}> — giải được trong {} lượt",
-        "<@{}> — chưa giải được sau {} lượt",
     ];
-    const JA: [&str; 20] = [
+    const JA: [&str; 16] = [
         "ワードパズル #{} を作成しました。`/word-puzzle join` の後、作成者が開始します。",
         "このサーバーには完了または結果送信待ちのワードパズルがあります。",
         "このサーバーに進行中のワードパズルはありません。",
@@ -464,10 +362,6 @@ fn template(language: Language, key: Text) -> &'static str {
         "開始前に参加するとボードを受け取れます。",
         "パズルを終了しました。公開結果を続けて表示します。",
         "開始済みパズルを終了できるのは作成者だけです。",
-        "**ワードパズル終了**",
-        "答え：**{}**",
-        "<@{}> — {}回で正解",
-        "<@{}> — {}回で未正解",
     ];
     match language {
         Language::English => EN[key as usize],

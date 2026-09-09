@@ -23,7 +23,7 @@ pub async fn handle_resume(ctx: &serenity::Context, data: &Data) {
     {
         tracing::error!(%error, "Could not finalize pending activity aggregates after resume");
     }
-    crate::commands::word_puzzle::reconcile_and_deliver_all(ctx, data).await;
+    crate::word_puzzle_engine::reconcile_and_deliver_discord(ctx, data).await;
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
     super::rewards::reconcile_all(ctx, data).await;
@@ -51,7 +51,7 @@ pub async fn handle_ready_reconnect(ctx: &serenity::Context, data: &Data) {
     {
         tracing::error!(%error, "Could not finalize pending activity aggregates after ready");
     }
-    crate::commands::word_puzzle::reconcile_and_deliver_all(ctx, data).await;
+    crate::word_puzzle_engine::reconcile_and_deliver_discord(ctx, data).await;
     super::activity_presence::reconcile_known_channels(ctx, data).await;
     super::community::reconcile_all(ctx, data).await;
     super::rewards::reconcile_all(ctx, data).await;

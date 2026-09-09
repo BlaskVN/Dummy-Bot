@@ -96,7 +96,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                 {
                     tracing::error!(%error, "Could not finalize pending activity aggregates");
                 }
-                commands::word_puzzle::reconcile_and_deliver_all(ctx, &data).await;
+                crate::word_puzzle_engine::reconcile_and_deliver_discord(ctx, &data).await;
                 handlers::message_log::reconcile_all_health(ctx, &data).await;
                 handlers::community::reconcile_all(ctx, &data).await;
                 handlers::rewards::reconcile_all(ctx, &data).await;
