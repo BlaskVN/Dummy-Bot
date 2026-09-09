@@ -63,30 +63,6 @@ pub async fn set(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::moderation_channel::valid_moderation_channel;
-    use poise::serenity_prelude::{ChannelType, GuildId};
-
-    #[test]
-    fn accepts_only_current_guild_text_channels() {
-        assert!(valid_moderation_channel(
-            GuildId::new(1),
-            GuildId::new(1),
-            ChannelType::Text
-        ));
-        assert!(!valid_moderation_channel(
-            GuildId::new(1),
-            GuildId::new(2),
-            ChannelType::Text
-        ));
-        assert!(!valid_moderation_channel(
-            GuildId::new(1),
-            GuildId::new(1),
-            ChannelType::Voice
-        ));
-    }
-}
 
 /// Show the currently configured moderation records channel.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]

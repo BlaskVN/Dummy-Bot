@@ -2,9 +2,9 @@ use anyhow::{Context as _, Result};
 use poise::serenity_prelude::{ChannelId, ChannelType, GuildId};
 use sqlx::SqlitePool;
 
-/// Checks whether a channel is valid for use as a moderation records channel.
+/// Checks whether a channel is valid for use as a Moderation Channel.
 ///
-/// Must belong to the specified guild and be a text channel.
+/// Must belong to the specified Guild and be a text channel.
 #[must_use]
 pub fn valid_moderation_channel(
     guild_id: GuildId,
@@ -14,7 +14,7 @@ pub fn valid_moderation_channel(
     guild_id == channel_guild_id && kind == ChannelType::Text
 }
 
-/// Retrieve the configured moderation records channel for a guild, if any.
+/// Retrieve the configured Moderation Channel for a Guild, if any.
 pub async fn get_moderation_channel(
     pool: &SqlitePool,
     guild_id: GuildId,
@@ -37,7 +37,7 @@ pub async fn get_moderation_channel(
     }
 }
 
-/// Set or update the configured moderation records channel for a guild.
+/// Set or update the configured Moderation Channel for a Guild.
 pub async fn set_moderation_channel(
     pool: &SqlitePool,
     guild_id: GuildId,
@@ -55,7 +55,7 @@ pub async fn set_moderation_channel(
     Ok(())
 }
 
-/// Clear the configured moderation records channel for a guild.
+/// Clear the configured Moderation Channel for a Guild.
 ///
 /// Returns `true` if a channel configuration was removed, or `false` if none was set.
 pub async fn clear_moderation_channel(pool: &SqlitePool, guild_id: GuildId) -> Result<bool> {
@@ -67,7 +67,7 @@ pub async fn clear_moderation_channel(pool: &SqlitePool, guild_id: GuildId) -> R
     Ok(result.rows_affected() > 0)
 }
 
-/// Check whether a moderation records channel is configured for a guild.
+/// Check whether a Moderation Channel is configured for a Guild.
 pub async fn is_moderation_channel_configured(
     pool: &SqlitePool,
     guild_id: GuildId,
