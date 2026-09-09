@@ -19,6 +19,7 @@ pub type ManualCheckIn = (
     serenity::UserId,
 );
 
+#[derive(Clone)]
 pub struct Data {
     pub config: Arc<Config>,
     pub db_pool: SqlitePool,

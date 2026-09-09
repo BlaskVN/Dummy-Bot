@@ -873,12 +873,7 @@ async fn finalize_local(
     guild_id: serenity::GuildId,
     event_id: serenity::ScheduledEventId,
 ) -> Result<(), Error> {
-    let now = chrono::Utc::now().timestamp();
-    crate::attendance::pause_session(&ctx.data().db_pool, guild_id, event_id, now).await?;
-    crate::activity_aggregate::finalize_activity(&ctx.data().db_pool, guild_id, event_id, now)
-        .await?;
-    crate::handlers::rewards::reconcile(ctx.serenity_context(), ctx.data(), guild_id).await;
-    crate::handlers::activity_presence::clear_session(ctx.data(), guild_id, event_id).await;
+    crate::handlers::community::terminate_activity(ctx.serenity_context(), ctx.data(), guild_id, event_id).await;
     Ok(())
 }
 

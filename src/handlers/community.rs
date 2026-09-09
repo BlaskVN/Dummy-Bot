@@ -9,6 +9,21 @@ use poise::serenity_prelude as serenity;
 
 const RECONCILE_LIMIT: i64 = 500;
 
+pub async fn terminate_activity(
+    ctx: &serenity::Context,
+    data: &Data,
+    guild_id: serenity::GuildId,
+    event_id: serenity::ScheduledEventId,
+) {
+    let now = chrono::Utc::now().timestamp();
+    if let Err(error) = crate::community::terminate_activity(&data.db_pool, guild_id, event_id, now).await {
+        tracing::error!(%guild_id, %event_id, %error, "Could not terminate community activity");
+    } else {
+        super::rewards::reconcile(ctx, data, guild_id).await;
+    }
+    super::activity_presence::clear_session(data, guild_id, event_id).await;
+}
+
 pub async fn handle_native_update(
     ctx: &serenity::Context,
     data: &Data,
@@ -22,29 +37,7 @@ pub async fn handle_native_update(
         tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not mirror scheduled event state");
     }
     if matches!(state, "completed" | "canceled") {
-        if let Err(error) = crate::attendance::pause_session(
-            &data.db_pool,
-            event.guild_id,
-            event.id,
-            chrono::Utc::now().timestamp(),
-        )
-        .await
-        {
-            tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not pause terminal activity attendance");
-        }
-        if let Err(error) = crate::activity_aggregate::finalize_activity(
-            &data.db_pool,
-            event.guild_id,
-            event.id,
-            chrono::Utc::now().timestamp(),
-        )
-        .await
-        {
-            tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not finalize terminal activity");
-        } else {
-            super::rewards::reconcile(ctx, data, event.guild_id).await;
-        }
-        super::activity_presence::clear_session(data, event.guild_id, event.id).await;
+        terminate_activity(ctx, data, event.guild_id, event.id).await;
     }
 }
 
@@ -53,30 +46,8 @@ pub async fn handle_native_delete(
     data: &Data,
     event: &serenity::ScheduledEvent,
 ) {
-    if let Err(error) = crate::attendance::pause_session(
-        &data.db_pool,
-        event.guild_id,
-        event.id,
-        chrono::Utc::now().timestamp(),
-    )
-    .await
-    {
-        tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not pause deleted activity attendance");
-    }
-    super::activity_presence::clear_session(data, event.guild_id, event.id).await;
     notify_deleted(ctx, data, event.guild_id, event.id).await;
-    if let Err(error) = crate::activity_aggregate::finalize_activity(
-        &data.db_pool,
-        event.guild_id,
-        event.id,
-        chrono::Utc::now().timestamp(),
-    )
-    .await
-    {
-        tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not finalize deleted activity");
-    } else {
-        super::rewards::reconcile(ctx, data, event.guild_id).await;
-    }
+    terminate_activity(ctx, data, event.guild_id, event.id).await;
 }
 
 pub async fn reconcile_all(ctx: &serenity::Context, data: &Data) {

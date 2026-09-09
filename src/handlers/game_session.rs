@@ -4,9 +4,7 @@ use crate::community::{
 };
 use crate::{Data, Error};
 use poise::serenity_prelude as serenity;
-use sqlx::SqlitePool;
 use std::sync::Arc;
-use tokio::sync::Notify;
 
 const EXPIRY_BATCH: i64 = 100;
 
@@ -115,11 +113,11 @@ pub async fn handle_message(
     Ok(())
 }
 
-pub fn spawn_expiry_worker(ctx: serenity::Context, pool: SqlitePool, wakeup: Arc<Notify>) {
+pub fn spawn_expiry_worker(ctx: serenity::Context, data: Arc<Data>) {
     tokio::spawn(async move {
         loop {
-            expire_due(&ctx, &pool).await;
-            let next = match next_game_expiry(&pool).await {
+            expire_due(&ctx, &data).await;
+            let next = match next_game_expiry(&data.db_pool).await {
                 Ok(next) => next,
                 Err(error) => {
                     tracing::error!(%error, "Could not load next game-session expiry");
@@ -132,10 +130,10 @@ pub fn spawn_expiry_worker(ctx: serenity::Context, pool: SqlitePool, wakeup: Arc
                     let seconds = if remaining > 0 { remaining as u64 } else { 60 };
                     tokio::select! {
                         () = tokio::time::sleep(std::time::Duration::from_secs(seconds)) => {}
-                        () = wakeup.notified() => {}
+                        () = data.game_expiry_wakeup.notified() => {}
                     }
                 }
-                None => wakeup.notified().await,
+                None => data.game_expiry_wakeup.notified().await,
             }
         }
     });
@@ -145,8 +143,8 @@ pub fn wake_expiry(data: &Data) {
     data.game_expiry_wakeup.notify_one();
 }
 
-async fn expire_due(ctx: &serenity::Context, pool: &SqlitePool) {
-    let due = match due_game_activities(pool, chrono::Utc::now().timestamp(), EXPIRY_BATCH).await {
+async fn expire_due(ctx: &serenity::Context, data: &Data) {
+    let due = match due_game_activities(&data.db_pool, chrono::Utc::now().timestamp(), EXPIRY_BATCH).await {
         Ok(due) => due,
         Err(error) => {
             tracing::error!(%error, "Could not load overdue game sessions");
@@ -175,21 +173,9 @@ async fn expire_due(ctx: &serenity::Context, pool: &SqlitePool) {
                 continue;
             }
         };
-        match finish_game_expiry(pool, guild_id, event_id, state).await {
+        match finish_game_expiry(&data.db_pool, guild_id, event_id, state).await {
             Ok(true) => {
-                let now = chrono::Utc::now().timestamp();
-                if let Err(error) =
-                    crate::attendance::pause_session(pool, guild_id, event_id, now).await
-                {
-                    tracing::error!(%guild_id, %event_id, %error, "Could not pause expired game attendance");
-                } else if let Err(error) =
-                    crate::activity_aggregate::finalize_activity(pool, guild_id, event_id, now)
-                        .await
-                {
-                    tracing::error!(%guild_id, %event_id, %error, "Could not aggregate expired game attendance");
-                } else {
-                    super::rewards::reconcile_pool(ctx, pool, guild_id).await;
-                }
+                super::community::terminate_activity(ctx, data, guild_id, event_id).await;
             }
             Ok(false) => {}
             Err(error) => {

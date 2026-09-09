@@ -374,6 +374,17 @@ pub async fn finish_game_expiry(
     Ok(changed)
 }
 
+pub async fn terminate_activity(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    event_id: ScheduledEventId,
+    now: i64,
+) -> Result<()> {
+    crate::attendance::pause_session(pool, guild_id, event_id, now).await?;
+    crate::activity_aggregate::finalize_activity(pool, guild_id, event_id, now).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -381,7 +392,7 @@ mod tests {
         claim_promotion_notification, create_activity, create_game_activity, due_game_activities,
         finish_game_expiry, finish_promotion_notification, join_activity, leave_activity,
         mirror_activity_state, next_game_expiry, nonterminal_activities, set_activity_capacity,
-        update_activity_extension,
+        terminate_activity, update_activity_extension,
     };
     use crate::database::init_db;
     use poise::serenity_prelude::{GuildId, ScheduledEventId, ScheduledEventType, UserId};
@@ -829,6 +840,80 @@ mod tests {
             .unwrap()
         );
         assert_eq!(next_game_expiry(&pool).await.unwrap(), None);
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn terminates_activity_by_pausing_and_finalizing() {
+        let directory =
+            std::env::temp_dir().join(format!("dummy-bot-terminate-test-{}", std::process::id()));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+
+        let guild_id = GuildId::new(1);
+        let event_id = ScheduledEventId::new(50);
+        let user_id = UserId::new(2);
+
+        create_activity(
+            &pool,
+            guild_id,
+            event_id,
+            ScheduledEventType::Voice,
+            Some(user_id),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        crate::attendance::reconcile_attendance(
+            &pool,
+            guild_id,
+            event_id,
+            &[user_id],
+            1000,
+        )
+        .await
+        .unwrap();
+
+        let rows = crate::attendance::attendance_records(&pool, guild_id, event_id).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].active_started_at, Some(1000));
+        assert_eq!(rows[0].accumulated_seconds, 0);
+
+        mirror_activity_state(&pool, guild_id, event_id, "completed").await.unwrap();
+
+        terminate_activity(&pool, guild_id, event_id, 2800).await.unwrap();
+
+        // pause_session accumulated active time (1800s = 30m) and finalize_activity aggregated it
+        let totals: Vec<(String, i64, i64)> = sqlx::query_as(
+            "SELECT user_id, play_minutes, session_credits FROM activity_member_aggregate WHERE guild_id = ? ORDER BY user_id",
+        )
+        .bind(guild_id.to_string())
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(totals, vec![(user_id.to_string(), 30, 1)]);
+
+        // finalize_activity set finalized_at and pruned raw attendance
+        let finalized_at: Option<i64> = sqlx::query_scalar(
+            "SELECT finalized_at FROM community_activity WHERE guild_id = ? AND scheduled_event_id = ?",
+        )
+        .bind(guild_id.to_string())
+        .bind(event_id.to_string())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(finalized_at, Some(2800));
+
+        let rows = crate::attendance::attendance_records(&pool, guild_id, event_id).await.unwrap();
+        assert!(rows.is_empty());
+
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }
