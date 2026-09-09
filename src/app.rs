@@ -51,7 +51,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     "Bot connected"
                 );
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                commands::presence::restore_presence(ctx, &setup_pool).await;
+                crate::presence::restore_presence(ctx, &setup_pool).await;
 
                 let rule_engine = Arc::new(crate::core::RhaiRuleEngine::new(
                     &setup_config.rhai_modules_directory,

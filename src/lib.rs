@@ -18,6 +18,7 @@ pub mod message_log;
 pub mod moderation_cases;
 pub mod moderation_channel;
 pub mod permissions;
+pub mod presence;
 pub mod reward_roles;
 pub mod state;
 pub mod timezone;

@@ -2,13 +2,6 @@ use anyhow::{Context, Result};
 use sqlx::SqlitePool;
 use std::path::Path;
 
-/// Persistent presence configuration stored across bot restarts.
-pub struct BotPresenceRecord {
-    pub status: String,
-    pub activity_kind: Option<String>,
-    pub activity_text: Option<String>,
-}
-
 pub struct DonationConfig {
     pub message: Option<String>,
     pub url: Option<String>,
@@ -60,59 +53,6 @@ pub async fn clear_donation_config(pool: &SqlitePool) -> Result<Option<String>> 
         .execute(pool)
         .await?;
     Ok(old)
-}
-
-/// Upsert the bot's persistent presence into the database.
-/// Only call this when duration is permanent (0 or unset).
-pub async fn save_bot_presence(
-    pool: &SqlitePool,
-    status: &str,
-    activity_kind: Option<&str>,
-    activity_text: Option<&str>,
-) -> Result<()> {
-    sqlx::query(
-        "INSERT INTO bot_presence (id, status, activity_kind, activity_text, updated_at)
-         VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(id) DO UPDATE SET
-             status        = excluded.status,
-             activity_kind = excluded.activity_kind,
-             activity_text = excluded.activity_text,
-             updated_at    = CURRENT_TIMESTAMP",
-    )
-    .bind(status)
-    .bind(activity_kind)
-    .bind(activity_text)
-    .execute(pool)
-    .await
-    .context("Failed to save bot presence")?;
-    Ok(())
-}
-
-/// Load the persistent presence row (there is at most one row with id = 1).
-pub async fn load_bot_presence(pool: &SqlitePool) -> Result<Option<BotPresenceRecord>> {
-    let row = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
-        "SELECT status, activity_kind, activity_text FROM bot_presence WHERE id = 1",
-    )
-    .fetch_optional(pool)
-    .await
-    .context("Failed to load bot presence")?;
-
-    Ok(
-        row.map(|(status, activity_kind, activity_text)| BotPresenceRecord {
-            status,
-            activity_kind,
-            activity_text,
-        }),
-    )
-}
-
-/// Remove the persistent presence row so the bot starts with Discord's default.
-pub async fn clear_bot_presence(pool: &SqlitePool) -> Result<()> {
-    sqlx::query("DELETE FROM bot_presence WHERE id = 1")
-        .execute(pool)
-        .await
-        .context("Failed to clear bot presence")?;
-    Ok(())
 }
 
 pub async fn message_log_channel(
