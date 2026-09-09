@@ -1,9 +1,10 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::ui::{self, Tone};
-use crate::valorant::{RiotApiError, RiotRegion};
+use crate::valorant::{
+    ValorantLeaderboardError, ValorantLinkError, ValorantProfileError, ValorantVisibilityError,
+};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
-use std::sync::Arc;
 
 /// VALORANT player statistics and Guild leaderboard management.
 #[poise::command(
@@ -28,7 +29,7 @@ pub async fn profile(
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let (target_user_id, is_self) = match &member {
+    let target_user_id = match &member {
         Some(m) => {
             if m.guild_id != guild_id {
                 ui::reply(
@@ -39,59 +40,61 @@ pub async fn profile(
                 .await?;
                 return Ok(());
             }
-            (m.user.id, m.user.id == ctx.author().id)
+            m.user.id
         }
-        None => (ctx.author().id, true),
+        None => ctx.author().id,
     };
 
-    let account =
-        match crate::valorant::get_linked_account(&ctx.data().db_pool, target_user_id).await? {
-            Some(acc) => acc,
-            None => {
-                let key = if is_self {
-                    TranslationKey::ValorantProfileNotLinkedSelf
-                } else {
-                    TranslationKey::ValorantProfileNotLinkedOther
-                };
-                ui::reply(ctx, Tone::Warning, t(lang, key)).await?;
-                return Ok(());
-            }
-        };
-
-    let is_visible =
-        crate::valorant::get_guild_visibility(&ctx.data().db_pool, guild_id, target_user_id)
-            .await?;
-
-    if !is_self && !is_visible {
-        ui::reply(
-            ctx,
-            Tone::Warning,
-            t(lang, TranslationKey::ValorantProfileHiddenOther),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let stats = match ctx
+    let profile = match ctx
         .data()
-        .riot_api
-        .get_player_ranked(account.region, &account.puuid)
+        .valorant_service()
+        .get_profile(guild_id, ctx.author().id, target_user_id)
         .await
     {
-        Ok(s) => s,
-        Err(err) => {
-            tracing::warn!(
-                err = %err,
-                puuid = %account.puuid,
-                user_id = %target_user_id,
-                "Failed to load player ranked data"
-            );
-            let key = match err.downcast_ref::<RiotApiError>() {
-                Some(RiotApiError::Forbidden) => TranslationKey::ValorantProfileForbidden,
-                Some(RiotApiError::NotFound) => TranslationKey::ValorantProfileUnranked,
-                _ => TranslationKey::ValorantProfileApiError,
+        Ok(p) => p,
+        Err(ValorantProfileError::NotLinked { is_self }) => {
+            let key = if is_self {
+                TranslationKey::ValorantProfileNotLinkedSelf
+            } else {
+                TranslationKey::ValorantProfileNotLinkedOther
             };
             ui::reply(ctx, Tone::Warning, t(lang, key)).await?;
+            return Ok(());
+        }
+        Err(ValorantProfileError::HiddenOther) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantProfileHiddenOther),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantProfileError::ApiForbidden) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantProfileForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantProfileError::ApiUnranked) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantProfileUnranked),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantProfileError::ApiError(_)) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantProfileApiError),
+            )
+            .await?;
             return Ok(());
         }
     };
@@ -102,8 +105,8 @@ pub async fn profile(
     let rr_label = t(lang, TranslationKey::ValorantProfileRRLabel);
     let wins_label = t(lang, TranslationKey::ValorantProfileWinsLabel);
 
-    let privacy_note = if is_self {
-        if is_visible {
+    let privacy_note = if profile.is_self {
+        if profile.is_visible {
             format!(
                 "\n\n> {}",
                 t(lang, TranslationKey::ValorantProfileVisibilityNoteVisible)
@@ -124,13 +127,13 @@ pub async fn profile(
          **{rank_label}:** {rank}\n\
          **{rr_label}:** {rr} RR\n\
          **{wins_label}:** {wins}{privacy_note}",
-        game_name = account.game_name,
-        tag_line = account.tag_line,
-        region = account.region.as_str().to_ascii_uppercase(),
+        game_name = profile.account.game_name,
+        tag_line = profile.account.tag_line,
+        region = profile.account.region.as_str().to_ascii_uppercase(),
         user_id = target_user_id,
-        rank = stats.tier.name(),
-        rr = stats.ranked_rating,
-        wins = stats.number_of_wins,
+        rank = profile.stats.tier.name(),
+        rr = profile.stats.ranked_rating,
+        wins = profile.stats.number_of_wins,
     );
 
     let embed = ui::embed(ctx.data(), Tone::Primary)
@@ -149,64 +152,44 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let visible_accounts =
-        crate::valorant::list_guild_visible_accounts(&ctx.data().db_pool, guild_id).await?;
-
-    if visible_accounts.is_empty() {
-        ui::reply(
-            ctx,
-            Tone::Primary,
-            t(lang, TranslationKey::ValorantLeaderboardEmpty),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let mut join_set = tokio::task::JoinSet::new();
-    let riot_api = Arc::clone(&ctx.data().riot_api);
-    for acc in visible_accounts {
-        let api = Arc::clone(&riot_api);
-        join_set.spawn(async move {
-            let res = api.get_player_ranked(acc.region, &acc.puuid).await;
-            (acc, res)
-        });
-    }
-
-    let mut ranked_entries = Vec::new();
-    let mut had_forbidden = false;
-    while let Some(res) = join_set.join_next().await {
-        if let Ok((acc, res)) = res {
-            match res {
-                Ok(stats) => ranked_entries.push((acc, stats)),
-                Err(err) => {
-                    if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
-                        had_forbidden = true;
-                    }
-                    tracing::warn!(%err, user_id = %acc.user_id, "Failed to load player ranked data for leaderboard");
-                }
-            }
+    let ranked_entries = match ctx
+        .data()
+        .valorant_service()
+        .get_guild_leaderboard(guild_id)
+        .await
+    {
+        Ok(entries) => entries,
+        Err(ValorantLeaderboardError::Empty) => {
+            ui::reply(
+                ctx,
+                Tone::Primary,
+                t(lang, TranslationKey::ValorantLeaderboardEmpty),
+            )
+            .await?;
+            return Ok(());
         }
-    }
-
-    if ranked_entries.is_empty() {
-        let key = if had_forbidden {
-            TranslationKey::ValorantProfileForbidden
-        } else {
-            TranslationKey::ValorantLeaderboardApiError
-        };
-        ui::reply(ctx, Tone::Warning, t(lang, key)).await?;
-        return Ok(());
-    }
-
-    ranked_entries.sort_by(|a, b| {
-        b.1.tier
-            .cmp(&a.1.tier)
-            .then_with(|| b.1.ranked_rating.cmp(&a.1.ranked_rating))
-            .then_with(|| b.1.number_of_wins.cmp(&a.1.number_of_wins))
-    });
+        Err(ValorantLeaderboardError::ApiForbidden) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantProfileForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantLeaderboardError::ApiError(_)) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantLeaderboardApiError),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
 
     let mut lines = Vec::new();
-    for (idx, (acc, stats)) in ranked_entries.iter().enumerate().take(25) {
+    for (idx, entry) in ranked_entries.iter().enumerate().take(25) {
         let rank_pos = idx + 1;
         let medal = match rank_pos {
             1 => "🥇 ",
@@ -217,12 +200,12 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
 
         lines.push(format!(
             "**#{rank_pos}** {medal}**{game_name}#{tag}** — **{tier}** ({rr} RR, {wins}W) • <@{user_id}>",
-            game_name = acc.game_name,
-            tag = acc.tag_line,
-            tier = stats.tier.name(),
-            rr = stats.ranked_rating,
-            wins = stats.number_of_wins,
-            user_id = acc.user_id
+            game_name = entry.account.game_name,
+            tag = entry.account.tag_line,
+            tier = entry.stats.tier.name(),
+            rr = entry.stats.ranked_rating,
+            wins = entry.stats.number_of_wins,
+            user_id = entry.account.user_id
         ));
     }
 
@@ -249,26 +232,31 @@ pub async fn enable(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let account = crate::valorant::get_linked_account(&ctx.data().db_pool, ctx.author().id).await?;
-    if account.is_none() {
-        ui::reply(
-            ctx,
-            Tone::Warning,
-            t(lang, TranslationKey::ValorantVisibilityNotLinked),
-        )
-        .await?;
-        return Ok(());
+    match ctx
+        .data()
+        .valorant_service()
+        .enable_visibility(guild_id, ctx.author().id)
+        .await
+    {
+        Ok(()) => {
+            ui::reply(
+                ctx,
+                Tone::Success,
+                t(lang, TranslationKey::ValorantVisibilityEnabled),
+            )
+            .await?;
+        }
+        Err(ValorantVisibilityError::NotLinked) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantVisibilityNotLinked),
+            )
+            .await?;
+        }
+        Err(ValorantVisibilityError::Database(err)) => return Err(err.into()),
     }
 
-    crate::valorant::set_guild_visibility(&ctx.data().db_pool, guild_id, ctx.author().id, true)
-        .await?;
-
-    ui::reply(
-        ctx,
-        Tone::Success,
-        t(lang, TranslationKey::ValorantVisibilityEnabled),
-    )
-    .await?;
     Ok(())
 }
 
@@ -280,7 +268,9 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    crate::valorant::set_guild_visibility(&ctx.data().db_pool, guild_id, ctx.author().id, false)
+    ctx.data()
+        .valorant_service()
+        .disable_visibility(guild_id, ctx.author().id)
         .await?;
 
     ui::reply(
@@ -300,9 +290,11 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let is_visible =
-        crate::valorant::get_guild_visibility(&ctx.data().db_pool, guild_id, ctx.author().id)
-            .await?;
+    let is_visible = ctx
+        .data()
+        .valorant_service()
+        .get_visibility_status(guild_id, ctx.author().id)
+        .await?;
 
     let key = if is_visible {
         TranslationKey::ValorantVisibilityStatusEnabled
@@ -326,90 +318,47 @@ pub async fn link(
         None => ctx.data().default_language(),
     };
 
-    let trimmed = riot_id.trim();
-    let Some((game_name, tag_line)) = trimmed.split_once('#') else {
-        ui::reply(
-            ctx,
-            Tone::Error,
-            t(lang, TranslationKey::ValorantLinkInvalidFormat),
-        )
-        .await?;
-        return Ok(());
-    };
-
-    let game_name = game_name.trim();
-    let tag_line = tag_line.trim();
-    if game_name.is_empty() || tag_line.is_empty() {
-        ui::reply(
-            ctx,
-            Tone::Error,
-            t(lang, TranslationKey::ValorantLinkInvalidFormat),
-        )
-        .await?;
-        return Ok(());
-    }
-
-    let riot_region = match region {
-        Some(r) => match RiotRegion::try_parse(&r) {
-            Some(parsed) => parsed,
-            None => {
-                ui::reply(
-                    ctx,
-                    Tone::Error,
-                    t(lang, TranslationKey::ValorantLinkInvalidRegion),
-                )
-                .await?;
-                return Ok(());
-            }
-        },
-        None => RiotRegion::Ap,
-    };
-
-    let linked_account = match ctx
+    match ctx
         .data()
-        .riot_api
-        .get_account_by_riot_id(riot_region, game_name, tag_line)
+        .valorant_service()
+        .link_account(ctx.author().id, &riot_id, region.as_deref())
         .await
     {
-        Ok(acc) => acc,
-        Err(err) => {
-            if let Some(RiotApiError::NotFound) = err.downcast_ref::<RiotApiError>() {
-                let full_id = format!("{game_name}#{tag_line}");
-                let msg = tf(lang, TranslationKey::ValorantLinkNotFound, &[&full_id]);
-                ui::reply(ctx, Tone::Error, msg).await?;
-                return Ok(());
-            }
-
-            tracing::warn!(
-                %err,
-                %game_name,
-                %tag_line,
-                "Failed to verify Riot account with Riot API"
-            );
+        Ok(linked) => {
+            let full_id = format!("{}#{}", linked.game_name, linked.tag_line);
+            let msg = tf(lang, TranslationKey::ValorantLinkSuccess, &[&full_id]);
+            ui::reply(ctx, Tone::Success, msg).await?;
+        }
+        Err(ValorantLinkError::InvalidFormat) => {
+            ui::reply(
+                ctx,
+                Tone::Error,
+                t(lang, TranslationKey::ValorantLinkInvalidFormat),
+            )
+            .await?;
+        }
+        Err(ValorantLinkError::InvalidRegion) => {
+            ui::reply(
+                ctx,
+                Tone::Error,
+                t(lang, TranslationKey::ValorantLinkInvalidRegion),
+            )
+            .await?;
+        }
+        Err(ValorantLinkError::AccountNotFound(full_id)) => {
+            let msg = tf(lang, TranslationKey::ValorantLinkNotFound, &[&full_id]);
+            ui::reply(ctx, Tone::Error, msg).await?;
+        }
+        Err(ValorantLinkError::ApiError(_)) => {
             ui::reply(
                 ctx,
                 Tone::Error,
                 t(lang, TranslationKey::ValorantLinkApiError),
             )
             .await?;
-            return Ok(());
         }
-    };
+    }
 
-    let linked = crate::valorant::set_linked_account(
-        &ctx.data().db_pool,
-        ctx.author().id,
-        &linked_account.puuid,
-        &linked_account.game_name,
-        &linked_account.tag_line,
-        riot_region,
-    )
-    .await?;
-
-    let full_id = format!("{}#{}", linked.game_name, linked.tag_line);
-    let msg = tf(lang, TranslationKey::ValorantLinkSuccess, &[&full_id]);
-
-    ui::reply(ctx, Tone::Success, msg).await?;
     Ok(())
 }
 
@@ -421,8 +370,11 @@ pub async fn unlink(ctx: Context<'_>) -> Result<(), Error> {
         None => ctx.data().default_language(),
     };
 
-    let removed =
-        crate::valorant::remove_linked_account(&ctx.data().db_pool, ctx.author().id).await?;
+    let removed = ctx
+        .data()
+        .valorant_service()
+        .unlink_account(ctx.author().id)
+        .await?;
 
     if removed {
         ui::reply(

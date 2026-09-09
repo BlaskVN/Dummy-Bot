@@ -44,4 +44,8 @@ impl Data {
     pub async fn language(&self, guild_id: serenity::GuildId) -> Language {
         get_guild_language(&self.db_pool, guild_id, self.default_language()).await
     }
+
+    pub fn valorant_service(&self) -> crate::valorant::ValorantService {
+        crate::valorant::ValorantService::new(self.db_pool.clone(), Arc::clone(&self.riot_api))
+    }
 }

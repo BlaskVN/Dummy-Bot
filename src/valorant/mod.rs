@@ -1,9 +1,14 @@
 pub mod riot_api;
+pub mod service;
 pub mod storage;
 
 pub use riot_api::{
     CompetitiveTier, HttpRiotApiClient, LeaderboardPlayer, LeaderboardResponse, MockRiotApiClient,
     PlayerRankedData, RiotAccount, RiotApiClient, RiotApiError, RiotRegion,
+};
+pub use service::{
+    ValorantLeaderboardEntry, ValorantLeaderboardError, ValorantLinkError, ValorantProfile,
+    ValorantProfileError, ValorantService, ValorantVisibilityError,
 };
 pub use storage::{
     LinkedRiotAccount, get_guild_visibility, get_linked_account, list_guild_visible_accounts,
