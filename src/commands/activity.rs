@@ -200,13 +200,6 @@ fn check_in_response(language: Language, success: bool) -> &'static str {
     }
 }
 
-#[derive(Debug, sqlx::FromRow)]
-struct GameStat {
-    game_key: String,
-    play_minutes: i64,
-    session_credits: i64,
-}
-
 /// Show your or another member's activity profile.
 #[poise::command(slash_command, guild_only)]
 pub async fn profile(
@@ -226,37 +219,23 @@ pub async fn profile(
         ui::reply(ctx, Tone::Warning, profile_unavailable(language)).await?;
         return Ok(());
     }
-    let opted_out: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM activity_opt_out WHERE guild_id = ? AND user_id = ?)",
+    let Some(profile) = crate::activity_aggregate::get_member_profile(
+        &ctx.data().db_pool,
+        guild_id,
+        user,
+        page,
     )
-    .bind(guild_id.to_string())
-    .bind(user.to_string())
-    .fetch_one(&ctx.data().db_pool)
-    .await?;
-    if opted_out {
+    .await?
+    else {
         ui::reply(ctx, Tone::Warning, profile_unavailable(language)).await?;
         return Ok(());
-    }
-    let (minutes, credits): (i64, i64) = sqlx::query_as("SELECT play_minutes, session_credits FROM activity_member_aggregate WHERE guild_id = ? AND user_id = ?")
-        .bind(guild_id.to_string()).bind(user.to_string()).fetch_optional(&ctx.data().db_pool).await?.unwrap_or((0, 0));
-    let games: Vec<GameStat> = sqlx::query_as("SELECT game_key, play_minutes, session_credits FROM activity_member_game_aggregate WHERE guild_id = ? AND user_id = ? ORDER BY play_minutes DESC, game_key LIMIT 10 OFFSET ?")
-        .bind(guild_id.to_string()).bind(user.to_string()).bind((page - 1) * 10)
-        .fetch_all(&ctx.data().db_pool).await?;
-    let game_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM activity_member_game_aggregate WHERE guild_id = ? AND user_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .bind(user.to_string())
-    .fetch_one(&ctx.data().db_pool)
-    .await?;
-    let level = crate::activity_aggregate::activity_level(minutes);
-    let next_minutes =
-        ((level + 1) as u128 * (level + 2) as u128 * 30).min(i64::MAX as u128) as i64;
+    };
     let labels = profile_labels(language);
-    let game_rows = if games.is_empty() {
+    let game_rows = if profile.games.is_empty() {
         labels.5.to_owned()
     } else {
-        games
+        profile
+            .games
             .iter()
             .map(|game| {
                 format!(
@@ -270,20 +249,19 @@ pub async fn profile(
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let pages = ((game_count + 9) / 10).max(1);
     let description = format!(
         "{}: {}\n{}: {}\n{}: {}\n{}: {}\n\n{} ({}/{}):\n{}",
         labels.0,
-        format_duration(minutes),
+        format_duration(profile.play_minutes),
         labels.1,
-        credits,
+        profile.session_credits,
         labels.3,
-        level,
+        profile.level,
         labels.4,
-        format_duration((next_minutes - minutes).max(0)),
+        format_duration((profile.next_level_minutes - profile.play_minutes).max(0)),
         labels.6,
         page,
-        pages,
+        profile.total_pages,
         game_rows,
     );
     ctx.send(ui::embed_reply(
@@ -309,8 +287,12 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let language = ctx.data().language(guild_id).await;
-    let rows: Vec<(String, i64)> = sqlx::query_as("SELECT a.user_id, a.play_minutes FROM activity_member_aggregate a LEFT JOIN activity_opt_out o ON o.guild_id = a.guild_id AND o.user_id = a.user_id WHERE a.guild_id = ? AND o.user_id IS NULL ORDER BY a.play_minutes DESC, a.user_id LIMIT 1000")
-        .bind(guild_id.to_string()).fetch_all(&ctx.data().db_pool).await?;
+    let rows = crate::activity_aggregate::get_activity_leaderboard_rows(
+        &ctx.data().db_pool,
+        guild_id,
+        1000,
+    )
+    .await?;
     let bot_ids = ctx.guild().map_or_else(HashSet::new, |guild| {
         guild
             .members
@@ -320,7 +302,7 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
     });
     let ranked = rank_members(
         rows.into_iter()
-            .filter_map(|(id, minutes)| id.parse().ok().map(|id| (id, minutes)))
+            .map(|row| (row.user_id.get(), row.play_minutes))
             .collect(),
         &bot_ids,
     );

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use poise::serenity_prelude::{GuildId, ScheduledEventId};
+use poise::serenity_prelude::{GuildId, ScheduledEventId, UserId};
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
 
@@ -251,10 +251,124 @@ pub fn activity_level(total_minutes: i64) -> u64 {
     low as u64
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct MemberGameStat {
+    pub game_key: String,
+    pub play_minutes: i64,
+    pub session_credits: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberActivityProfile {
+    pub play_minutes: i64,
+    pub session_credits: i64,
+    pub level: i64,
+    pub next_level_minutes: i64,
+    pub total_games: i64,
+    pub games: Vec<MemberGameStat>,
+    pub total_pages: i64,
+}
+
+pub async fn get_member_profile(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    user_id: UserId,
+    page: i64,
+) -> Result<Option<MemberActivityProfile>> {
+    if page < 1 {
+        return Ok(None);
+    }
+    let opted_out: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM activity_opt_out WHERE guild_id = ? AND user_id = ?)",
+    )
+    .bind(guild_id.to_string())
+    .bind(user_id.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    if opted_out {
+        return Ok(None);
+    }
+
+    let (play_minutes, session_credits): (i64, i64) = sqlx::query_as(
+        "SELECT play_minutes, session_credits FROM activity_member_aggregate WHERE guild_id = ? AND user_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(user_id.to_string())
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or((0, 0));
+
+    let total_games: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM activity_member_game_aggregate WHERE guild_id = ? AND user_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(user_id.to_string())
+    .fetch_one(pool)
+    .await?;
+
+    let games: Vec<MemberGameStat> = sqlx::query_as(
+        "SELECT game_key, play_minutes, session_credits FROM activity_member_game_aggregate WHERE guild_id = ? AND user_id = ? ORDER BY play_minutes DESC, game_key LIMIT 10 OFFSET ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(user_id.to_string())
+    .bind((page - 1) * 10)
+    .fetch_all(pool)
+    .await?;
+
+    let level = activity_level(play_minutes) as i64;
+    let next_level_minutes =
+        ((level + 1) as u128 * (level + 2) as u128 * 30).min(i64::MAX as u128) as i64;
+    let total_pages = ((total_games + 9) / 10).max(1);
+
+    Ok(Some(MemberActivityProfile {
+        play_minutes,
+        session_credits,
+        level,
+        next_level_minutes,
+        total_games,
+        games,
+        total_pages,
+    }))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeaderboardRow {
+    pub user_id: UserId,
+    pub play_minutes: i64,
+}
+
+pub async fn get_activity_leaderboard_rows(
+    pool: &SqlitePool,
+    guild_id: GuildId,
+    limit: i64,
+) -> Result<Vec<LeaderboardRow>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT a.user_id, a.play_minutes FROM activity_member_aggregate a LEFT JOIN activity_opt_out o ON o.guild_id = a.guild_id AND o.user_id = a.user_id WHERE a.guild_id = ? AND o.user_id IS NULL ORDER BY a.play_minutes DESC, a.user_id LIMIT ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let leaderboard = rows
+        .into_iter()
+        .filter_map(|(raw_id, play_minutes)| {
+            raw_id.parse::<u64>().ok().map(|id| LeaderboardRow {
+                user_id: UserId::new(id),
+                play_minutes,
+            })
+        })
+        .collect();
+
+    Ok(leaderboard)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        activity_level, add_session_credit, assign_uncovered, finalize_activity, overlaps,
+        activity_level, add_session_credit, assign_uncovered, finalize_activity,
+        get_activity_leaderboard_rows, get_member_profile, overlaps, LeaderboardRow,
     };
     use crate::community::{create_activity, create_game_activity, update_activity_extension};
     use crate::database::init_db;
@@ -383,6 +497,226 @@ mod tests {
         let total: (i64, i64) = sqlx::query_as("SELECT play_minutes, session_credits FROM activity_member_aggregate WHERE guild_id = '1' AND user_id = '3'")
             .fetch_one(&pool).await.unwrap();
         assert_eq!(total, (33, 2));
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_member_profile_opted_out_returns_none() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-profile-optout-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+
+        let guild_id = GuildId::new(1);
+        let user_id = UserId::new(42);
+
+        // Initially not opted out, empty profile returned
+        let profile = get_member_profile(&pool, guild_id, user_id, 1)
+            .await
+            .unwrap();
+        assert!(profile.is_some());
+        let p = profile.unwrap();
+        assert_eq!(p.play_minutes, 0);
+        assert_eq!(p.session_credits, 0);
+        assert_eq!(p.total_games, 0);
+        assert_eq!(p.level, 0);
+        assert_eq!(p.total_pages, 1);
+        assert!(p.games.is_empty());
+
+        // Opt out
+        sqlx::query("INSERT INTO activity_opt_out (guild_id, user_id) VALUES ('1', '42')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let profile = get_member_profile(&pool, guild_id, user_id, 1)
+            .await
+            .unwrap();
+        assert!(profile.is_none());
+
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_member_profile_aggregates_and_paging() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-profile-paging-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+
+        let guild_id = GuildId::new(1);
+        let user_id = UserId::new(42);
+
+        // 180 minutes -> level 2, next level (level 3) is (3 * 4 * 30) = 360
+        sqlx::query("INSERT INTO activity_member_aggregate (guild_id, user_id, play_minutes, session_credits) VALUES ('1', '42', 180, 5)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Insert 15 games
+        for i in 1..=15 {
+            sqlx::query("INSERT INTO activity_member_game_aggregate (guild_id, user_id, game_key, play_minutes, session_credits) VALUES ('1', '42', ?, ?, 1)")
+                .bind(format!("game_{:02}", i))
+                .bind(100 - i)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        // Page 1: 10 games, total_pages = 2, total_games = 15
+        let page1 = get_member_profile(&pool, guild_id, user_id, 1)
+            .await
+            .unwrap()
+            .expect("profile expected");
+        assert_eq!(page1.play_minutes, 180);
+        assert_eq!(page1.session_credits, 5);
+        assert_eq!(page1.level, 2);
+        assert_eq!(page1.next_level_minutes, 360);
+        assert_eq!(page1.total_games, 15);
+        assert_eq!(page1.total_pages, 2);
+        assert_eq!(page1.games.len(), 10);
+        assert_eq!(page1.games[0].game_key, "game_01");
+        assert_eq!(page1.games[0].play_minutes, 99);
+        assert_eq!(page1.games[9].game_key, "game_10");
+        assert_eq!(page1.games[9].play_minutes, 90);
+
+        // Page 2: remaining 5 games
+        let page2 = get_member_profile(&pool, guild_id, user_id, 2)
+            .await
+            .unwrap()
+            .expect("profile expected");
+        assert_eq!(page2.games.len(), 5);
+        assert_eq!(page2.total_pages, 2);
+        assert_eq!(page2.games[0].game_key, "game_11");
+        assert_eq!(page2.games[4].game_key, "game_15");
+
+        // Page 3: out of bounds -> games is empty
+        let page3 = get_member_profile(&pool, guild_id, user_id, 3)
+            .await
+            .unwrap()
+            .expect("profile expected");
+        assert!(page3.games.is_empty());
+        assert_eq!(page3.total_pages, 2);
+
+        // Invalid page (< 1) returns None
+        let invalid = get_member_profile(&pool, guild_id, user_id, 0)
+            .await
+            .unwrap();
+        assert!(invalid.is_none());
+
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_activity_leaderboard_rows_excludes_opted_out_and_orders_desc() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-leaderboard-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+
+        let guild_id = GuildId::new(1);
+
+        for (user, minutes) in [(10, 100), (20, 300), (30, 200), (40, 500), (50, 300)] {
+            sqlx::query("INSERT INTO activity_member_aggregate (guild_id, user_id, play_minutes, session_credits) VALUES ('1', ?, ?, 1)")
+                .bind(user.to_string())
+                .bind(minutes)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        // Opt out user 40
+        sqlx::query("INSERT INTO activity_opt_out (guild_id, user_id) VALUES ('1', '40')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let rows = get_activity_leaderboard_rows(&pool, guild_id, 10)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 4);
+        assert_eq!(
+            rows[0],
+            LeaderboardRow {
+                user_id: UserId::new(20),
+                play_minutes: 300
+            }
+        );
+        assert_eq!(
+            rows[1],
+            LeaderboardRow {
+                user_id: UserId::new(50),
+                play_minutes: 300
+            }
+        );
+        assert_eq!(
+            rows[2],
+            LeaderboardRow {
+                user_id: UserId::new(30),
+                play_minutes: 200
+            }
+        );
+        assert_eq!(
+            rows[3],
+            LeaderboardRow {
+                user_id: UserId::new(10),
+                play_minutes: 100
+            }
+        );
+
+        // Limit test
+        let limited = get_activity_leaderboard_rows(&pool, guild_id, 2)
+            .await
+            .unwrap();
+        assert_eq!(limited.len(), 2);
+        assert_eq!(
+            limited[0],
+            LeaderboardRow {
+                user_id: UserId::new(20),
+                play_minutes: 300
+            }
+        );
+        assert_eq!(
+            limited[1],
+            LeaderboardRow {
+                user_id: UserId::new(50),
+                play_minutes: 300
+            }
+        );
+
         pool.close().await;
         std::fs::remove_dir_all(directory).unwrap();
     }
