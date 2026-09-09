@@ -199,9 +199,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             .and_then(|msg| reply_field(lang, guild_id, msg));
 
         let view = DeletedMessageView {
-            guild_id,
             channel_id,
-            message_id: deleted_message_id,
             author_id: &author_id,
             author_face: &author_face,
             content: &content,

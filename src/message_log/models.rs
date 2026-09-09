@@ -68,9 +68,7 @@ pub struct PurgedMessageSummary {
 
 #[derive(Debug, Clone)]
 pub struct DeletedMessageView<'a> {
-    pub guild_id: poise::serenity_prelude::GuildId,
     pub channel_id: ChannelId,
-    pub message_id: poise::serenity_prelude::MessageId,
     pub author_id: &'a str,
     pub author_face: &'a str,
     pub content: &'a str,

@@ -169,11 +169,6 @@ pub fn build_deleted_message_embed(
             true,
         )
         .field(t(lang, TranslationKey::MessageSentAt), sent_at, true)
-        .field(
-            t(lang, TranslationKey::MessageJumpTo),
-            message_url(view.guild_id, view.channel_id, view.message_id),
-            false,
-        )
         .timestamp(deleted_at)
 }
 
@@ -498,5 +493,64 @@ mod tests {
             formatted,
             "<@99>: *[Media only]*\n[Jump to Message](https://discord.com/channels/1/2/3)"
         );
+    }
+
+    #[test]
+    fn deleted_message_embed_omits_jump_link_and_places_timestamps_at_end() {
+        let view = super::super::models::DeletedMessageView {
+            channel_id: ChannelId::new(2),
+            author_id: "99",
+            author_face: "https://example.com/face.png",
+            content: "hello world",
+            sent_at_unix: 1700000000,
+            reply_info: None,
+        };
+
+        let embed =
+            build_deleted_message_embed(Language::English, &view, 500, serenity::Colour::RED);
+        let val = serde_json::to_value(&embed).unwrap();
+        let fields = val["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 5);
+        assert_eq!(fields[0]["name"], "Author");
+        assert_eq!(fields[1]["name"], "Channel");
+        assert_eq!(fields[2]["name"], "**Content:**");
+        assert_eq!(fields[3]["name"], "Deleted at");
+        assert_eq!(fields[4]["name"], "Sent at");
+        for field in fields {
+            let name = field["name"].as_str().unwrap();
+            let value = field["value"].as_str().unwrap();
+            assert!(!name.contains("Jump"));
+            assert!(!value.contains("Jump to Message"));
+        }
+    }
+
+    #[test]
+    fn edited_message_embed_omits_jump_link_and_places_timestamps_at_end() {
+        let view = super::super::models::EditedMessageView {
+            channel_id: ChannelId::new(2),
+            author_id: "99",
+            author_face: "https://example.com/face.png",
+            old_content: "hello world",
+            new_content: "hello modified",
+            sent_at_unix: 1700000000,
+            reply_info: None,
+        };
+        let embed =
+            build_edited_message_embed(Language::English, &view, 500, serenity::Colour::GOLD);
+        let val = serde_json::to_value(&embed).unwrap();
+        let fields = val["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 6);
+        assert_eq!(fields[0]["name"], "Author");
+        assert_eq!(fields[1]["name"], "Channel");
+        assert_eq!(fields[2]["name"], "Before");
+        assert_eq!(fields[3]["name"], "After");
+        assert_eq!(fields[4]["name"], "Edited at");
+        assert_eq!(fields[5]["name"], "Sent at");
+        for field in fields {
+            let name = field["name"].as_str().unwrap();
+            let value = field["value"].as_str().unwrap();
+            assert!(!name.contains("Jump"));
+            assert!(!value.contains("Jump to Message"));
+        }
     }
 }
