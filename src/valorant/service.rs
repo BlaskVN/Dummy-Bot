@@ -233,7 +233,9 @@ impl ValorantService {
                     "Failed to load player ranked data"
                 );
                 match err.downcast_ref::<RiotApiError>() {
-                    Some(RiotApiError::Forbidden) => return Err(ValorantProfileError::ApiForbidden),
+                    Some(RiotApiError::Forbidden) => {
+                        return Err(ValorantProfileError::ApiForbidden);
+                    }
                     Some(RiotApiError::NotFound) => return Err(ValorantProfileError::ApiUnranked),
                     _ => return Err(ValorantProfileError::ApiError(err)),
                 }
@@ -275,9 +277,10 @@ impl ValorantService {
         while let Some(res) = join_set.join_next().await {
             if let Ok((acc, res)) = res {
                 match res {
-                    Ok(stats) => {
-                        ranked_entries.push(ValorantLeaderboardEntry { account: acc, stats })
-                    }
+                    Ok(stats) => ranked_entries.push(ValorantLeaderboardEntry {
+                        account: acc,
+                        stats,
+                    }),
                     Err(err) => {
                         if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
                             had_forbidden = true;
@@ -350,7 +353,9 @@ impl ValorantService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::valorant::riot_api::{BoxFuture, CompetitiveTier, LeaderboardResponse, PlatformStatus, RiotAccount};
+    use crate::valorant::riot_api::{
+        BoxFuture, CompetitiveTier, LeaderboardResponse, PlatformStatus, RiotAccount,
+    };
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -441,12 +446,18 @@ mod tests {
                 let map = self.ranked_data.lock().unwrap();
                 match map.get(puuid) {
                     Some(Ok(data)) => Ok(data.clone()),
-                    Some(Err(RiotApiError::NotFound)) => Err(anyhow::Error::new(RiotApiError::NotFound)),
-                    Some(Err(RiotApiError::Forbidden)) => Err(anyhow::Error::new(RiotApiError::Forbidden)),
+                    Some(Err(RiotApiError::NotFound)) => {
+                        Err(anyhow::Error::new(RiotApiError::NotFound))
+                    }
+                    Some(Err(RiotApiError::Forbidden)) => {
+                        Err(anyhow::Error::new(RiotApiError::Forbidden))
+                    }
                     Some(Err(e)) => Err(anyhow::anyhow!("{e}")),
-                    None => Ok(super::super::riot_api::MockRiotApiClient::generate_mock_player_ranked(
-                        puuid, None, None,
-                    )),
+                    None => Ok(
+                        super::super::riot_api::MockRiotApiClient::generate_mock_player_ranked(
+                            puuid, None, None,
+                        ),
+                    ),
                 }
             })
         }
@@ -475,7 +486,10 @@ mod tests {
         let user = UserId::new(100);
 
         // Missing hash separator
-        let err = service.link_account(user, "InvalidID", None).await.unwrap_err();
+        let err = service
+            .link_account(user, "InvalidID", None)
+            .await
+            .unwrap_err();
         assert!(matches!(err, ValorantLinkError::InvalidFormat));
 
         // Empty game name
@@ -532,11 +546,23 @@ mod tests {
         let target = UserId::new(102);
 
         // Neither linked
-        let err = service.get_profile(guild, requester, requester).await.unwrap_err();
-        assert!(matches!(err, ValorantProfileError::NotLinked { is_self: true }));
+        let err = service
+            .get_profile(guild, requester, requester)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ValorantProfileError::NotLinked { is_self: true }
+        ));
 
-        let err = service.get_profile(guild, requester, target).await.unwrap_err();
-        assert!(matches!(err, ValorantProfileError::NotLinked { is_self: false }));
+        let err = service
+            .get_profile(guild, requester, target)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ValorantProfileError::NotLinked { is_self: false }
+        ));
 
         // Link target
         mock.add_account("Jett", "0001", "jett-puuid");
@@ -546,7 +572,10 @@ mod tests {
             .unwrap();
 
         // Target has visibility disabled by default: requester sees HiddenOther
-        let err = service.get_profile(guild, requester, target).await.unwrap_err();
+        let err = service
+            .get_profile(guild, requester, target)
+            .await
+            .unwrap_err();
         assert!(matches!(err, ValorantProfileError::HiddenOther));
 
         // Target viewing self sees profile even if visibility is false
@@ -569,7 +598,10 @@ mod tests {
         service.disable_visibility(guild, target).await.unwrap();
         assert!(!service.get_visibility_status(guild, target).await.unwrap());
 
-        let err = service.get_profile(guild, requester, target).await.unwrap_err();
+        let err = service
+            .get_profile(guild, requester, target)
+            .await
+            .unwrap_err();
         assert!(matches!(err, ValorantProfileError::HiddenOther));
     }
 
@@ -586,10 +618,42 @@ mod tests {
         // p3: Diamond3, 90 RR, 20 wins
         // p4: Diamond3, 50 RR, 200 wins
         let players = [
-            (UserId::new(1), "P1", "1", "puuid-1", CompetitiveTier::Ascendant1, 50, 10),
-            (UserId::new(2), "P2", "2", "puuid-2", CompetitiveTier::Diamond3, 90, 100),
-            (UserId::new(3), "P3", "3", "puuid-3", CompetitiveTier::Diamond3, 90, 20),
-            (UserId::new(4), "P4", "4", "puuid-4", CompetitiveTier::Diamond3, 50, 200),
+            (
+                UserId::new(1),
+                "P1",
+                "1",
+                "puuid-1",
+                CompetitiveTier::Ascendant1,
+                50,
+                10,
+            ),
+            (
+                UserId::new(2),
+                "P2",
+                "2",
+                "puuid-2",
+                CompetitiveTier::Diamond3,
+                90,
+                100,
+            ),
+            (
+                UserId::new(3),
+                "P3",
+                "3",
+                "puuid-3",
+                CompetitiveTier::Diamond3,
+                90,
+                20,
+            ),
+            (
+                UserId::new(4),
+                "P4",
+                "4",
+                "puuid-4",
+                CompetitiveTier::Diamond3,
+                50,
+                200,
+            ),
         ];
 
         for (u, name, tag, puuid, tier, rr, wins) in players {

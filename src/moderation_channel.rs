@@ -28,9 +28,9 @@ pub async fn get_moderation_channel(
 
     match result {
         Some(raw) => {
-            let id: u64 = raw
-                .parse()
-                .with_context(|| format!("Invalid stored moderation channel ID '{raw}' for guild {guild_id}"))?;
+            let id: u64 = raw.parse().with_context(|| {
+                format!("Invalid stored moderation channel ID '{raw}' for guild {guild_id}")
+            })?;
             Ok(Some(ChannelId::new(id)))
         }
         None => Ok(None),
@@ -108,9 +108,17 @@ mod tests {
 
         assert!(valid_moderation_channel(guild1, guild1, ChannelType::Text));
         assert!(!valid_moderation_channel(guild1, guild2, ChannelType::Text));
-        assert!(!valid_moderation_channel(guild1, guild1, ChannelType::Voice));
+        assert!(!valid_moderation_channel(
+            guild1,
+            guild1,
+            ChannelType::Voice
+        ));
         assert!(!valid_moderation_channel(guild1, guild1, ChannelType::News));
-        assert!(!valid_moderation_channel(guild1, guild1, ChannelType::Category));
+        assert!(!valid_moderation_channel(
+            guild1,
+            guild1,
+            ChannelType::Category
+        ));
     }
 
     #[tokio::test]
@@ -121,7 +129,9 @@ mod tests {
 
         assert_eq!(get_moderation_channel(&pool, guild_id).await.unwrap(), None);
 
-        set_moderation_channel(&pool, guild_id, channel_id).await.unwrap();
+        set_moderation_channel(&pool, guild_id, channel_id)
+            .await
+            .unwrap();
         assert_eq!(
             get_moderation_channel(&pool, guild_id).await.unwrap(),
             Some(channel_id)
@@ -129,7 +139,9 @@ mod tests {
 
         // Update to a new channel
         let new_channel_id = ChannelId::new(99);
-        set_moderation_channel(&pool, guild_id, new_channel_id).await.unwrap();
+        set_moderation_channel(&pool, guild_id, new_channel_id)
+            .await
+            .unwrap();
         assert_eq!(
             get_moderation_channel(&pool, guild_id).await.unwrap(),
             Some(new_channel_id)
@@ -149,7 +161,9 @@ mod tests {
         let cleared = clear_moderation_channel(&pool, guild_id).await.unwrap();
         assert!(!cleared);
 
-        set_moderation_channel(&pool, guild_id, channel_id).await.unwrap();
+        set_moderation_channel(&pool, guild_id, channel_id)
+            .await
+            .unwrap();
         assert_eq!(
             get_moderation_channel(&pool, guild_id).await.unwrap(),
             Some(channel_id)
@@ -175,13 +189,27 @@ mod tests {
         let guild_id = GuildId::new(3);
         let channel_id = ChannelId::new(200);
 
-        assert!(!is_moderation_channel_configured(&pool, guild_id).await.unwrap());
+        assert!(
+            !is_moderation_channel_configured(&pool, guild_id)
+                .await
+                .unwrap()
+        );
 
-        set_moderation_channel(&pool, guild_id, channel_id).await.unwrap();
-        assert!(is_moderation_channel_configured(&pool, guild_id).await.unwrap());
+        set_moderation_channel(&pool, guild_id, channel_id)
+            .await
+            .unwrap();
+        assert!(
+            is_moderation_channel_configured(&pool, guild_id)
+                .await
+                .unwrap()
+        );
 
         clear_moderation_channel(&pool, guild_id).await.unwrap();
-        assert!(!is_moderation_channel_configured(&pool, guild_id).await.unwrap());
+        assert!(
+            !is_moderation_channel_configured(&pool, guild_id)
+                .await
+                .unwrap()
+        );
 
         pool.close().await;
         let _ = tokio::fs::remove_dir_all(&dir).await;
@@ -194,15 +222,25 @@ mod tests {
         let guild_b = GuildId::new(20);
         let channel_a = ChannelId::new(1000);
 
-        set_moderation_channel(&pool, guild_a, channel_a).await.unwrap();
+        set_moderation_channel(&pool, guild_a, channel_a)
+            .await
+            .unwrap();
 
         assert_eq!(
             get_moderation_channel(&pool, guild_a).await.unwrap(),
             Some(channel_a)
         );
         assert_eq!(get_moderation_channel(&pool, guild_b).await.unwrap(), None);
-        assert!(is_moderation_channel_configured(&pool, guild_a).await.unwrap());
-        assert!(!is_moderation_channel_configured(&pool, guild_b).await.unwrap());
+        assert!(
+            is_moderation_channel_configured(&pool, guild_a)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !is_moderation_channel_configured(&pool, guild_b)
+                .await
+                .unwrap()
+        );
 
         clear_moderation_channel(&pool, guild_b).await.unwrap();
         assert_eq!(

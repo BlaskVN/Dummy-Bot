@@ -177,10 +177,7 @@ impl ActivityKind {
 
 /// Upsert the bot's persistent presence into the database.
 /// Only call this when duration is permanent (0 or unset).
-pub async fn save_bot_presence(
-    pool: &SqlitePool,
-    record: &BotPresenceRecord,
-) -> Result<()> {
+pub async fn save_bot_presence(pool: &SqlitePool, record: &BotPresenceRecord) -> Result<()> {
     sqlx::query(
         "INSERT INTO bot_presence (id, status, activity_kind, activity_text, updated_at)
          VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)

@@ -1,9 +1,9 @@
 use crate::Data;
 use crate::reward_roles::{
     RewardConfig, RewardRoleDenial, claim_degraded_notification, count_reward_grants,
-    delete_reward_grant, eligible_reward_members, is_reward_granted,
-    list_reward_configured_guilds, list_reward_grant_members, mark_reward_health,
-    record_reward_grant, reward_config, validate_reward_role,
+    delete_reward_grant, eligible_reward_members, is_reward_granted, list_reward_configured_guilds,
+    list_reward_grant_members, mark_reward_health, record_reward_grant, reward_config,
+    validate_reward_role,
 };
 use poise::serenity_prelude as serenity;
 use sqlx::SqlitePool;

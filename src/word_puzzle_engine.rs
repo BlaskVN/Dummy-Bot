@@ -169,12 +169,10 @@ pub fn format_summary(language: Language, answer: &str, rows: &[SummaryEntry]) -
 mod tests {
     use super::*;
     use crate::database::init_db;
-    use crate::word_puzzle_store::{
-        create_session, finish_now, session, start,
-    };
+    use crate::word_puzzle_store::{create_session, finish_now, session, start};
     use poise::serenity_prelude::{ChannelId, GuildId, UserId};
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[derive(Debug, Clone)]
     struct RecordedDelivery {
@@ -296,13 +294,12 @@ mod tests {
         // Session should still exist and claim should be released
         let existing = session(&pool, s.id).await.unwrap();
         assert!(existing.is_some());
-        let claimed_at: Option<i64> = sqlx::query_scalar(
-            "SELECT summary_claimed_at FROM word_puzzle_session WHERE id = ?",
-        )
-        .bind(s.id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let claimed_at: Option<i64> =
+            sqlx::query_scalar("SELECT summary_claimed_at FROM word_puzzle_session WHERE id = ?")
+                .bind(s.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert!(claimed_at.is_none(), "Claim should have been released");
 
         // Now allow outbox to succeed and retry

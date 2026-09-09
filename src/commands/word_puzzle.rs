@@ -240,7 +240,8 @@ async fn send_private(ctx: Context<'_>, content: String) -> Result<(), Error> {
 }
 
 async fn reconcile_and_deliver(ctx: Context<'_>) {
-    crate::word_puzzle_engine::reconcile_and_deliver_discord(ctx.serenity_context(), ctx.data()).await;
+    crate::word_puzzle_engine::reconcile_and_deliver_discord(ctx.serenity_context(), ctx.data())
+        .await;
 }
 
 fn format_board(board: &Board) -> String {

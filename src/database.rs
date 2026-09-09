@@ -132,7 +132,6 @@ pub async fn claim_guild_onboarding(
         == 1)
 }
 
-
 /// Initialize the SQLite database connection pool.
 ///
 /// Creates the `data/` directory if it doesn't exist and establishes

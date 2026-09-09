@@ -23,7 +23,8 @@ pub async fn enable(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().context("Not in a guild")?;
     let lang = ctx.data().language(guild_id).await;
     let channel_configured =
-        crate::moderation_channel::is_moderation_channel_configured(&ctx.data().db_pool, guild_id).await?;
+        crate::moderation_channel::is_moderation_channel_configured(&ctx.data().db_pool, guild_id)
+            .await?;
     if !channel_configured {
         ui::reply(
             ctx,

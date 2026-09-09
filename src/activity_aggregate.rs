@@ -324,8 +324,8 @@ pub async fn get_activity_profile(
     .await?;
 
     let activity_level = activity_level(play_minutes) as i64;
-    let next_level_minutes =
-        ((activity_level + 1) as u128 * (activity_level + 2) as u128 * 30).min(i64::MAX as u128) as i64;
+    let next_level_minutes = ((activity_level + 1) as u128 * (activity_level + 2) as u128 * 30)
+        .min(i64::MAX as u128) as i64;
     let total_pages = ((total_games + 9) / 10).max(1);
 
     Ok(Some(ActivityProfile {
@@ -374,8 +374,8 @@ pub async fn get_activity_leaderboard_rows(
 #[cfg(test)]
 mod tests {
     use super::{
-        activity_level, add_session_credit, assign_uncovered, finalize_activity,
-        get_activity_leaderboard_rows, get_activity_profile, overlaps, ActivityLeaderboardRow,
+        ActivityLeaderboardRow, activity_level, add_session_credit, assign_uncovered,
+        finalize_activity, get_activity_leaderboard_rows, get_activity_profile, overlaps,
     };
     use crate::community::{create_activity, create_game_activity, update_activity_extension};
     use crate::database::init_db;

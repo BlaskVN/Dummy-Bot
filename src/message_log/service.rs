@@ -1,8 +1,8 @@
+use crate::i18n::{Language, TranslationKey, t};
 use anyhow::{Context, Result};
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, GuildId, MessageId, MessageUpdateEvent};
 use sqlx::SqlitePool;
-use crate::i18n::{Language, TranslationKey, t};
 
 use super::formatting::{
     build_bulk_delete_embeds, build_deleted_message_embed, build_edited_message_embed,
@@ -141,8 +141,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         let serenity_msg;
         let (is_bot, author_id, author_face, content, sent_at_unix, attachments) =
             if let Some(message) = ram_message {
-                let _ = delete_cached_message(self.pool, &deleted_message_id.to_string())
-                    .await;
+                let _ = delete_cached_message(self.pool, &deleted_message_id.to_string()).await;
                 let is_bot = message.author.bot;
                 let author_id = message.author.id.to_string();
                 let author_face = message.author.face();
@@ -161,8 +160,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             } else if let Ok(Some(db_msg)) =
                 load_cached_message(self.pool, &deleted_message_id.to_string()).await
             {
-                let _ = delete_cached_message(self.pool, &deleted_message_id.to_string())
-                    .await;
+                let _ = delete_cached_message(self.pool, &deleted_message_id.to_string()).await;
                 let attachments: Vec<serenity::Attachment> =
                     poise::serenity_prelude::json::from_str(&db_msg.attachments_json)
                         .unwrap_or_default();
@@ -264,36 +262,36 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         };
 
         let serenity_msg;
-        let (is_bot, author_id, author_face, old_content, sent_at_unix) =
-            if let Some(message) = old_message {
-                serenity_msg = Some(message);
-                (
-                    message.author.bot,
-                    message.author.id.to_string(),
-                    message.author.face(),
-                    message.content.clone(),
-                    message.timestamp.unix_timestamp(),
-                )
-            } else if let Ok(Some(db_msg)) =
-                load_cached_message(self.pool, &event.id.to_string()).await
-            {
-                serenity_msg = None;
-                (
-                    db_msg.is_bot,
-                    db_msg.author_id,
-                    db_msg.author_avatar_url,
-                    db_msg.content,
-                    db_msg.created_at,
-                )
-            } else {
-                // When Healthy, Discord sends update events for non-content edits (pins, embeds).
-                // Without cached original content, diffing is impossible, so logging would trigger
-                // false-positive edit notices. When Degraded, the bot has no content intent and falls
-                // back to metadata-only notice.
-                self.send_degraded_edit_fallback(lang, guild_id, event.channel_id)
-                    .await;
-                return;
-            };
+        let (is_bot, author_id, author_face, old_content, sent_at_unix) = if let Some(message) =
+            old_message
+        {
+            serenity_msg = Some(message);
+            (
+                message.author.bot,
+                message.author.id.to_string(),
+                message.author.face(),
+                message.content.clone(),
+                message.timestamp.unix_timestamp(),
+            )
+        } else if let Ok(Some(db_msg)) = load_cached_message(self.pool, &event.id.to_string()).await
+        {
+            serenity_msg = None;
+            (
+                db_msg.is_bot,
+                db_msg.author_id,
+                db_msg.author_avatar_url,
+                db_msg.content,
+                db_msg.created_at,
+            )
+        } else {
+            // When Healthy, Discord sends update events for non-content edits (pins, embeds).
+            // Without cached original content, diffing is impossible, so logging would trigger
+            // false-positive edit notices. When Degraded, the bot has no content intent and falls
+            // back to metadata-only notice.
+            self.send_degraded_edit_fallback(lang, guild_id, event.channel_id)
+                .await;
+            return;
+        };
 
         if is_bot {
             return;
@@ -312,9 +310,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             return;
         }
 
-        if let Ok(Some(mut db_msg)) =
-            load_cached_message(self.pool, &event.id.to_string()).await
-        {
+        if let Ok(Some(mut db_msg)) = load_cached_message(self.pool, &event.id.to_string()).await {
             db_msg.content = new_content.clone();
             let _ = save_cached_message(self.pool, &db_msg).await;
         }
@@ -598,5 +594,3 @@ pub async fn prune_stale_cached_messages(pool: &SqlitePool, ttl_seconds: i64) ->
         .context("Failed to prune stale cached messages")?;
     Ok(result.rows_affected())
 }
-
-

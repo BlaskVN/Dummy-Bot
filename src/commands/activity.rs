@@ -215,13 +215,9 @@ pub async fn profile(
         .as_ref()
         .map_or(ctx.author().id, |member| member.user.id);
     let page = page.unwrap_or(1);
-    let Some(profile) = crate::activity_aggregate::get_activity_profile(
-        &ctx.data().db_pool,
-        guild_id,
-        user,
-        page,
-    )
-    .await?
+    let Some(profile) =
+        crate::activity_aggregate::get_activity_profile(&ctx.data().db_pool, guild_id, user, page)
+            .await?
     else {
         ui::reply(ctx, Tone::Warning, profile_unavailable(language)).await?;
         return Ok(());
@@ -873,7 +869,13 @@ async fn finalize_local(
     guild_id: serenity::GuildId,
     event_id: serenity::ScheduledEventId,
 ) -> Result<(), Error> {
-    crate::handlers::community::terminate_activity(ctx.serenity_context(), ctx.data(), guild_id, event_id).await?;
+    crate::handlers::community::terminate_activity(
+        ctx.serenity_context(),
+        ctx.data(),
+        guild_id,
+        event_id,
+    )
+    .await?;
     Ok(())
 }
 

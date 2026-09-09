@@ -871,24 +871,24 @@ mod tests {
         .await
         .unwrap();
 
-        crate::attendance::reconcile_attendance(
-            &pool,
-            guild_id,
-            event_id,
-            &[user_id],
-            1000,
-        )
-        .await
-        .unwrap();
+        crate::attendance::reconcile_attendance(&pool, guild_id, event_id, &[user_id], 1000)
+            .await
+            .unwrap();
 
-        let rows = crate::attendance::attendance_records(&pool, guild_id, event_id).await.unwrap();
+        let rows = crate::attendance::attendance_records(&pool, guild_id, event_id)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].active_started_at, Some(1000));
         assert_eq!(rows[0].accumulated_seconds, 0);
 
-        mirror_activity_state(&pool, guild_id, event_id, "completed").await.unwrap();
+        mirror_activity_state(&pool, guild_id, event_id, "completed")
+            .await
+            .unwrap();
 
-        terminate_activity(&pool, guild_id, event_id, 2800).await.unwrap();
+        terminate_activity(&pool, guild_id, event_id, 2800)
+            .await
+            .unwrap();
 
         // pause_session accumulated active time (1800s = 30m) and finalize_activity aggregated it
         let totals: Vec<(String, i64, i64)> = sqlx::query_as(
@@ -911,7 +911,9 @@ mod tests {
         .unwrap();
         assert_eq!(finalized_at, Some(2800));
 
-        let rows = crate::attendance::attendance_records(&pool, guild_id, event_id).await.unwrap();
+        let rows = crate::attendance::attendance_records(&pool, guild_id, event_id)
+            .await
+            .unwrap();
         assert!(rows.is_empty());
 
         pool.close().await;

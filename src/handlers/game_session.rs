@@ -144,7 +144,9 @@ pub fn wake_expiry(data: &Data) {
 }
 
 async fn expire_due(ctx: &serenity::Context, data: &Data) {
-    let due = match due_game_activities(&data.db_pool, chrono::Utc::now().timestamp(), EXPIRY_BATCH).await {
+    let due = match due_game_activities(&data.db_pool, chrono::Utc::now().timestamp(), EXPIRY_BATCH)
+        .await
+    {
         Ok(due) => due,
         Err(error) => {
             tracing::error!(%error, "Could not load overdue game sessions");

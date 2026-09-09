@@ -63,7 +63,6 @@ pub async fn set(
     Ok(())
 }
 
-
 /// Show the currently configured moderation records channel.
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn show(ctx: Context<'_>) -> Result<(), Error> {

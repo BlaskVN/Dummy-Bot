@@ -14,8 +14,8 @@ pub use health::{
     get_log_channel, load_enabled_guilds, mark_warning_sent, reconcile, status,
 };
 pub use models::{
-    CachedMessageRecord, DeletedMessageView, MessageLogConfig, MessageLogHealth,
-    MessageLogOptions, PurgedMessageSummary,
+    CachedMessageRecord, DeletedMessageView, MessageLogConfig, MessageLogHealth, MessageLogOptions,
+    PurgedMessageSummary,
 };
 pub use ports::{
     AttachmentFetcher, DiscordOutbox, HttpAttachmentFetcher, InMemoryOutbox, MessageLogOutbox,

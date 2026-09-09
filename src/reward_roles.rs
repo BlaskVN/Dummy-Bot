@@ -108,12 +108,11 @@ pub async fn list_reward_configured_guilds(
     pool: &SqlitePool,
     limit: i64,
 ) -> anyhow::Result<Vec<serenity::GuildId>> {
-    let guilds: Vec<String> = sqlx::query_scalar(
-        "SELECT guild_id FROM activity_reward_config ORDER BY guild_id LIMIT ?",
-    )
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+    let guilds: Vec<String> =
+        sqlx::query_scalar("SELECT guild_id FROM activity_reward_config ORDER BY guild_id LIMIT ?")
+            .bind(limit)
+            .fetch_all(pool)
+            .await?;
     Ok(guilds
         .into_iter()
         .filter_map(|id| id.parse::<u64>().ok().map(serenity::GuildId::new))
@@ -205,9 +204,7 @@ pub async fn eligible_reward_members(
     .await?;
     let eligible = rows
         .into_iter()
-        .filter(|(_, minutes)| {
-            crate::activity_aggregate::activity_level(*minutes) >= threshold
-        })
+        .filter(|(_, minutes)| crate::activity_aggregate::activity_level(*minutes) >= threshold)
         .filter_map(|(user, _)| user.parse::<u64>().ok().map(serenity::UserId::new))
         .collect();
     Ok(eligible)
@@ -476,27 +473,72 @@ mod tests {
         let user1 = UserId::new(301);
         let user2 = UserId::new(302);
 
-        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 0);
-        assert!(!is_reward_granted(&pool, guild_id, user1, role_id).await.unwrap());
-        assert!(list_reward_grant_members(&pool, guild_id, role_id).await.unwrap().is_empty());
+        assert_eq!(
+            count_reward_grants(&pool, guild_id, role_id).await.unwrap(),
+            0
+        );
+        assert!(
+            !is_reward_granted(&pool, guild_id, user1, role_id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            list_reward_grant_members(&pool, guild_id, role_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
 
-        record_reward_grant(&pool, guild_id, user1, role_id).await.unwrap();
+        record_reward_grant(&pool, guild_id, user1, role_id)
+            .await
+            .unwrap();
         // Duplicate record is idempotent
-        record_reward_grant(&pool, guild_id, user1, role_id).await.unwrap();
-        assert!(is_reward_granted(&pool, guild_id, user1, role_id).await.unwrap());
-        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 1);
+        record_reward_grant(&pool, guild_id, user1, role_id)
+            .await
+            .unwrap();
+        assert!(
+            is_reward_granted(&pool, guild_id, user1, role_id)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            count_reward_grants(&pool, guild_id, role_id).await.unwrap(),
+            1
+        );
 
-        record_reward_grant(&pool, guild_id, user2, role_id).await.unwrap();
-        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 2);
-        let members = list_reward_grant_members(&pool, guild_id, role_id).await.unwrap();
+        record_reward_grant(&pool, guild_id, user2, role_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            count_reward_grants(&pool, guild_id, role_id).await.unwrap(),
+            2
+        );
+        let members = list_reward_grant_members(&pool, guild_id, role_id)
+            .await
+            .unwrap();
         assert_eq!(members.len(), 2);
         assert!(members.contains(&user1));
         assert!(members.contains(&user2));
 
-        assert!(delete_reward_grant(&pool, guild_id, user1, role_id).await.unwrap());
-        assert!(!delete_reward_grant(&pool, guild_id, user1, role_id).await.unwrap());
-        assert!(!is_reward_granted(&pool, guild_id, user1, role_id).await.unwrap());
-        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 1);
+        assert!(
+            delete_reward_grant(&pool, guild_id, user1, role_id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !delete_reward_grant(&pool, guild_id, user1, role_id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !is_reward_granted(&pool, guild_id, user1, role_id)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            count_reward_grants(&pool, guild_id, role_id).await.unwrap(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -568,8 +610,12 @@ mod tests {
 
         let guild1 = GuildId::new(10);
         let guild2 = GuildId::new(20);
-        save_reward_config(&pool, guild1, RoleId::new(100), 1, "guild_owned").await.unwrap();
-        save_reward_config(&pool, guild2, RoleId::new(101), 2, "bot_owned").await.unwrap();
+        save_reward_config(&pool, guild1, RoleId::new(100), 1, "guild_owned")
+            .await
+            .unwrap();
+        save_reward_config(&pool, guild2, RoleId::new(101), 2, "bot_owned")
+            .await
+            .unwrap();
 
         let guilds = list_reward_configured_guilds(&pool, 10).await.unwrap();
         assert_eq!(guilds, vec![guild1, guild2]);
