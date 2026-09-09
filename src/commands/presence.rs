@@ -1,5 +1,5 @@
 use crate::i18n::{TranslationKey, t, tf};
-pub use crate::presence::{ActivityKind, BotStatus, clear_bot_presence, save_bot_presence};
+use crate::presence::{ActivityKind, BotPresenceRecord, BotStatus, clear_bot_presence, save_bot_presence};
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -60,7 +60,7 @@ pub async fn status(
     // Persist only when permanent so the bot restores it after a restart.
     if is_permanent
         && let Err(e) =
-            save_bot_presence(&ctx.data().db_pool, new_status.to_db_str(), None, None).await
+            save_bot_presence(&ctx.data().db_pool, &BotPresenceRecord::new(new_status, None, None)).await
     {
         tracing::warn!(error = %e, "Failed to persist bot status to database");
     }
@@ -169,17 +169,9 @@ pub async fn activity(
 
     // Persist only when permanent.
     if is_permanent {
-        let status_str = new_status
-            .map(|s| s.to_db_str())
-            .unwrap_or(BotStatus::Online.to_db_str());
-        if let Err(e) = save_bot_presence(
-            &ctx.data().db_pool,
-            status_str,
-            Some(kind.to_db_str()),
-            Some(&text),
-        )
-        .await
-        {
+        let status = new_status.unwrap_or(BotStatus::Online);
+        let record = BotPresenceRecord::new(status, Some(kind), Some(text.clone()));
+        if let Err(e) = save_bot_presence(&ctx.data().db_pool, &record).await {
             tracing::warn!(error = %e, "Failed to persist bot activity to database");
         }
     }

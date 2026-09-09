@@ -7,9 +7,44 @@ use crate::config::EmbedColors;
 /// Persistent presence configuration stored across bot restarts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BotPresenceRecord {
-    pub status: String,
-    pub activity_kind: Option<String>,
+    pub status: BotStatus,
+    pub activity_kind: Option<ActivityKind>,
     pub activity_text: Option<String>,
+}
+
+impl BotPresenceRecord {
+    pub fn new(
+        status: BotStatus,
+        activity_kind: Option<ActivityKind>,
+        activity_text: Option<String>,
+    ) -> Self {
+        Self {
+            status,
+            activity_kind,
+            activity_text,
+        }
+    }
+
+    /// Convert status to serenity's OnlineStatus.
+    pub fn to_online_status(&self) -> serenity::OnlineStatus {
+        self.status.to_online_status()
+    }
+
+    /// Convert activity kind and text to serenity's ActivityData.
+    pub fn to_activity_data(&self) -> Option<serenity::ActivityData> {
+        self.activity_kind
+            .zip(self.activity_text.as_deref())
+            .map(|(kind, text)| serenity::ActivityData {
+                name: text.to_owned(),
+                kind: kind.to_activity_type(),
+                state: if matches!(kind, ActivityKind::Custom) {
+                    Some(text.to_owned())
+                } else {
+                    None
+                },
+                url: None,
+            })
+    }
 }
 
 /// Available bot status options mapped to Discord's OnlineStatus.
@@ -144,9 +179,7 @@ impl ActivityKind {
 /// Only call this when duration is permanent (0 or unset).
 pub async fn save_bot_presence(
     pool: &SqlitePool,
-    status: &str,
-    activity_kind: Option<&str>,
-    activity_text: Option<&str>,
+    record: &BotPresenceRecord,
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO bot_presence (id, status, activity_kind, activity_text, updated_at)
@@ -157,9 +190,9 @@ pub async fn save_bot_presence(
              activity_text = excluded.activity_text,
              updated_at    = CURRENT_TIMESTAMP",
     )
-    .bind(status)
-    .bind(activity_kind)
-    .bind(activity_text)
+    .bind(record.status.to_db_str())
+    .bind(record.activity_kind.map(|k| k.to_db_str()))
+    .bind(&record.activity_text)
     .execute(pool)
     .await
     .context("Failed to save bot presence")?;
@@ -175,13 +208,15 @@ pub async fn load_bot_presence(pool: &SqlitePool) -> Result<Option<BotPresenceRe
     .await
     .context("Failed to load bot presence")?;
 
-    Ok(
-        row.map(|(status, activity_kind, activity_text)| BotPresenceRecord {
+    Ok(row.and_then(|(status, activity_kind, activity_text)| {
+        let status = BotStatus::from_db_str(&status)?;
+        let activity_kind = activity_kind.as_deref().and_then(ActivityKind::from_db_str);
+        Some(BotPresenceRecord {
             status,
             activity_kind,
             activity_text,
-        }),
-    )
+        })
+    }))
 }
 
 /// Remove the persistent presence row so the bot starts with Discord's default.
@@ -198,30 +233,12 @@ pub async fn clear_bot_presence(pool: &SqlitePool) -> Result<()> {
 pub async fn restore_presence(ctx: &serenity::Context, pool: &SqlitePool) {
     match load_bot_presence(pool).await {
         Ok(Some(record)) => {
-            let online_status = BotStatus::from_db_str(&record.status)
-                .map(|s| s.to_online_status())
-                .unwrap_or(serenity::OnlineStatus::Online);
-
-            let activity = record
-                .activity_kind
-                .as_deref()
-                .and_then(ActivityKind::from_db_str)
-                .zip(record.activity_text.as_deref())
-                .map(|(kind, text)| serenity::ActivityData {
-                    name: text.to_owned(),
-                    kind: kind.to_activity_type(),
-                    state: if matches!(kind, ActivityKind::Custom) {
-                        Some(text.to_owned())
-                    } else {
-                        None
-                    },
-                    url: None,
-                });
-
+            let online_status = record.to_online_status();
+            let activity = record.to_activity_data();
             ctx.set_presence(activity, online_status);
             tracing::info!(
-                status = %record.status,
-                activity_kind = ?record.activity_kind,
+                status = record.status.display_name(),
+                activity_kind = ?record.activity_kind.map(|k| k.display_name()),
                 activity_text = ?record.activity_text,
                 "Persistent bot presence restored from database"
             );
@@ -288,35 +305,23 @@ mod tests {
         let initial = load_bot_presence(&pool).await.unwrap();
         assert!(initial.is_none());
 
-        // Save presence
-        save_bot_presence(&pool, "online", Some("playing"), Some("Rust"))
-            .await
-            .unwrap();
+        // Save presence with record
+        let record = BotPresenceRecord::new(
+            BotStatus::Online,
+            Some(ActivityKind::Playing),
+            Some("Rust".to_string()),
+        );
+        save_bot_presence(&pool, &record).await.unwrap();
 
         let loaded = load_bot_presence(&pool).await.unwrap();
-        assert_eq!(
-            loaded,
-            Some(BotPresenceRecord {
-                status: "online".to_string(),
-                activity_kind: Some("playing".to_string()),
-                activity_text: Some("Rust".to_string()),
-            })
-        );
+        assert_eq!(loaded, Some(record));
 
         // Update presence
-        save_bot_presence(&pool, "dnd", None, None)
-            .await
-            .unwrap();
+        let updated_record = BotPresenceRecord::new(BotStatus::DoNotDisturb, None, None);
+        save_bot_presence(&pool, &updated_record).await.unwrap();
 
-        let updated = load_bot_presence(&pool).await.unwrap();
-        assert_eq!(
-            updated,
-            Some(BotPresenceRecord {
-                status: "dnd".to_string(),
-                activity_kind: None,
-                activity_text: None,
-            })
-        );
+        let loaded_updated = load_bot_presence(&pool).await.unwrap();
+        assert_eq!(loaded_updated, Some(updated_record));
 
         // Clear presence
         clear_bot_presence(&pool).await.unwrap();
