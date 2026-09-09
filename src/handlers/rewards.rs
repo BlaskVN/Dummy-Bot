@@ -2,7 +2,7 @@ use crate::Data;
 use crate::reward_roles::{
     RewardConfig, RewardRoleDenial, claim_degraded_notification, count_reward_grants,
     delete_reward_grant, eligible_reward_members, is_reward_granted,
-    list_reward_configured_guilds, list_reward_grant_users, mark_reward_health,
+    list_reward_configured_guilds, list_reward_grant_members, mark_reward_health,
     record_reward_grant, reward_config, validate_reward_role,
 };
 use poise::serenity_prelude as serenity;
@@ -82,7 +82,7 @@ pub async fn reconcile_pool(
     let eligible = eligible_reward_members(pool, guild_id, config.level_threshold, 1000)
         .await
         .unwrap_or_default();
-    let tracked = list_reward_grant_users(pool, guild_id, role_id)
+    let tracked = list_reward_grant_members(pool, guild_id, role_id)
         .await
         .unwrap_or_default();
     for user_id in tracked {
@@ -156,7 +156,7 @@ async fn remove_tracked(
     guild_id: serenity::GuildId,
     role_id: serenity::RoleId,
 ) {
-    let users = list_reward_grant_users(pool, guild_id, role_id)
+    let users = list_reward_grant_members(pool, guild_id, role_id)
         .await
         .unwrap_or_default();
     for user_id in users {

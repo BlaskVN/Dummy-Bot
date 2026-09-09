@@ -120,7 +120,7 @@ pub async fn list_reward_configured_guilds(
         .collect())
 }
 
-pub async fn list_reward_grant_users(
+pub async fn list_reward_grant_members(
     pool: &SqlitePool,
     guild_id: serenity::GuildId,
     role_id: serenity::RoleId,
@@ -195,6 +195,7 @@ pub async fn eligible_reward_members(
     level_threshold: i64,
     limit: i64,
 ) -> anyhow::Result<std::collections::HashSet<serenity::UserId>> {
+    let threshold = level_threshold.max(0) as u64;
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT a.user_id, a.play_minutes FROM activity_member_aggregate a LEFT JOIN activity_opt_out o ON o.guild_id = a.guild_id AND o.user_id = a.user_id WHERE a.guild_id = ? AND o.user_id IS NULL ORDER BY a.user_id LIMIT ?",
     )
@@ -205,7 +206,7 @@ pub async fn eligible_reward_members(
     let eligible = rows
         .into_iter()
         .filter(|(_, minutes)| {
-            crate::activity_aggregate::activity_level(*minutes) >= level_threshold as u64
+            crate::activity_aggregate::activity_level(*minutes) >= threshold
         })
         .filter_map(|(user, _)| user.parse::<u64>().ok().map(serenity::UserId::new))
         .collect();
@@ -319,10 +320,11 @@ mod tests {
     use super::{
         RewardRoleDenial, claim_degraded_notification, count_reward_grants, delete_reward_grant,
         eligible_reward_members, is_reward_granted, list_reward_configured_guilds,
-        list_reward_grant_users, mark_reward_health, record_reward_grant, reward_config,
+        list_reward_grant_members, mark_reward_health, record_reward_grant, reward_config,
         save_reward_config, validate_properties,
     };
     use poise::serenity_prelude::{ChannelId, GuildId, Permissions, RoleId, UserId};
+    use sqlx::SqlitePool;
 
     #[test]
     fn rejects_authority_managed_roles_and_hierarchy() {
@@ -455,14 +457,19 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn reward_grant_persistence_lifecycle() {
+    async fn setup_test_pool() -> SqlitePool {
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
             .await
             .unwrap();
         sqlx::migrate!().run(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn reward_grant_persistence_lifecycle() {
+        let pool = setup_test_pool().await;
 
         let guild_id = GuildId::new(100);
         let role_id = RoleId::new(200);
@@ -471,7 +478,7 @@ mod tests {
 
         assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 0);
         assert!(!is_reward_granted(&pool, guild_id, user1, role_id).await.unwrap());
-        assert!(list_reward_grant_users(&pool, guild_id, role_id).await.unwrap().is_empty());
+        assert!(list_reward_grant_members(&pool, guild_id, role_id).await.unwrap().is_empty());
 
         record_reward_grant(&pool, guild_id, user1, role_id).await.unwrap();
         // Duplicate record is idempotent
@@ -481,10 +488,10 @@ mod tests {
 
         record_reward_grant(&pool, guild_id, user2, role_id).await.unwrap();
         assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 2);
-        let users = list_reward_grant_users(&pool, guild_id, role_id).await.unwrap();
-        assert_eq!(users.len(), 2);
-        assert!(users.contains(&user1));
-        assert!(users.contains(&user2));
+        let members = list_reward_grant_members(&pool, guild_id, role_id).await.unwrap();
+        assert_eq!(members.len(), 2);
+        assert!(members.contains(&user1));
+        assert!(members.contains(&user2));
 
         assert!(delete_reward_grant(&pool, guild_id, user1, role_id).await.unwrap());
         assert!(!delete_reward_grant(&pool, guild_id, user1, role_id).await.unwrap());
@@ -494,12 +501,7 @@ mod tests {
 
     #[tokio::test]
     async fn eligible_reward_members_threshold_and_opt_out() {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        sqlx::migrate!().run(&pool).await.unwrap();
+        let pool = setup_test_pool().await;
 
         let guild_id = GuildId::new(500);
         let other_guild_id = GuildId::new(600);
@@ -562,12 +564,7 @@ mod tests {
 
     #[tokio::test]
     async fn lists_reward_configured_guilds() {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        sqlx::migrate!().run(&pool).await.unwrap();
+        let pool = setup_test_pool().await;
 
         let guild1 = GuildId::new(10);
         let guild2 = GuildId::new(20);
