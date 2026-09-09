@@ -175,7 +175,11 @@ async fn expire_due(ctx: &serenity::Context, data: &Data) {
         };
         match finish_game_expiry(&data.db_pool, guild_id, event_id, state).await {
             Ok(true) => {
-                super::community::terminate_activity(ctx, data, guild_id, event_id).await;
+                if let Err(error) =
+                    super::community::terminate_activity(ctx, data, guild_id, event_id).await
+                {
+                    tracing::error!(%guild_id, %event_id, %error, "Could not terminate expired game activity");
+                }
             }
             Ok(false) => {}
             Err(error) => {

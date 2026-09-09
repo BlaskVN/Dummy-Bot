@@ -14,14 +14,12 @@ pub async fn terminate_activity(
     data: &Data,
     guild_id: serenity::GuildId,
     event_id: serenity::ScheduledEventId,
-) {
+) -> anyhow::Result<()> {
     let now = chrono::Utc::now().timestamp();
-    if let Err(error) = crate::community::terminate_activity(&data.db_pool, guild_id, event_id, now).await {
-        tracing::error!(%guild_id, %event_id, %error, "Could not terminate community activity");
-    } else {
-        super::rewards::reconcile(ctx, data, guild_id).await;
-    }
+    crate::community::terminate_activity(&data.db_pool, guild_id, event_id, now).await?;
+    super::rewards::reconcile(ctx, data, guild_id).await;
     super::activity_presence::clear_session(data, guild_id, event_id).await;
+    Ok(())
 }
 
 pub async fn handle_native_update(
@@ -36,8 +34,10 @@ pub async fn handle_native_update(
     {
         tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not mirror scheduled event state");
     }
-    if matches!(state, "completed" | "canceled") {
-        terminate_activity(ctx, data, event.guild_id, event.id).await;
+    if matches!(state, "completed" | "canceled")
+        && let Err(error) = terminate_activity(ctx, data, event.guild_id, event.id).await
+    {
+        tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not terminate community activity");
     }
 }
 
@@ -47,7 +47,9 @@ pub async fn handle_native_delete(
     event: &serenity::ScheduledEvent,
 ) {
     notify_deleted(ctx, data, event.guild_id, event.id).await;
-    terminate_activity(ctx, data, event.guild_id, event.id).await;
+    if let Err(error) = terminate_activity(ctx, data, event.guild_id, event.id).await {
+        tracing::error!(guild_id = %event.guild_id, event_id = %event.id, %error, "Could not terminate deleted community activity");
+    }
 }
 
 pub async fn reconcile_all(ctx: &serenity::Context, data: &Data) {

@@ -873,7 +873,7 @@ async fn finalize_local(
     guild_id: serenity::GuildId,
     event_id: serenity::ScheduledEventId,
 ) -> Result<(), Error> {
-    crate::handlers::community::terminate_activity(ctx.serenity_context(), ctx.data(), guild_id, event_id).await;
+    crate::handlers::community::terminate_activity(ctx.serenity_context(), ctx.data(), guild_id, event_id).await?;
     Ok(())
 }
 
