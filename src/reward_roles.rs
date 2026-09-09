@@ -89,6 +89,129 @@ pub async fn claim_degraded_notification(
         .bind(guild_id.to_string()).execute(pool).await?.rows_affected() == 1)
 }
 
+pub async fn count_reward_grants(
+    pool: &SqlitePool,
+    guild_id: serenity::GuildId,
+    role_id: serenity::RoleId,
+) -> anyhow::Result<i64> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM activity_reward_grant WHERE guild_id = ? AND role_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(role_id.to_string())
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+pub async fn list_reward_configured_guilds(
+    pool: &SqlitePool,
+    limit: i64,
+) -> anyhow::Result<Vec<serenity::GuildId>> {
+    let guilds: Vec<String> = sqlx::query_scalar(
+        "SELECT guild_id FROM activity_reward_config ORDER BY guild_id LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(guilds
+        .into_iter()
+        .filter_map(|id| id.parse::<u64>().ok().map(serenity::GuildId::new))
+        .collect())
+}
+
+pub async fn list_reward_grant_users(
+    pool: &SqlitePool,
+    guild_id: serenity::GuildId,
+    role_id: serenity::RoleId,
+) -> anyhow::Result<Vec<serenity::UserId>> {
+    let users: Vec<String> = sqlx::query_scalar(
+        "SELECT user_id FROM activity_reward_grant WHERE guild_id = ? AND role_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(role_id.to_string())
+    .fetch_all(pool)
+    .await?;
+    Ok(users
+        .into_iter()
+        .filter_map(|id| id.parse::<u64>().ok().map(serenity::UserId::new))
+        .collect())
+}
+
+pub async fn is_reward_granted(
+    pool: &SqlitePool,
+    guild_id: serenity::GuildId,
+    user_id: serenity::UserId,
+    role_id: serenity::RoleId,
+) -> anyhow::Result<bool> {
+    let granted: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM activity_reward_grant WHERE guild_id = ? AND user_id = ? AND role_id = ?)",
+    )
+    .bind(guild_id.to_string())
+    .bind(user_id.to_string())
+    .bind(role_id.to_string())
+    .fetch_one(pool)
+    .await?;
+    Ok(granted)
+}
+
+pub async fn record_reward_grant(
+    pool: &SqlitePool,
+    guild_id: serenity::GuildId,
+    user_id: serenity::UserId,
+    role_id: serenity::RoleId,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO activity_reward_grant (guild_id, user_id, role_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+    )
+    .bind(guild_id.to_string())
+    .bind(user_id.to_string())
+    .bind(role_id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn delete_reward_grant(
+    pool: &SqlitePool,
+    guild_id: serenity::GuildId,
+    user_id: serenity::UserId,
+    role_id: serenity::RoleId,
+) -> anyhow::Result<bool> {
+    let result = sqlx::query(
+        "DELETE FROM activity_reward_grant WHERE guild_id = ? AND user_id = ? AND role_id = ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(user_id.to_string())
+    .bind(role_id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn eligible_reward_members(
+    pool: &SqlitePool,
+    guild_id: serenity::GuildId,
+    level_threshold: i64,
+    limit: i64,
+) -> anyhow::Result<std::collections::HashSet<serenity::UserId>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT a.user_id, a.play_minutes FROM activity_member_aggregate a LEFT JOIN activity_opt_out o ON o.guild_id = a.guild_id AND o.user_id = a.user_id WHERE a.guild_id = ? AND o.user_id IS NULL ORDER BY a.user_id LIMIT ?",
+    )
+    .bind(guild_id.to_string())
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    let eligible = rows
+        .into_iter()
+        .filter(|(_, minutes)| {
+            crate::activity_aggregate::activity_level(*minutes) >= level_threshold as u64
+        })
+        .filter_map(|(user, _)| user.parse::<u64>().ok().map(serenity::UserId::new))
+        .collect();
+    Ok(eligible)
+}
+
 impl std::fmt::Display for RewardRoleDenial {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -194,10 +317,12 @@ fn validate_properties(
 #[cfg(test)]
 mod tests {
     use super::{
-        RewardRoleDenial, claim_degraded_notification, mark_reward_health, reward_config,
+        RewardRoleDenial, claim_degraded_notification, count_reward_grants, delete_reward_grant,
+        eligible_reward_members, is_reward_granted, list_reward_configured_guilds,
+        list_reward_grant_users, mark_reward_health, record_reward_grant, reward_config,
         save_reward_config, validate_properties,
     };
-    use poise::serenity_prelude::{ChannelId, GuildId, Permissions, RoleId};
+    use poise::serenity_prelude::{ChannelId, GuildId, Permissions, RoleId, UserId};
 
     #[test]
     fn rejects_authority_managed_roles_and_hierarchy() {
@@ -328,5 +453,128 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn reward_grant_persistence_lifecycle() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+
+        let guild_id = GuildId::new(100);
+        let role_id = RoleId::new(200);
+        let user1 = UserId::new(301);
+        let user2 = UserId::new(302);
+
+        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 0);
+        assert!(!is_reward_granted(&pool, guild_id, user1, role_id).await.unwrap());
+        assert!(list_reward_grant_users(&pool, guild_id, role_id).await.unwrap().is_empty());
+
+        record_reward_grant(&pool, guild_id, user1, role_id).await.unwrap();
+        // Duplicate record is idempotent
+        record_reward_grant(&pool, guild_id, user1, role_id).await.unwrap();
+        assert!(is_reward_granted(&pool, guild_id, user1, role_id).await.unwrap());
+        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 1);
+
+        record_reward_grant(&pool, guild_id, user2, role_id).await.unwrap();
+        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 2);
+        let users = list_reward_grant_users(&pool, guild_id, role_id).await.unwrap();
+        assert_eq!(users.len(), 2);
+        assert!(users.contains(&user1));
+        assert!(users.contains(&user2));
+
+        assert!(delete_reward_grant(&pool, guild_id, user1, role_id).await.unwrap());
+        assert!(!delete_reward_grant(&pool, guild_id, user1, role_id).await.unwrap());
+        assert!(!is_reward_granted(&pool, guild_id, user1, role_id).await.unwrap());
+        assert_eq!(count_reward_grants(&pool, guild_id, role_id).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn eligible_reward_members_threshold_and_opt_out() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+
+        let guild_id = GuildId::new(500);
+        let other_guild_id = GuildId::new(600);
+        let user_low = UserId::new(10);
+        let user_eligible = UserId::new(20);
+        let user_opted_out = UserId::new(30);
+        let user_other_guild = UserId::new(40);
+
+        // Populate activity_member_aggregate
+        // level 1 requires >= 60 minutes
+        sqlx::query("INSERT INTO activity_member_aggregate (guild_id, user_id, play_minutes, session_credits) VALUES (?, ?, ?, 0)")
+            .bind(guild_id.to_string())
+            .bind(user_low.to_string())
+            .bind(10) // level 0
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query("INSERT INTO activity_member_aggregate (guild_id, user_id, play_minutes, session_credits) VALUES (?, ?, ?, 0)")
+            .bind(guild_id.to_string())
+            .bind(user_eligible.to_string())
+            .bind(120) // level >= 1
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query("INSERT INTO activity_member_aggregate (guild_id, user_id, play_minutes, session_credits) VALUES (?, ?, ?, 0)")
+            .bind(guild_id.to_string())
+            .bind(user_opted_out.to_string())
+            .bind(120) // level >= 1
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query("INSERT INTO activity_member_aggregate (guild_id, user_id, play_minutes, session_credits) VALUES (?, ?, ?, 0)")
+            .bind(other_guild_id.to_string())
+            .bind(user_other_guild.to_string())
+            .bind(120) // level >= 1
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Mark user_opted_out in activity_opt_out
+        sqlx::query("INSERT INTO activity_opt_out (guild_id, user_id) VALUES (?, ?)")
+            .bind(guild_id.to_string())
+            .bind(user_opted_out.to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let eligible = eligible_reward_members(&pool, guild_id, 1, 100)
+            .await
+            .unwrap();
+        assert_eq!(eligible.len(), 1);
+        assert!(eligible.contains(&user_eligible));
+        assert!(!eligible.contains(&user_low));
+        assert!(!eligible.contains(&user_opted_out));
+        assert!(!eligible.contains(&user_other_guild));
+    }
+
+    #[tokio::test]
+    async fn lists_reward_configured_guilds() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+
+        let guild1 = GuildId::new(10);
+        let guild2 = GuildId::new(20);
+        save_reward_config(&pool, guild1, RoleId::new(100), 1, "guild_owned").await.unwrap();
+        save_reward_config(&pool, guild2, RoleId::new(101), 2, "bot_owned").await.unwrap();
+
+        let guilds = list_reward_configured_guilds(&pool, 10).await.unwrap();
+        assert_eq!(guilds, vec![guild1, guild2]);
     }
 }

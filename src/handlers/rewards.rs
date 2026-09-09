@@ -1,7 +1,9 @@
 use crate::Data;
 use crate::reward_roles::{
-    RewardConfig, RewardRoleDenial, claim_degraded_notification, mark_reward_health, reward_config,
-    validate_reward_role,
+    RewardConfig, RewardRoleDenial, claim_degraded_notification, count_reward_grants,
+    delete_reward_grant, eligible_reward_members, is_reward_granted,
+    list_reward_configured_guilds, list_reward_grant_users, mark_reward_health,
+    record_reward_grant, reward_config, validate_reward_role,
 };
 use poise::serenity_prelude as serenity;
 use sqlx::SqlitePool;
@@ -17,22 +19,16 @@ pub async fn replace_and_reconcile(
     };
     if old.as_ref().is_some_and(|old| old.role_id != new.role_id)
         && let Some(old) = old
+        && let Ok(role) = old.role_id.parse::<u64>()
     {
-        remove_tracked(ctx, &data.db_pool, guild_id, &old.role_id).await;
-        let remaining: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM activity_reward_grant WHERE guild_id = ? AND role_id = ?",
-        )
-        .bind(guild_id.to_string())
-        .bind(&old.role_id)
-        .fetch_one(&data.db_pool)
-        .await
-        .unwrap_or(1);
+        let role_id = serenity::RoleId::new(role);
+        remove_tracked(ctx, &data.db_pool, guild_id, role_id).await;
+        let remaining = count_reward_grants(&data.db_pool, guild_id, role_id)
+            .await
+            .unwrap_or(1);
         if old.ownership == "bot_owned"
             && remaining == 0
-            && let Ok(role) = old.role_id.parse::<u64>()
-            && let Err(error) = guild_id
-                .delete_role(&ctx.http, serenity::RoleId::new(role))
-                .await
+            && let Err(error) = guild_id.delete_role(&ctx.http, role_id).await
         {
             tracing::warn!(%guild_id, %error, "Could not delete replaced bot-owned reward role");
         }
@@ -45,14 +41,11 @@ pub async fn reconcile(ctx: &serenity::Context, data: &Data, guild_id: serenity:
 }
 
 pub async fn reconcile_all(ctx: &serenity::Context, data: &Data) {
-    let guilds: Vec<String> = sqlx::query_scalar(
-        "SELECT guild_id FROM activity_reward_config ORDER BY guild_id LIMIT 500",
-    )
-    .fetch_all(&data.db_pool)
-    .await
-    .unwrap_or_default();
-    for guild_id in guilds.into_iter().filter_map(|id| id.parse::<u64>().ok()) {
-        reconcile(ctx, data, serenity::GuildId::new(guild_id)).await;
+    let guilds = list_reward_configured_guilds(&data.db_pool, 500)
+        .await
+        .unwrap_or_default();
+    for guild_id in guilds {
+        reconcile(ctx, data, guild_id).await;
     }
 }
 
@@ -79,43 +72,28 @@ pub async fn reconcile_pool(
             validate_reward_role(&guild, bot_id, role_id)
         });
     if let Err(denial) = validation {
-        remove_tracked(ctx, pool, guild_id, &config.role_id).await;
+        remove_tracked(ctx, pool, guild_id, role_id).await;
         degrade(ctx, pool, guild_id, denial).await;
         return;
     }
     if let Err(error) = mark_reward_health(pool, guild_id, None).await {
         tracing::error!(%guild_id, %error, "Could not mark reward role safe");
     }
-    let eligible: Vec<(String, i64)> = sqlx::query_as("SELECT a.user_id, a.play_minutes FROM activity_member_aggregate a LEFT JOIN activity_opt_out o ON o.guild_id = a.guild_id AND o.user_id = a.user_id WHERE a.guild_id = ? AND o.user_id IS NULL ORDER BY a.user_id LIMIT 1000")
-        .bind(guild_id.to_string()).fetch_all(pool).await.unwrap_or_default();
-    let eligible = eligible
-        .into_iter()
-        .filter(|(_, minutes)| {
-            crate::activity_aggregate::activity_level(*minutes) >= config.level_threshold as u64
-        })
-        .filter_map(|(user, _)| user.parse::<u64>().ok().map(serenity::UserId::new))
-        .collect::<std::collections::HashSet<_>>();
-    let tracked: Vec<String> = sqlx::query_scalar(
-        "SELECT user_id FROM activity_reward_grant WHERE guild_id = ? AND role_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .bind(&config.role_id)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    for user in tracked {
-        let Ok(raw_user) = user.parse::<u64>() else {
-            continue;
-        };
-        let user_id = serenity::UserId::new(raw_user);
+    let eligible = eligible_reward_members(pool, guild_id, config.level_threshold, 1000)
+        .await
+        .unwrap_or_default();
+    let tracked = list_reward_grant_users(pool, guild_id, role_id)
+        .await
+        .unwrap_or_default();
+    for user_id in tracked {
         if !eligible.contains(&user_id) {
             remove_one(ctx, pool, guild_id, user_id, role_id).await;
         }
     }
     for user_id in eligible {
-        let tracked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM activity_reward_grant WHERE guild_id = ? AND user_id = ? AND role_id = ?)")
-            .bind(guild_id.to_string()).bind(user_id.to_string()).bind(role_id.to_string())
-            .fetch_one(pool).await.unwrap_or(false);
+        let tracked = is_reward_granted(pool, guild_id, user_id, role_id)
+            .await
+            .unwrap_or(false);
         if tracked {
             continue;
         }
@@ -130,9 +108,7 @@ pub async fn reconcile_pool(
             continue;
         }
         if member.add_role(&ctx.http, role_id).await.is_ok()
-            && let Err(error) = sqlx::query("INSERT INTO activity_reward_grant (guild_id, user_id, role_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING")
-                .bind(guild_id.to_string()).bind(user_id.to_string()).bind(role_id.to_string())
-                .execute(pool).await
+            && let Err(error) = record_reward_grant(pool, guild_id, user_id, role_id).await
         {
             tracing::error!(%guild_id, %user_id, %error, "Could not track reward grant");
         }
@@ -167,7 +143,9 @@ pub async fn audit(ctx: &serenity::Context, data: &Data, guild_id: serenity::Gui
     }) {
         let _ = mark_reward_health(&data.db_pool, guild_id, None).await;
     } else {
-        remove_tracked(ctx, &data.db_pool, guild_id, &config.role_id).await;
+        if let Ok(role_id) = config.role_id.parse::<u64>().map(serenity::RoleId::new) {
+            remove_tracked(ctx, &data.db_pool, guild_id, role_id).await;
+        }
         degrade(ctx, &data.db_pool, guild_id, denial).await;
     }
 }
@@ -176,23 +154,13 @@ async fn remove_tracked(
     ctx: &serenity::Context,
     pool: &SqlitePool,
     guild_id: serenity::GuildId,
-    role: &str,
+    role_id: serenity::RoleId,
 ) {
-    let Ok(role) = role.parse::<u64>().map(serenity::RoleId::new) else {
-        return;
-    };
-    let users: Vec<String> = sqlx::query_scalar(
-        "SELECT user_id FROM activity_reward_grant WHERE guild_id = ? AND role_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .bind(role.to_string())
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    for user in users {
-        if let Ok(user) = user.parse::<u64>() {
-            remove_one(ctx, pool, guild_id, serenity::UserId::new(user), role).await;
-        }
+    let users = list_reward_grant_users(pool, guild_id, role_id)
+        .await
+        .unwrap_or_default();
+    for user_id in users {
+        remove_one(ctx, pool, guild_id, user_id, role_id).await;
     }
 }
 
@@ -214,14 +182,7 @@ async fn remove_one(
         Err(error) if !is_not_found(&error) => return,
         _ => {}
     }
-    let _ = sqlx::query(
-        "DELETE FROM activity_reward_grant WHERE guild_id = ? AND user_id = ? AND role_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .bind(user_id.to_string())
-    .bind(role_id.to_string())
-    .execute(pool)
-    .await;
+    let _ = delete_reward_grant(pool, guild_id, user_id, role_id).await;
 }
 
 async fn degrade(
