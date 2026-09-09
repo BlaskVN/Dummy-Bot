@@ -21,12 +21,15 @@ pub use ports::{
     AttachmentFetcher, DiscordOutbox, HttpAttachmentFetcher, InMemoryOutbox, MessageLogOutbox,
     MockAttachmentFetcher, SentMessageRecord, is_discord_cdn,
 };
-pub use service::{MessageLogService, load_cached_message, save_cached_message};
+pub use service::{
+    MessageLogService, delete_cached_message, load_cached_message, prune_stale_cached_messages,
+    save_cached_message,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::{self, init_db};
+    use crate::database::init_db;
     use crate::i18n::Language;
     use poise::serenity_prelude as serenity;
     use serenity::{ChannelId, GuildId, MessageId};
@@ -378,7 +381,7 @@ mod tests {
         let loaded = load_cached_message(&pool, "100").await.unwrap();
         assert_eq!(loaded, Some(record));
 
-        let pruned = database::prune_stale_cached_messages(&pool, 0).await.unwrap();
+        let pruned = prune_stale_cached_messages(&pool, 0).await.unwrap();
         assert_eq!(pruned, 1);
         assert!(load_cached_message(&pool, "100").await.unwrap().is_none());
 

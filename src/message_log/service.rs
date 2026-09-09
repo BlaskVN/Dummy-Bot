@@ -36,7 +36,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
 
     /// Prune stale cached messages past their time-to-live threshold.
     pub async fn prune_stale_cache(pool: &SqlitePool, ttl_seconds: i64) {
-        if let Err(error) = database::prune_stale_cached_messages(pool, ttl_seconds).await {
+        if let Err(error) = prune_stale_cached_messages(pool, ttl_seconds).await {
             tracing::error!(%error, "Failed to prune stale cached messages");
         }
     }
@@ -143,7 +143,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         let serenity_msg;
         let (is_bot, author_id, author_face, content, sent_at_unix, attachments) =
             if let Some(message) = ram_message {
-                let _ = database::delete_cached_message(self.pool, &deleted_message_id.to_string())
+                let _ = delete_cached_message(self.pool, &deleted_message_id.to_string())
                     .await;
                 let is_bot = message.author.bot;
                 let author_id = message.author.id.to_string();
@@ -163,7 +163,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             } else if let Ok(Some(db_msg)) =
                 load_cached_message(self.pool, &deleted_message_id.to_string()).await
             {
-                let _ = database::delete_cached_message(self.pool, &deleted_message_id.to_string())
+                let _ = delete_cached_message(self.pool, &deleted_message_id.to_string())
                     .await;
                 let attachments: Vec<serenity::Attachment> =
                     poise::serenity_prelude::json::from_str(&db_msg.attachments_json)
@@ -375,7 +375,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         for &msg_id in deleted_message_ids {
             if let Some(msg) = get_ram_message(channel_id, msg_id) {
                 cached_count += 1;
-                let _ = database::delete_cached_message(self.pool, &msg_id.to_string()).await;
+                let _ = delete_cached_message(self.pool, &msg_id.to_string()).await;
                 if msg.author.bot {
                     bot_count += 1;
                 } else {
@@ -390,7 +390,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                 load_cached_message(self.pool, &msg_id.to_string()).await
             {
                 cached_count += 1;
-                let _ = database::delete_cached_message(self.pool, &msg_id.to_string()).await;
+                let _ = delete_cached_message(self.pool, &msg_id.to_string()).await;
                 if db_msg.is_bot {
                     bot_count += 1;
                 } else {
@@ -581,4 +581,24 @@ pub async fn load_cached_message(
         },
     ))
 }
+
+pub async fn delete_cached_message(pool: &SqlitePool, message_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM cached_message WHERE message_id = ?")
+        .bind(message_id)
+        .execute(pool)
+        .await
+        .context("Failed to delete cached message")?;
+    Ok(())
+}
+
+pub async fn prune_stale_cached_messages(pool: &SqlitePool, ttl_seconds: i64) -> Result<u64> {
+    let cutoff = chrono::Utc::now().timestamp() - ttl_seconds;
+    let result = sqlx::query("DELETE FROM cached_message WHERE created_at < ?")
+        .bind(cutoff)
+        .execute(pool)
+        .await
+        .context("Failed to prune stale cached messages")?;
+    Ok(result.rows_affected())
+}
+
 

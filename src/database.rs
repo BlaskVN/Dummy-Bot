@@ -192,24 +192,6 @@ pub async fn claim_guild_onboarding(
         == 1)
 }
 
-pub async fn delete_cached_message(pool: &SqlitePool, message_id: &str) -> Result<()> {
-    sqlx::query("DELETE FROM cached_message WHERE message_id = ?")
-        .bind(message_id)
-        .execute(pool)
-        .await
-        .context("Failed to delete cached message")?;
-    Ok(())
-}
-
-pub async fn prune_stale_cached_messages(pool: &SqlitePool, ttl_seconds: i64) -> Result<u64> {
-    let cutoff = chrono::Utc::now().timestamp() - ttl_seconds;
-    let result = sqlx::query("DELETE FROM cached_message WHERE created_at < ?")
-        .bind(cutoff)
-        .execute(pool)
-        .await
-        .context("Failed to prune stale cached messages")?;
-    Ok(result.rows_affected())
-}
 
 /// Initialize the SQLite database connection pool.
 ///
