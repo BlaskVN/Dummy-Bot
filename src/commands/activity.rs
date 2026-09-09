@@ -215,11 +215,7 @@ pub async fn profile(
         .as_ref()
         .map_or(ctx.author().id, |member| member.user.id);
     let page = page.unwrap_or(1);
-    if page < 1 {
-        ui::reply(ctx, Tone::Warning, profile_unavailable(language)).await?;
-        return Ok(());
-    }
-    let Some(profile) = crate::activity_aggregate::get_member_profile(
+    let Some(profile) = crate::activity_aggregate::get_activity_profile(
         &ctx.data().db_pool,
         guild_id,
         user,
@@ -256,9 +252,9 @@ pub async fn profile(
         labels.1,
         profile.session_credits,
         labels.3,
-        profile.level,
+        profile.activity_level,
         labels.4,
-        format_duration((profile.next_level_minutes - profile.play_minutes).max(0)),
+        format_duration(profile.remaining_level_minutes()),
         labels.6,
         page,
         profile.total_pages,

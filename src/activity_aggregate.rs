@@ -259,22 +259,29 @@ pub struct MemberGameStat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MemberActivityProfile {
+pub struct ActivityProfile {
     pub play_minutes: i64,
     pub session_credits: i64,
-    pub level: i64,
+    pub activity_level: i64,
     pub next_level_minutes: i64,
     pub total_games: i64,
     pub games: Vec<MemberGameStat>,
     pub total_pages: i64,
 }
 
-pub async fn get_member_profile(
+impl ActivityProfile {
+    #[must_use]
+    pub fn remaining_level_minutes(&self) -> i64 {
+        (self.next_level_minutes - self.play_minutes).max(0)
+    }
+}
+
+pub async fn get_activity_profile(
     pool: &SqlitePool,
     guild_id: GuildId,
     user_id: UserId,
     page: i64,
-) -> Result<Option<MemberActivityProfile>> {
+) -> Result<Option<ActivityProfile>> {
     if page < 1 {
         return Ok(None);
     }
@@ -316,15 +323,15 @@ pub async fn get_member_profile(
     .fetch_all(pool)
     .await?;
 
-    let level = activity_level(play_minutes) as i64;
+    let activity_level = activity_level(play_minutes) as i64;
     let next_level_minutes =
-        ((level + 1) as u128 * (level + 2) as u128 * 30).min(i64::MAX as u128) as i64;
+        ((activity_level + 1) as u128 * (activity_level + 2) as u128 * 30).min(i64::MAX as u128) as i64;
     let total_pages = ((total_games + 9) / 10).max(1);
 
-    Ok(Some(MemberActivityProfile {
+    Ok(Some(ActivityProfile {
         play_minutes,
         session_credits,
-        level,
+        activity_level,
         next_level_minutes,
         total_games,
         games,
@@ -333,7 +340,7 @@ pub async fn get_member_profile(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LeaderboardRow {
+pub struct ActivityLeaderboardRow {
     pub user_id: UserId,
     pub play_minutes: i64,
 }
@@ -342,7 +349,7 @@ pub async fn get_activity_leaderboard_rows(
     pool: &SqlitePool,
     guild_id: GuildId,
     limit: i64,
-) -> Result<Vec<LeaderboardRow>> {
+) -> Result<Vec<ActivityLeaderboardRow>> {
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT a.user_id, a.play_minutes FROM activity_member_aggregate a LEFT JOIN activity_opt_out o ON o.guild_id = a.guild_id AND o.user_id = a.user_id WHERE a.guild_id = ? AND o.user_id IS NULL ORDER BY a.play_minutes DESC, a.user_id LIMIT ?",
     )
@@ -354,7 +361,7 @@ pub async fn get_activity_leaderboard_rows(
     let leaderboard = rows
         .into_iter()
         .filter_map(|(raw_id, play_minutes)| {
-            raw_id.parse::<u64>().ok().map(|id| LeaderboardRow {
+            raw_id.parse::<u64>().ok().map(|id| ActivityLeaderboardRow {
                 user_id: UserId::new(id),
                 play_minutes,
             })
@@ -368,11 +375,12 @@ pub async fn get_activity_leaderboard_rows(
 mod tests {
     use super::{
         activity_level, add_session_credit, assign_uncovered, finalize_activity,
-        get_activity_leaderboard_rows, get_member_profile, overlaps, LeaderboardRow,
+        get_activity_leaderboard_rows, get_activity_profile, overlaps, ActivityLeaderboardRow,
     };
     use crate::community::{create_activity, create_game_activity, update_activity_extension};
     use crate::database::init_db;
     use poise::serenity_prelude::{GuildId, ScheduledEventId, ScheduledEventType, UserId};
+    use sqlx::SqlitePool;
 
     #[test]
     fn assigns_overlap_once_and_scheduled_first() {
@@ -501,10 +509,9 @@ mod tests {
         std::fs::remove_dir_all(directory).unwrap();
     }
 
-    #[tokio::test]
-    async fn test_get_member_profile_opted_out_returns_none() {
+    async fn setup_test_pool(prefix: &str) -> (SqlitePool, std::path::PathBuf) {
         let directory = std::env::temp_dir().join(format!(
-            "dummy-bot-profile-optout-test-{}-{}",
+            "dummy-bot-{prefix}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -517,12 +524,17 @@ mod tests {
         )
         .await
         .unwrap();
+        (pool, directory)
+    }
 
+    #[tokio::test]
+    async fn test_get_activity_profile_opted_out_returns_none() {
+        let (pool, directory) = setup_test_pool("profile-optout-test").await;
         let guild_id = GuildId::new(1);
         let user_id = UserId::new(42);
 
         // Initially not opted out, empty profile returned
-        let profile = get_member_profile(&pool, guild_id, user_id, 1)
+        let profile = get_activity_profile(&pool, guild_id, user_id, 1)
             .await
             .unwrap();
         assert!(profile.is_some());
@@ -530,7 +542,7 @@ mod tests {
         assert_eq!(p.play_minutes, 0);
         assert_eq!(p.session_credits, 0);
         assert_eq!(p.total_games, 0);
-        assert_eq!(p.level, 0);
+        assert_eq!(p.activity_level, 0);
         assert_eq!(p.total_pages, 1);
         assert!(p.games.is_empty());
 
@@ -540,7 +552,7 @@ mod tests {
             .await
             .unwrap();
 
-        let profile = get_member_profile(&pool, guild_id, user_id, 1)
+        let profile = get_activity_profile(&pool, guild_id, user_id, 1)
             .await
             .unwrap();
         assert!(profile.is_none());
@@ -550,22 +562,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_member_profile_aggregates_and_paging() {
-        let directory = std::env::temp_dir().join(format!(
-            "dummy-bot-profile-paging-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let pool = init_db(
-            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
-            &directory,
-        )
-        .await
-        .unwrap();
-
+    async fn test_get_activity_profile_aggregates_and_paging() {
+        let (pool, directory) = setup_test_pool("profile-paging-test").await;
         let guild_id = GuildId::new(1);
         let user_id = UserId::new(42);
 
@@ -586,14 +584,15 @@ mod tests {
         }
 
         // Page 1: 10 games, total_pages = 2, total_games = 15
-        let page1 = get_member_profile(&pool, guild_id, user_id, 1)
+        let page1 = get_activity_profile(&pool, guild_id, user_id, 1)
             .await
             .unwrap()
             .expect("profile expected");
         assert_eq!(page1.play_minutes, 180);
         assert_eq!(page1.session_credits, 5);
-        assert_eq!(page1.level, 2);
+        assert_eq!(page1.activity_level, 2);
         assert_eq!(page1.next_level_minutes, 360);
+        assert_eq!(page1.remaining_level_minutes(), 180);
         assert_eq!(page1.total_games, 15);
         assert_eq!(page1.total_pages, 2);
         assert_eq!(page1.games.len(), 10);
@@ -603,7 +602,7 @@ mod tests {
         assert_eq!(page1.games[9].play_minutes, 90);
 
         // Page 2: remaining 5 games
-        let page2 = get_member_profile(&pool, guild_id, user_id, 2)
+        let page2 = get_activity_profile(&pool, guild_id, user_id, 2)
             .await
             .unwrap()
             .expect("profile expected");
@@ -613,7 +612,7 @@ mod tests {
         assert_eq!(page2.games[4].game_key, "game_15");
 
         // Page 3: out of bounds -> games is empty
-        let page3 = get_member_profile(&pool, guild_id, user_id, 3)
+        let page3 = get_activity_profile(&pool, guild_id, user_id, 3)
             .await
             .unwrap()
             .expect("profile expected");
@@ -621,7 +620,7 @@ mod tests {
         assert_eq!(page3.total_pages, 2);
 
         // Invalid page (< 1) returns None
-        let invalid = get_member_profile(&pool, guild_id, user_id, 0)
+        let invalid = get_activity_profile(&pool, guild_id, user_id, 0)
             .await
             .unwrap();
         assert!(invalid.is_none());
@@ -632,21 +631,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_activity_leaderboard_rows_excludes_opted_out_and_orders_desc() {
-        let directory = std::env::temp_dir().join(format!(
-            "dummy-bot-leaderboard-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let pool = init_db(
-            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
-            &directory,
-        )
-        .await
-        .unwrap();
-
+        let (pool, directory) = setup_test_pool("leaderboard-test").await;
         let guild_id = GuildId::new(1);
 
         for (user, minutes) in [(10, 100), (20, 300), (30, 200), (40, 500), (50, 300)] {
@@ -670,28 +655,28 @@ mod tests {
         assert_eq!(rows.len(), 4);
         assert_eq!(
             rows[0],
-            LeaderboardRow {
+            ActivityLeaderboardRow {
                 user_id: UserId::new(20),
                 play_minutes: 300
             }
         );
         assert_eq!(
             rows[1],
-            LeaderboardRow {
+            ActivityLeaderboardRow {
                 user_id: UserId::new(50),
                 play_minutes: 300
             }
         );
         assert_eq!(
             rows[2],
-            LeaderboardRow {
+            ActivityLeaderboardRow {
                 user_id: UserId::new(30),
                 play_minutes: 200
             }
         );
         assert_eq!(
             rows[3],
-            LeaderboardRow {
+            ActivityLeaderboardRow {
                 user_id: UserId::new(10),
                 play_minutes: 100
             }
@@ -704,14 +689,14 @@ mod tests {
         assert_eq!(limited.len(), 2);
         assert_eq!(
             limited[0],
-            LeaderboardRow {
+            ActivityLeaderboardRow {
                 user_id: UserId::new(20),
                 play_minutes: 300
             }
         );
         assert_eq!(
             limited[1],
-            LeaderboardRow {
+            ActivityLeaderboardRow {
                 user_id: UserId::new(50),
                 play_minutes: 300
             }
