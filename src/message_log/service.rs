@@ -2,8 +2,6 @@ use anyhow::{Context, Result};
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, GuildId, MessageId, MessageUpdateEvent};
 use sqlx::SqlitePool;
-
-use crate::database;
 use crate::i18n::{Language, TranslationKey, t};
 
 use super::formatting::{
