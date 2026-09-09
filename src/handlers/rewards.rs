@@ -240,15 +240,12 @@ async fn degrade(
         return;
     }
     let message = format!("Activity Reward Role disabled: {denial}");
-    let channel: Option<String> =
-        sqlx::query_scalar("SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?")
-            .bind(guild_id.to_string())
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
-    if let Some(channel) = channel.and_then(|channel| channel.parse::<u64>().ok()) {
-        let _ = serenity::ChannelId::new(channel)
+    let channel = crate::moderation_channel::get_moderation_channel(pool, guild_id)
+        .await
+        .ok()
+        .flatten();
+    if let Some(channel) = channel {
+        let _ = channel
             .send_message(
                 ctx,
                 serenity::CreateMessage::new()

@@ -22,12 +22,8 @@ pub async fn automod_observer(_ctx: Context<'_>) -> Result<(), Error> {
 pub async fn enable(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().context("Not in a guild")?;
     let lang = ctx.data().language(guild_id).await;
-    let channel_configured: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM moderation_channel_config WHERE guild_id = ?)",
-    )
-    .bind(guild_id.to_string())
-    .fetch_one(&ctx.data().db_pool)
-    .await?;
+    let channel_configured =
+        crate::moderation_channel::is_moderation_channel_configured(&ctx.data().db_pool, guild_id).await?;
     if !channel_configured {
         ui::reply(
             ctx,

@@ -38,14 +38,11 @@ pub async fn settings(ctx: Context<'_>) -> Result<(), Error> {
     let timezone = crate::timezone::get_timezone_name(&ctx.data().db_pool, guild_id)
         .await?
         .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
-    let moderation_channel = sqlx::query_scalar::<_, String>(
-        "SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .fetch_optional(&ctx.data().db_pool)
-    .await?
-    .map(|id| format!("<#{id}>"))
-    .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
+    let moderation_channel =
+        crate::moderation_channel::get_moderation_channel(&ctx.data().db_pool, guild_id)
+            .await?
+            .map(|id| format!("<#{id}>"))
+            .unwrap_or_else(|| t(lang, TranslationKey::SettingsNotConfigured).to_string());
     let game = crate::game_config::game_config(&ctx.data().db_pool, guild_id).await?;
 
     let log_channel_text = tf(

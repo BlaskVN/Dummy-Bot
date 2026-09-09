@@ -17,6 +17,7 @@ pub mod i18n;
 pub mod message_log;
 pub mod message_log_health;
 pub mod moderation_cases;
+pub mod moderation_channel;
 pub mod permissions;
 pub mod reward_roles;
 pub mod state;

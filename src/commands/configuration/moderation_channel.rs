@@ -1,16 +1,12 @@
 use crate::i18n::{TranslationKey, t, tf};
+use crate::moderation_channel::{
+    clear_moderation_channel, get_moderation_channel, set_moderation_channel,
+    valid_moderation_channel,
+};
 use crate::permissions::missing_channel_permissions;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
-
-fn valid_channel(
-    guild_id: serenity::GuildId,
-    channel_guild_id: serenity::GuildId,
-    kind: serenity::ChannelType,
-) -> bool {
-    guild_id == channel_guild_id && kind == serenity::ChannelType::Text
-}
 
 /// Configure the private channel used for moderation records.
 #[poise::command(
@@ -36,7 +32,7 @@ pub async fn set(
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    if !valid_channel(guild_id, channel.guild_id, channel.kind) {
+    if !valid_moderation_channel(guild_id, channel.guild_id, channel.kind) {
         ui::reply(
             ctx,
             Tone::Error,
@@ -61,13 +57,7 @@ pub async fn set(
         return Ok(());
     }
 
-    sqlx::query(
-        "INSERT INTO moderation_channel_config (guild_id, channel_id) VALUES (?, ?)\n         ON CONFLICT(guild_id) DO UPDATE SET channel_id = excluded.channel_id, updated_at = CURRENT_TIMESTAMP",
-    )
-    .bind(guild_id.to_string())
-    .bind(channel.id.to_string())
-    .execute(&ctx.data().db_pool)
-    .await?;
+    set_moderation_channel(&ctx.data().db_pool, guild_id, channel.id).await?;
     let message = tf(lang, TranslationKey::ModerationChannelSet, &[&channel.id]);
     ui::reply(ctx, Tone::Success, message).await?;
     Ok(())
@@ -75,22 +65,22 @@ pub async fn set(
 
 #[cfg(test)]
 mod tests {
-    use super::valid_channel;
+    use crate::moderation_channel::valid_moderation_channel;
     use poise::serenity_prelude::{ChannelType, GuildId};
 
     #[test]
     fn accepts_only_current_guild_text_channels() {
-        assert!(valid_channel(
+        assert!(valid_moderation_channel(
             GuildId::new(1),
             GuildId::new(1),
             ChannelType::Text
         ));
-        assert!(!valid_channel(
+        assert!(!valid_moderation_channel(
             GuildId::new(1),
             GuildId::new(2),
             ChannelType::Text
         ));
-        assert!(!valid_channel(
+        assert!(!valid_moderation_channel(
             GuildId::new(1),
             GuildId::new(1),
             ChannelType::Voice
@@ -105,12 +95,7 @@ pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
-    let channel = sqlx::query_scalar::<_, String>(
-        "SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?",
-    )
-    .bind(guild_id.to_string())
-    .fetch_optional(&ctx.data().db_pool)
-    .await?;
+    let channel = get_moderation_channel(&ctx.data().db_pool, guild_id).await?;
     ui::reply(
         ctx,
         Tone::Neutral,
@@ -130,10 +115,7 @@ pub async fn clear(ctx: Context<'_>) -> Result<(), Error> {
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
-    sqlx::query("DELETE FROM moderation_channel_config WHERE guild_id = ?")
-        .bind(guild_id.to_string())
-        .execute(&ctx.data().db_pool)
-        .await?;
+    clear_moderation_channel(&ctx.data().db_pool, guild_id).await?;
     ui::reply(
         ctx,
         Tone::Success,

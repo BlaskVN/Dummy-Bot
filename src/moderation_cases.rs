@@ -234,17 +234,11 @@ pub async fn execute_moderation_action<E: DiscordModerationExecutor>(
     );
 
     let mut channel_logged = false;
-    if let Ok(Some(channel)) = sqlx::query_scalar::<_, String>(
-        "SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?",
-    )
-    .bind(request.guild_id.to_string())
-    .fetch_optional(pool)
-    .await
-        && let Ok(channel_id) = channel.parse::<u64>()
+    if let Ok(Some(channel_id)) =
+        crate::moderation_channel::get_moderation_channel(pool, request.guild_id).await
     {
-        let ch = poise::serenity_prelude::ChannelId::new(channel_id);
         if let Err(err) = executor
-            .post_moderation_case_notice(ch, &summary_text)
+            .post_moderation_case_notice(channel_id, &summary_text)
             .await
         {
             tracing::warn!(
@@ -699,10 +693,11 @@ mod tests {
         sqlx::migrate!().run(&pool).await.unwrap();
 
         // Configure moderation channel
-        sqlx::query(
-            "INSERT INTO moderation_channel_config (guild_id, channel_id) VALUES ('1', '999')",
+        crate::moderation_channel::set_moderation_channel(
+            &pool,
+            GuildId::new(1),
+            poise::serenity_prelude::ChannelId::new(999),
         )
-        .execute(&pool)
         .await
         .unwrap();
 

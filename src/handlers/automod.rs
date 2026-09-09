@@ -66,11 +66,10 @@ pub async fn handle_execution(
         )
         .await;
     }
-    let channel: Option<String> = match sqlx::query_scalar(
-        "SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?",
+    let channel = match crate::moderation_channel::get_moderation_channel(
+        &data.db_pool,
+        execution.guild_id,
     )
-    .bind(execution.guild_id.to_string())
-    .fetch_optional(&data.db_pool)
     .await
     {
         Ok(channel) => channel,
@@ -80,10 +79,6 @@ pub async fn handle_execution(
         }
     };
     let Some(channel) = channel else { return };
-    let Ok(channel) = channel.parse() else {
-        tracing::error!(guild = %execution.guild_id, "Invalid stored moderation channel ID");
-        return;
-    };
     let language = data.language(execution.guild_id).await;
     let jump = match (execution.channel_id, execution.message_id) {
         (Some(channel), Some(message)) => format!(
@@ -102,7 +97,7 @@ pub async fn handle_execution(
             &jump,
         ],
     );
-    if let Err(error) = serenity::ChannelId::new(channel)
+    if let Err(error) = channel
         .send_message(
             &ctx.http,
             serenity::CreateMessage::new()
@@ -146,21 +141,18 @@ pub async fn send_suggestion(
     user_id: serenity::UserId,
     rule_id: serenity::RuleId,
 ) -> bool {
-    let channel: Option<String> =
-        sqlx::query_scalar("SELECT channel_id FROM moderation_channel_config WHERE guild_id = ?")
-            .bind(guild_id.to_string())
-            .fetch_optional(&data.db_pool)
-            .await
-            .ok()
-            .flatten();
-    let delivered = if let Some(channel) = channel.and_then(|id| id.parse().ok()) {
+    let channel = crate::moderation_channel::get_moderation_channel(&data.db_pool, guild_id)
+        .await
+        .ok()
+        .flatten();
+    let delivered = if let Some(channel) = channel {
         let language = data.language(guild_id).await;
         let message = tf(
             language,
             TranslationKey::AutoModSuggestion,
             &[&user_id, &rule_id],
         );
-        serenity::ChannelId::new(channel)
+        channel
             .send_message(
                 &ctx.http,
                 serenity::CreateMessage::new()
