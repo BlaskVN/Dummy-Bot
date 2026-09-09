@@ -2,7 +2,6 @@ use crate::i18n::Language;
 use crate::ui::{self, Tone};
 use crate::word_puzzle::PuzzleState;
 use crate::word_puzzle_store::Board;
-pub use crate::word_puzzle_engine::format_summary;
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -380,8 +379,9 @@ fn render(language: Language, key: Text, args: &[&(dyn std::fmt::Display + Sync)
 
 #[cfg(test)]
 mod tests {
-    use super::{TEXT_KEYS, Text, format_summary, template};
+    use super::{TEXT_KEYS, Text, template};
     use crate::i18n::Language;
+    use crate::word_puzzle_engine::format_summary;
     use crate::word_puzzle_store::SummaryEntry;
 
     #[test]

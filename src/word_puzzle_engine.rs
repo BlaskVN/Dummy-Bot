@@ -4,15 +4,21 @@ use sqlx::SqlitePool;
 use crate::i18n::Language;
 use crate::word_puzzle_store::SummaryEntry;
 
+/// Payload containing finished word puzzle session summary data for delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WordPuzzleSummaryPayload<'a> {
+    pub guild_id: &'a str,
+    pub channel_id: &'a str,
+    pub answer: &'a str,
+    pub rows: &'a [SummaryEntry],
+}
+
 /// Outbox port trait for delivering word puzzle summary messages.
 #[async_trait::async_trait]
 pub trait WordPuzzleOutbox: Send + Sync {
     async fn deliver_summary(
         &self,
-        guild_id: serenity::all::GuildId,
-        channel_id: serenity::all::ChannelId,
-        answer: &str,
-        rows: &[SummaryEntry],
+        payload: WordPuzzleSummaryPayload<'_>,
     ) -> Result<(), anyhow::Error>;
 }
 
@@ -23,19 +29,24 @@ pub async fn reconcile_and_deliver<O: WordPuzzleOutbox>(
     outbox: &O,
 ) -> Result<(), anyhow::Error> {
     let now = chrono::Utc::now().timestamp();
-    crate::word_puzzle_store::reconcile_expired(pool, now, 100).await?;
-    crate::word_puzzle_store::award_pending_credits(pool, now, 500).await?;
+    if let Err(error) = crate::word_puzzle_store::reconcile_expired(pool, now, 100).await {
+        tracing::error!(%error, "Could not reconcile expired Word Puzzles");
+    }
+    if let Err(error) = crate::word_puzzle_store::award_pending_credits(pool, now, 500).await {
+        tracing::error!(%error, "Could not award Word Puzzle credits");
+    }
     let sessions = crate::word_puzzle_store::claim_finished(pool, now, 20).await?;
 
     for session in sessions {
         let delivery_result = async {
-            let guild_id = serenity::all::GuildId::new(session.guild_id.parse::<u64>()?);
-            let channel_id =
-                serenity::all::ChannelId::new(session.result_channel_id.parse::<u64>()?);
             let rows = crate::word_puzzle_store::summary(pool, session.id).await?;
-            outbox
-                .deliver_summary(guild_id, channel_id, &session.answer, &rows)
-                .await
+            let payload = WordPuzzleSummaryPayload {
+                guild_id: &session.guild_id,
+                channel_id: &session.result_channel_id,
+                answer: &session.answer,
+                rows: &rows,
+            };
+            outbox.deliver_summary(payload).await
         }
         .await;
 
@@ -89,13 +100,12 @@ impl<'a> DiscordOutbox<'a> {
 impl WordPuzzleOutbox for DiscordOutbox<'_> {
     async fn deliver_summary(
         &self,
-        guild_id: serenity::all::GuildId,
-        channel_id: serenity::all::ChannelId,
-        answer: &str,
-        rows: &[SummaryEntry],
+        payload: WordPuzzleSummaryPayload<'_>,
     ) -> Result<(), anyhow::Error> {
+        let guild_id = serenity::all::GuildId::new(payload.guild_id.parse::<u64>()?);
+        let channel_id = serenity::all::ChannelId::new(payload.channel_id.parse::<u64>()?);
         let language = self.data.language(guild_id).await;
-        let summary = format_summary(language, answer, rows);
+        let summary = format_summary(language, payload.answer, payload.rows);
         channel_id
             .send_message(
                 self.ctx,
@@ -168,19 +178,19 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct RecordedDelivery {
-        guild_id: u64,
-        channel_id: u64,
+        guild_id: String,
+        channel_id: String,
         answer: String,
         #[allow(dead_code)]
         rows: Vec<SummaryEntry>,
     }
 
-    struct MockOutbox {
+    struct MockWordPuzzleOutbox {
         calls: Mutex<Vec<RecordedDelivery>>,
         should_fail: AtomicBool,
     }
 
-    impl MockOutbox {
+    impl MockWordPuzzleOutbox {
         fn new() -> Self {
             Self {
                 calls: Mutex::new(Vec::new()),
@@ -194,22 +204,19 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl WordPuzzleOutbox for MockOutbox {
+    impl WordPuzzleOutbox for MockWordPuzzleOutbox {
         async fn deliver_summary(
             &self,
-            guild_id: serenity::all::GuildId,
-            channel_id: serenity::all::ChannelId,
-            answer: &str,
-            rows: &[SummaryEntry],
+            payload: WordPuzzleSummaryPayload<'_>,
         ) -> Result<(), anyhow::Error> {
             if self.should_fail.load(Ordering::SeqCst) {
                 anyhow::bail!("Simulated delivery error");
             }
             self.calls.lock().unwrap().push(RecordedDelivery {
-                guild_id: guild_id.get(),
-                channel_id: channel_id.get(),
-                answer: answer.to_owned(),
-                rows: rows.to_vec(),
+                guild_id: payload.guild_id.to_owned(),
+                channel_id: payload.channel_id.to_owned(),
+                answer: payload.answer.to_owned(),
+                rows: payload.rows.to_vec(),
             });
             Ok(())
         }
@@ -236,7 +243,7 @@ mod tests {
     #[tokio::test]
     async fn delivery_success_cleans_up_claimed_session() {
         let (pool, directory) = test_pool("success").await;
-        let outbox = MockOutbox::new();
+        let outbox = MockWordPuzzleOutbox::new();
 
         let s = create_session(
             &pool,
@@ -254,8 +261,8 @@ mod tests {
 
         let calls = outbox.recorded_calls();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].guild_id, 10);
-        assert_eq!(calls[0].channel_id, 30);
+        assert_eq!(calls[0].guild_id, "10");
+        assert_eq!(calls[0].channel_id, "30");
         assert_eq!(calls[0].answer, s.answer);
 
         // Session should be cleaned up after successful delivery
@@ -268,7 +275,7 @@ mod tests {
     #[tokio::test]
     async fn delivery_failure_releases_claim_and_allows_retry() {
         let (pool, directory) = test_pool("failure-retry").await;
-        let outbox = MockOutbox::new();
+        let outbox = MockWordPuzzleOutbox::new();
         outbox.should_fail.store(true, Ordering::SeqCst);
 
         let s = create_session(
@@ -304,8 +311,8 @@ mod tests {
 
         let calls = outbox.recorded_calls();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].guild_id, 11);
-        assert_eq!(calls[0].channel_id, 31);
+        assert_eq!(calls[0].guild_id, "11");
+        assert_eq!(calls[0].channel_id, "31");
 
         // Session cleaned up after retry succeeded
         assert!(session(&pool, s.id).await.unwrap().is_none());
@@ -317,7 +324,7 @@ mod tests {
     #[tokio::test]
     async fn expired_session_reconciliation_and_credit_awarding_triggered() {
         let (pool, directory) = test_pool("reconcile-and-award").await;
-        let outbox = MockOutbox::new();
+        let outbox = MockWordPuzzleOutbox::new();
 
         // Setup 1: Expired session (started at 100, duration 10 seconds -> deadline 110, now is current time > 110)
         let s = create_session(
@@ -349,8 +356,8 @@ mod tests {
         // 1. Expired session should have been reconciled (expired -> finished) and delivered
         let calls = outbox.recorded_calls();
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].guild_id, 12);
-        assert_eq!(calls[0].channel_id, 32);
+        assert_eq!(calls[0].guild_id, "12");
+        assert_eq!(calls[0].channel_id, "32");
         assert!(session(&pool, s.id).await.unwrap().is_none());
 
         // 2. Pending credit should have been processed (credit_processed_at set)
