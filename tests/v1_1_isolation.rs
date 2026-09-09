@@ -4,7 +4,7 @@ use rust_discord_bot::automod::{
     set_observer_enabled,
 };
 use rust_discord_bot::database::{delete_guild_data, init_db, load_donation_config};
-use rust_discord_bot::message_log_health::{MessageLogHealth, reconcile};
+use rust_discord_bot::message_log::{MessageLogHealth, reconcile};
 use rust_discord_bot::moderation_cases::{
     ModerationAction, create_case, get_case, list_cases, void_case,
 };

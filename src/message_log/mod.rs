@@ -14,13 +14,14 @@ pub use health::{
     get_log_channel, load_enabled_guilds, mark_warning_sent, reconcile, status,
 };
 pub use models::{
-    DeletedMessageView, MessageLogConfig, MessageLogHealth, MessageLogOptions, PurgedMessageSummary,
+    CachedMessageRecord, DeletedMessageView, MessageLogConfig, MessageLogHealth,
+    MessageLogOptions, PurgedMessageSummary,
 };
 pub use ports::{
     AttachmentFetcher, DiscordOutbox, HttpAttachmentFetcher, InMemoryOutbox, MessageLogOutbox,
     MockAttachmentFetcher, SentMessageRecord, is_discord_cdn,
 };
-pub use service::MessageLogService;
+pub use service::{MessageLogService, load_cached_message, save_cached_message};
 
 #[cfg(test)]
 mod tests {
@@ -59,7 +60,7 @@ mod tests {
         );
 
         // 1. Simulate incoming message
-        let record = database::CachedMessageRecord {
+        let record = CachedMessageRecord {
             message_id: "1001".to_string(),
             channel_id: channel_id.to_string(),
             guild_id: guild_id.to_string(),
@@ -71,7 +72,7 @@ mod tests {
             created_at: 1700000000,
             attachments_json: "[]".to_string(),
         };
-        database::save_cached_message(&pool, &record).await.unwrap();
+        save_cached_message(&pool, &record).await.unwrap();
 
         // 2. Simulate edit
         let update_event: serenity::MessageUpdateEvent = serde_json::from_str(
@@ -101,7 +102,7 @@ mod tests {
         assert_eq!(outbox.sent_count().await, 2);
 
         // Verify message deleted from DB cache
-        let cached = database::load_cached_message(&pool, "1001").await.unwrap();
+        let cached = load_cached_message(&pool, "1001").await.unwrap();
         assert!(cached.is_none());
     }
 
@@ -175,9 +176,9 @@ mod tests {
         );
 
         // User message
-        database::save_cached_message(
+        save_cached_message(
             &pool,
-            &database::CachedMessageRecord {
+            &CachedMessageRecord {
                 message_id: "201".to_string(),
                 channel_id: channel_id.to_string(),
                 guild_id: guild_id.to_string(),
@@ -194,9 +195,9 @@ mod tests {
         .unwrap();
 
         // Bot message
-        database::save_cached_message(
+        save_cached_message(
             &pool,
-            &database::CachedMessageRecord {
+            &CachedMessageRecord {
                 message_id: "202".to_string(),
                 channel_id: channel_id.to_string(),
                 guild_id: guild_id.to_string(),
@@ -312,7 +313,7 @@ mod tests {
             },
         );
 
-        let record = database::CachedMessageRecord {
+        let record = CachedMessageRecord {
             message_id: "7001".to_string(),
             channel_id: channel_id.to_string(),
             guild_id: guild_id.to_string(),
@@ -331,7 +332,7 @@ mod tests {
             })])
             .unwrap(),
         };
-        database::save_cached_message(&pool, &record).await.unwrap();
+        save_cached_message(&pool, &record).await.unwrap();
 
         service
             .handle_message_delete(
@@ -345,5 +346,43 @@ mod tests {
 
         // Expect 2 messages: 1 for the deleted message embed, and 1 warning notice for the skipped attachment
         assert_eq!(outbox.sent_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn cached_message_crud_and_ttl_pruning() {
+        let directory = std::env::temp_dir().join(format!(
+            "dummy-bot-cached-message-test-{}",
+            std::process::id()
+        ));
+        let pool = init_db(
+            &format!("sqlite:{}/bot.db?mode=rwc", directory.display()),
+            &directory,
+        )
+        .await
+        .unwrap();
+
+        let record = CachedMessageRecord {
+            message_id: "100".into(),
+            channel_id: "200".into(),
+            guild_id: "300".into(),
+            author_id: "400".into(),
+            author_name: "Alice".into(),
+            author_avatar_url: "https://cdn.discordapp.com/avatar.png".into(),
+            is_bot: false,
+            content: "Hello world".into(),
+            created_at: 1000,
+            attachments_json: "[]".into(),
+        };
+
+        save_cached_message(&pool, &record).await.unwrap();
+        let loaded = load_cached_message(&pool, "100").await.unwrap();
+        assert_eq!(loaded, Some(record));
+
+        let pruned = database::prune_stale_cached_messages(&pool, 0).await.unwrap();
+        assert_eq!(pruned, 1);
+        assert!(load_cached_message(&pool, "100").await.unwrap().is_none());
+
+        pool.close().await;
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

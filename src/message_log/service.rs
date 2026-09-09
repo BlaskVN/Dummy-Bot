@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use poise::serenity_prelude as serenity;
 use serenity::{ChannelId, GuildId, MessageId, MessageUpdateEvent};
 use sqlx::SqlitePool;
@@ -11,8 +12,8 @@ use super::formatting::{
 };
 use super::health::{self, current_health, mark_warning_sent, reconcile};
 use super::models::{
-    DeletedMessageView, EditedMessageView, MessageLogHealth, MessageLogOptions,
-    PurgedMessageSummary,
+    CachedMessageRecord, DeletedMessageView, EditedMessageView, MessageLogHealth,
+    MessageLogOptions, PurgedMessageSummary,
 };
 use super::ports::{AttachmentFetcher, MessageLogOutbox};
 
@@ -53,7 +54,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             Ok(json) => json,
             Err(_) => "[]".to_string(),
         };
-        let record = database::CachedMessageRecord {
+        let record = CachedMessageRecord {
             message_id: message.id.to_string(),
             channel_id: message.channel_id.to_string(),
             guild_id: guild_id.to_string(),
@@ -65,7 +66,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
             created_at: message.timestamp.unix_timestamp(),
             attachments_json,
         };
-        if let Err(error) = database::save_cached_message(pool, &record).await {
+        if let Err(error) = save_cached_message(pool, &record).await {
             tracing::warn!(%error, "Failed to persist cached message to DB");
         }
     }
@@ -160,7 +161,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                     attachments,
                 )
             } else if let Ok(Some(db_msg)) =
-                database::load_cached_message(self.pool, &deleted_message_id.to_string()).await
+                load_cached_message(self.pool, &deleted_message_id.to_string()).await
             {
                 let _ = database::delete_cached_message(self.pool, &deleted_message_id.to_string())
                     .await;
@@ -276,7 +277,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                     message.timestamp.unix_timestamp(),
                 )
             } else if let Ok(Some(db_msg)) =
-                database::load_cached_message(self.pool, &event.id.to_string()).await
+                load_cached_message(self.pool, &event.id.to_string()).await
             {
                 serenity_msg = None;
                 (
@@ -314,10 +315,10 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         }
 
         if let Ok(Some(mut db_msg)) =
-            database::load_cached_message(self.pool, &event.id.to_string()).await
+            load_cached_message(self.pool, &event.id.to_string()).await
         {
             db_msg.content = new_content.clone();
-            let _ = database::save_cached_message(self.pool, &db_msg).await;
+            let _ = save_cached_message(self.pool, &db_msg).await;
         }
 
         let Some(log_channel_id) = self.resolve_log_channel(guild_id).await else {
@@ -386,7 +387,7 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
                     });
                 }
             } else if let Ok(Some(db_msg)) =
-                database::load_cached_message(self.pool, &msg_id.to_string()).await
+                load_cached_message(self.pool, &msg_id.to_string()).await
             {
                 cached_count += 1;
                 let _ = database::delete_cached_message(self.pool, &msg_id.to_string()).await;
@@ -516,3 +517,68 @@ impl<'a, O: MessageLogOutbox, F: AttachmentFetcher> MessageLogService<'a, O, F> 
         }
     }
 }
+
+pub async fn save_cached_message(pool: &SqlitePool, record: &CachedMessageRecord) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO cached_message (
+            message_id, channel_id, guild_id, author_id, author_name, author_avatar_url, is_bot, content, created_at, attachments_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(message_id) DO UPDATE SET
+            content = excluded.content,
+            attachments_json = excluded.attachments_json",
+    )
+    .bind(&record.message_id)
+    .bind(&record.channel_id)
+    .bind(&record.guild_id)
+    .bind(&record.author_id)
+    .bind(&record.author_name)
+    .bind(&record.author_avatar_url)
+    .bind(if record.is_bot { 1 } else { 0 })
+    .bind(&record.content)
+    .bind(record.created_at)
+    .bind(&record.attachments_json)
+    .execute(pool)
+    .await
+    .context("Failed to save cached message")?;
+    Ok(())
+}
+
+pub async fn load_cached_message(
+    pool: &SqlitePool,
+    message_id: &str,
+) -> Result<Option<CachedMessageRecord>> {
+    let row = sqlx::query_as::<_, (String, String, String, String, String, String, i64, String, i64, String)>(
+        "SELECT message_id, channel_id, guild_id, author_id, author_name, author_avatar_url, is_bot, content, created_at, attachments_json FROM cached_message WHERE message_id = ?",
+    )
+    .bind(message_id)
+    .fetch_optional(pool)
+    .await
+    .context("Failed to load cached message")?;
+
+    Ok(row.map(
+        |(
+            message_id,
+            channel_id,
+            guild_id,
+            author_id,
+            author_name,
+            author_avatar_url,
+            is_bot,
+            content,
+            created_at,
+            attachments_json,
+        )| CachedMessageRecord {
+            message_id,
+            channel_id,
+            guild_id,
+            author_id,
+            author_name,
+            author_avatar_url,
+            is_bot: is_bot != 0,
+            content,
+            created_at,
+            attachments_json,
+        },
+    ))
+}
+

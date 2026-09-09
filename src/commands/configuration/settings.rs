@@ -1,5 +1,5 @@
 use crate::i18n::{TranslationKey, t, tf};
-use crate::message_log_health::MessageLogHealth;
+use crate::message_log::MessageLogHealth;
 use crate::ui::{self, Tone};
 use crate::{Context, Error};
 

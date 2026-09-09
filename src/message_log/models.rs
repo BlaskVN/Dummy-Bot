@@ -26,6 +26,20 @@ impl MessageLogHealth {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachedMessageRecord {
+    pub message_id: String,
+    pub channel_id: String,
+    pub guild_id: String,
+    pub author_id: String,
+    pub author_name: String,
+    pub author_avatar_url: String,
+    pub is_bot: bool,
+    pub content: String,
+    pub created_at: i64,
+    pub attachments_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageLogConfig {
     pub channel_id: ChannelId,
     pub enabled: bool,

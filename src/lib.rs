@@ -15,7 +15,6 @@ pub mod game_config;
 pub mod handlers;
 pub mod i18n;
 pub mod message_log;
-pub mod message_log_health;
 pub mod moderation_cases;
 pub mod moderation_channel;
 pub mod permissions;
