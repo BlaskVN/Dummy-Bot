@@ -15,6 +15,7 @@ pub enum ValorantLinkError {
     InvalidRegion,
     AccountNotFound(String),
     ApiError(anyhow::Error),
+    Database(anyhow::Error),
 }
 
 impl std::fmt::Display for ValorantLinkError {
@@ -24,6 +25,7 @@ impl std::fmt::Display for ValorantLinkError {
             Self::InvalidRegion => write!(f, "Invalid region specified"),
             Self::AccountNotFound(id) => write!(f, "Riot account not found: {id}"),
             Self::ApiError(err) => write!(f, "Riot API error: {err}"),
+            Self::Database(err) => write!(f, "Database error: {err}"),
         }
     }
 }
@@ -45,6 +47,7 @@ pub enum ValorantProfileError {
     ApiForbidden,
     ApiUnranked,
     ApiError(anyhow::Error),
+    Database(anyhow::Error),
 }
 
 impl std::fmt::Display for ValorantProfileError {
@@ -57,6 +60,7 @@ impl std::fmt::Display for ValorantProfileError {
             Self::ApiForbidden => write!(f, "Riot API access forbidden"),
             Self::ApiUnranked => write!(f, "Player has no ranked data in this episode/act"),
             Self::ApiError(err) => write!(f, "Failed to load player ranked data: {err}"),
+            Self::Database(err) => write!(f, "Database error: {err}"),
         }
     }
 }
@@ -74,14 +78,16 @@ pub enum ValorantLeaderboardError {
     Empty,
     ApiForbidden,
     ApiError(anyhow::Error),
+    Database(anyhow::Error),
 }
 
 impl std::fmt::Display for ValorantLeaderboardError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Empty => write!(f, "No members have shared their profile in this server"),
+            Self::Empty => write!(f, "No members have shared their profile in this guild"),
             Self::ApiForbidden => write!(f, "Riot API access forbidden"),
             Self::ApiError(err) => write!(f, "Failed to load leaderboard data: {err}"),
+            Self::Database(err) => write!(f, "Database error: {err}"),
         }
     }
 }
@@ -178,7 +184,7 @@ impl ValorantService {
             riot_region,
         )
         .await
-        .map_err(ValorantLinkError::ApiError)?;
+        .map_err(ValorantLinkError::Database)?;
 
         Ok(linked)
     }
@@ -199,7 +205,7 @@ impl ValorantService {
 
         let account = match get_linked_account(&self.pool, target_id)
             .await
-            .map_err(ValorantProfileError::ApiError)?
+            .map_err(ValorantProfileError::Database)?
         {
             Some(acc) => acc,
             None => return Err(ValorantProfileError::NotLinked { is_self }),
@@ -207,7 +213,7 @@ impl ValorantService {
 
         let is_visible = get_guild_visibility(&self.pool, guild_id, target_id)
             .await
-            .map_err(ValorantProfileError::ApiError)?;
+            .map_err(ValorantProfileError::Database)?;
 
         if !is_self && !is_visible {
             return Err(ValorantProfileError::HiddenOther);
@@ -249,7 +255,7 @@ impl ValorantService {
     ) -> Result<Vec<ValorantLeaderboardEntry>, ValorantLeaderboardError> {
         let visible_accounts = list_guild_visible_accounts(&self.pool, guild_id)
             .await
-            .map_err(ValorantLeaderboardError::ApiError)?;
+            .map_err(ValorantLeaderboardError::Database)?;
 
         if visible_accounts.is_empty() {
             return Err(ValorantLeaderboardError::Empty);

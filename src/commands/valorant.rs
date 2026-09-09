@@ -97,6 +97,7 @@ pub async fn profile(
             .await?;
             return Ok(());
         }
+        Err(ValorantProfileError::Database(err)) => return Err(err.into()),
     };
 
     let title = t(lang, TranslationKey::ValorantProfileTitle);
@@ -186,6 +187,7 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
             .await?;
             return Ok(());
         }
+        Err(ValorantLeaderboardError::Database(err)) => return Err(err.into()),
     };
 
     let mut lines = Vec::new();
@@ -357,6 +359,7 @@ pub async fn link(
             )
             .await?;
         }
+        Err(ValorantLinkError::Database(err)) => return Err(err.into()),
     }
 
     Ok(())
