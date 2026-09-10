@@ -255,6 +255,15 @@ pub enum TranslationKey {
     ValorantLeaderboardApiError,
     ValorantUnlinkSuccess,
     ValorantUnlinkNotFound,
+    ValorantMatchesTitle,
+    ValorantMatchesEmpty,
+    ValorantMatchesHiddenOther,
+    ValorantMatchesNotLinkedSelf,
+    ValorantMatchesNotLinkedOther,
+    ValorantMatchesScore,
+    ValorantMatchesKda,
+    ValorantMatchesWon,
+    ValorantMatchesLost,
 }
 
 impl TranslationKey {
@@ -330,6 +339,15 @@ impl TranslationKey {
             "ValorantLeaderboardApiError" => Some(Self::ValorantLeaderboardApiError),
             "ValorantUnlinkSuccess" => Some(Self::ValorantUnlinkSuccess),
             "ValorantUnlinkNotFound" => Some(Self::ValorantUnlinkNotFound),
+            "ValorantMatchesTitle" => Some(Self::ValorantMatchesTitle),
+            "ValorantMatchesEmpty" => Some(Self::ValorantMatchesEmpty),
+            "ValorantMatchesHiddenOther" => Some(Self::ValorantMatchesHiddenOther),
+            "ValorantMatchesNotLinkedSelf" => Some(Self::ValorantMatchesNotLinkedSelf),
+            "ValorantMatchesNotLinkedOther" => Some(Self::ValorantMatchesNotLinkedOther),
+            "ValorantMatchesScore" | "ValorantMatchScore" => Some(Self::ValorantMatchesScore),
+            "ValorantMatchesKda" | "ValorantMatchKda" => Some(Self::ValorantMatchesKda),
+            "ValorantMatchesWon" | "ValorantMatchWon" => Some(Self::ValorantMatchesWon),
+            "ValorantMatchesLost" | "ValorantMatchLost" => Some(Self::ValorantMatchesLost),
             _ => None,
         }
     }
@@ -828,6 +846,30 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ValorantUnlinkNotFound,
         "You do not have a linked Riot account.",
     );
+    en.insert(
+        TranslationKey::ValorantMatchesTitle,
+        "Recent Matches for {}",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesEmpty,
+        "No recent matches found.",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesHiddenOther,
+        "This member's VALORANT profile is hidden in this Guild.",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesNotLinkedSelf,
+        "You have not linked your Riot account yet. Use `/valorant link` to connect your account.",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesNotLinkedOther,
+        "This member has not linked their Riot account.",
+    );
+    en.insert(TranslationKey::ValorantMatchesScore, "Score: {} - {}");
+    en.insert(TranslationKey::ValorantMatchesKda, "K/D/A: {}/{}/{}");
+    en.insert(TranslationKey::ValorantMatchesWon, "VICTORY");
+    en.insert(TranslationKey::ValorantMatchesLost, "DEFEAT");
     translations.insert(Language::English, en);
 
     // Vietnamese translations
@@ -1326,6 +1368,30 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ValorantUnlinkNotFound,
         "Bạn chưa có tài khoản Riot nào được liên kết.",
     );
+    vi.insert(
+        TranslationKey::ValorantMatchesTitle,
+        "Các trận đấu gần đây của {}",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesEmpty,
+        "Không tìm thấy trận đấu gần đây nào.",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesHiddenOther,
+        "Hồ sơ VALORANT của thành viên này bị ẩn trong Guild này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesNotLinkedSelf,
+        "Bạn chưa liên kết tài khoản Riot. Sử dụng `/valorant link` để kết nối tài khoản.",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesNotLinkedOther,
+        "Thành viên này chưa liên kết tài khoản Riot.",
+    );
+    vi.insert(TranslationKey::ValorantMatchesScore, "Tỉ số: {} - {}");
+    vi.insert(TranslationKey::ValorantMatchesKda, "K/D/A: {}/{}/{}");
+    vi.insert(TranslationKey::ValorantMatchesWon, "CHIẾN THẮNG");
+    vi.insert(TranslationKey::ValorantMatchesLost, "THẤT BẠI");
     translations.insert(Language::Vietnamese, vi);
 
     // Japanese translations
@@ -1836,6 +1902,27 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ValorantUnlinkNotFound,
         "連携されている Riot アカウントはありません。",
     );
+    ja.insert(TranslationKey::ValorantMatchesTitle, "{} の最近の試合");
+    ja.insert(
+        TranslationKey::ValorantMatchesEmpty,
+        "最近の試合が見つかりませんでした。",
+    );
+    ja.insert(
+        TranslationKey::ValorantMatchesHiddenOther,
+        "このメンバーのVALORANTプロフィールはこのギルドでは非公開です。",
+    );
+    ja.insert(
+        TranslationKey::ValorantMatchesNotLinkedSelf,
+        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+    );
+    ja.insert(
+        TranslationKey::ValorantMatchesNotLinkedOther,
+        "このメンバーはRiotアカウントを連携していません。",
+    );
+    ja.insert(TranslationKey::ValorantMatchesScore, "スコア: {} - {}");
+    ja.insert(TranslationKey::ValorantMatchesKda, "K/D/A: {}/{}/{}");
+    ja.insert(TranslationKey::ValorantMatchesWon, "勝利");
+    ja.insert(TranslationKey::ValorantMatchesLost, "敗北");
     translations.insert(Language::Japanese, ja);
 
     translations

@@ -1,7 +1,8 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::ui::{self, Tone};
 use crate::valorant::{
-    ValorantLeaderboardError, ValorantLinkError, ValorantProfileError, ValorantVisibilityError,
+    ValorantLeaderboardError, ValorantLinkError, ValorantMatchesError, ValorantProfileError,
+    ValorantVisibilityError,
 };
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -9,11 +10,35 @@ use poise::serenity_prelude as serenity;
 /// VALORANT player statistics and Guild leaderboard management.
 #[poise::command(
     slash_command,
-    subcommands("profile", "leaderboard", "visibility", "link", "unlink"),
+    subcommands("profile", "leaderboard", "visibility", "link", "unlink", "matches"),
     guild_only
 )]
 pub async fn valorant(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
+}
+
+async fn resolve_target_user(
+    ctx: Context<'_>,
+    member: Option<&serenity::Member>,
+    guild_id: serenity::GuildId,
+    lang: crate::i18n::Language,
+) -> Result<Option<serenity::UserId>, Error> {
+    match member {
+        Some(m) => {
+            if m.guild_id != guild_id {
+                ui::reply(
+                    ctx,
+                    Tone::Error,
+                    t(lang, TranslationKey::ValorantProfileNotGuildMember),
+                )
+                .await?;
+                Ok(None)
+            } else {
+                Ok(Some(m.user.id))
+            }
+        }
+        None => Ok(Some(ctx.author().id)),
+    }
 }
 
 /// View a member's VALORANT rank and stats (defaults to yourself).
@@ -29,20 +54,9 @@ pub async fn profile(
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let target_user_id = match &member {
-        Some(m) => {
-            if m.guild_id != guild_id {
-                ui::reply(
-                    ctx,
-                    Tone::Error,
-                    t(lang, TranslationKey::ValorantProfileNotGuildMember),
-                )
-                .await?;
-                return Ok(());
-            }
-            m.user.id
-        }
-        None => ctx.author().id,
+    let Some(target_user_id) = resolve_target_user(ctx, member.as_ref(), guild_id, lang).await?
+    else {
+        return Ok(());
     };
 
     let profile = match ctx
@@ -398,6 +412,133 @@ pub async fn unlink(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// View recent VALORANT matches for yourself or another member.
+#[poise::command(slash_command, guild_only)]
+pub async fn matches(
+    ctx: Context<'_>,
+    #[description = "Member whose VALORANT matches to view (defaults to yourself)"] member: Option<
+        serenity::Member,
+    >,
+) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = ctx.data().language(guild_id).await;
+
+    let target_user_id = match resolve_target_user(ctx, member.as_ref(), guild_id, lang).await? {
+        Some(id) => id,
+        None => return Ok(()),
+    };
+
+    let data = match ctx
+        .data()
+        .valorant_service()
+        .get_recent_matches(guild_id, ctx.author().id, target_user_id, 5)
+        .await
+    {
+        Ok(d) => d,
+        Err(ValorantMatchesError::NotLinkedSelf) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantMatchesNotLinkedSelf),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantMatchesError::NotLinkedOther) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantMatchesNotLinkedOther),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantMatchesError::HiddenOther) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantMatchesHiddenOther),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantMatchesError::ApiForbidden) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantProfileForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantMatchesError::ApiError(_)) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantProfileApiError),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantMatchesError::Database(err)) => return Err(err.into()),
+    };
+
+    let player_display = format!("{}#{}", data.game_name, data.tag_line);
+    let title = tf(
+        lang,
+        TranslationKey::ValorantMatchesTitle,
+        &[&player_display],
+    );
+
+    if data.matches.is_empty() {
+        let embed = ui::embed(ctx.data(), Tone::Primary)
+            .title(title)
+            .description(t(lang, TranslationKey::ValorantMatchesEmpty));
+        ctx.send(ui::embed_reply(embed)).await?;
+        return Ok(());
+    }
+
+    let mut match_blocks = Vec::new();
+    for m in &data.matches {
+        let outcome_badge = if m.won {
+            format!("🟢 **{}**", t(lang, TranslationKey::ValorantMatchesWon))
+        } else {
+            format!("🔴 **{}**", t(lang, TranslationKey::ValorantMatchesLost))
+        };
+        let score_str = tf(
+            lang,
+            TranslationKey::ValorantMatchesScore,
+            &[&m.rounds_won, &m.rounds_lost],
+        );
+        let kda_str = tf(
+            lang,
+            TranslationKey::ValorantMatchesKda,
+            &[&m.kills, &m.deaths, &m.assists],
+        );
+        let time_str = if m.game_start_millis > 0 {
+            format!(" • <t:{}:R>", m.game_start_millis / 1000)
+        } else {
+            String::new()
+        };
+
+        match_blocks.push(format!(
+            "{outcome_badge} — **{map}** ({mode}) • **{agent}**\n> {score_str} • {kda_str}{time_str}",
+            map = m.map_name,
+            mode = m.game_mode,
+            agent = m.character,
+        ));
+    }
+
+    let embed = ui::embed(ctx.data(), Tone::Primary)
+        .title(title)
+        .description(match_blocks.join("\n\n"));
+
+    ctx.send(ui::embed_reply(embed)).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,7 +548,7 @@ mod tests {
         let cmd = valorant();
         assert_eq!(cmd.name, "valorant");
         assert!(cmd.slash_action.is_some());
-        assert_eq!(cmd.subcommands.len(), 5);
+        assert_eq!(cmd.subcommands.len(), 6);
 
         let sub_names: Vec<_> = cmd.subcommands.iter().map(|s| s.name.as_str()).collect();
         assert!(sub_names.contains(&"profile"));
@@ -415,6 +556,7 @@ mod tests {
         assert!(sub_names.contains(&"visibility"));
         assert!(sub_names.contains(&"link"));
         assert!(sub_names.contains(&"unlink"));
+        assert!(sub_names.contains(&"matches"));
 
         let vis_cmd = cmd
             .subcommands

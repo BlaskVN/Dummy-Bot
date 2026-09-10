@@ -1,6 +1,7 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::permissions::missing_channel_permissions;
 use crate::ui::{self, Tone};
+use crate::voice::update_voice_state;
 use crate::{Context, Error, VoiceConnectionInfo};
 use poise::serenity_prelude as serenity;
 
@@ -138,13 +139,12 @@ pub async fn voice_disconnect(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    // Check if bot is in a voice channel
-    if !ctx
-        .data()
-        .voice_connections
-        .read()
-        .await
-        .contains_key(&guild_id)
+    if !crate::voice::disconnect_voice(
+        ctx.serenity_context(),
+        &ctx.data().voice_connections,
+        guild_id,
+    )
+    .await
     {
         let embed = ui::panel(
             ctx.data(),
@@ -154,14 +154,6 @@ pub async fn voice_disconnect(ctx: Context<'_>) -> Result<(), Error> {
         ctx.send(ui::embed_reply(embed)).await?;
         return Ok(());
     }
-
-    // Remove from tracking FIRST (before remove) to prevent false kick notification / auto-reconnection
-    {
-        let mut map = ctx.data().voice_connections.write().await;
-        map.remove(&guild_id);
-    }
-
-    update_voice_state(ctx.serenity_context(), guild_id, None);
 
     tracing::info!(
         user = %ctx.author().name,
@@ -182,44 +174,4 @@ pub async fn voice_disconnect(ctx: Context<'_>) -> Result<(), Error> {
 
 pub fn all() -> Vec<poise::Command<crate::Data, Error>> {
     vec![voice_connect(), voice_disconnect()]
-}
-
-pub(crate) fn update_voice_state(
-    ctx: &serenity::Context,
-    guild_id: serenity::GuildId,
-    channel_id: Option<serenity::ChannelId>,
-) {
-    ctx.shard
-        .websocket_message(voice_state_payload(guild_id, channel_id).into());
-}
-
-fn voice_state_payload(
-    guild_id: serenity::GuildId,
-    channel_id: Option<serenity::ChannelId>,
-) -> String {
-    serenity::json::json!({
-        "op": 4,
-        "d": {
-            "guild_id": guild_id.get(),
-            "channel_id": channel_id.map(|id| id.get()),
-            "self_mute": true,
-            "self_deaf": true,
-        }
-    })
-    .to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::voice_state_payload;
-    use poise::serenity_prelude::{ChannelId, GuildId};
-
-    #[test]
-    fn voice_payload_joins_and_leaves() {
-        let join = voice_state_payload(GuildId::new(1), Some(ChannelId::new(2)));
-        let leave = voice_state_payload(GuildId::new(1), None);
-
-        assert!(join.contains(r#""channel_id":2"#));
-        assert!(leave.contains(r#""channel_id":null"#));
-    }
 }

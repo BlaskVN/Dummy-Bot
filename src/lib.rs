@@ -24,6 +24,7 @@ pub mod state;
 pub mod timezone;
 pub mod ui;
 pub mod valorant;
+pub mod voice;
 pub mod word_puzzle;
 pub mod word_puzzle_engine;
 pub mod word_puzzle_store;

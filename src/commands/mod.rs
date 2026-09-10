@@ -230,6 +230,10 @@ fn get_command_descriptions(name: &str) -> (String, String) {
             "Hủy liên kết tài khoản Riot khỏi hồ sơ Discord.",
             "Discord プロフィールから Riot アカウントの連携を解除します。",
         )),
+        "matches" => Some((
+            "Xem lịch sử các trận đấu gần đây của bạn hoặc thành viên khác.",
+            "自分または他のメンバーの最近の試合履歴を表示します。",
+        )),
         _ => None,
     };
 
