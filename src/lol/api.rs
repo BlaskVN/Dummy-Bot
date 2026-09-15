@@ -534,12 +534,6 @@ pub trait LolApiClient: Send + Sync {
         platform: LolPlatform,
         puuid: &'a str,
     ) -> BoxFuture<'a, Result<i32>>;
-
-    fn get_account_by_puuid<'a>(
-        &'a self,
-        cluster_or_platform: LolPlatform,
-        puuid: &'a str,
-    ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>>;
 }
 
 /// Structured domain errors for League of Legends API interactions.
@@ -711,8 +705,7 @@ impl LolApiClient for HttpLolApiClient {
                 Err(err) => {
                     // Fallback to puuid endpoint if summoner_id failed with 404
                     if !summoner_id.is_empty() {
-                        let fallback_url =
-                            format!("{base}/lol/league/v4/entries/by-puuid/{puuid}");
+                        let fallback_url = format!("{base}/lol/league/v4/entries/by-puuid/{puuid}");
                         if let Ok(entries) =
                             self.get_json::<Vec<LolLeagueEntry>>(&fallback_url).await
                         {
@@ -772,10 +765,7 @@ impl LolApiClient for HttpLolApiClient {
                     let map_name = map_name_by_id(map_id).to_string();
 
                     results.push(LolRecentMatch {
-                        match_id: match_dto
-                            .metadata
-                            .map(|m| m.match_id)
-                            .unwrap_or(match_id),
+                        match_id: match_dto.metadata.map(|m| m.match_id).unwrap_or(match_id),
                         game_mode: match_dto.info.game_mode,
                         map_id,
                         map_name,
@@ -836,22 +826,6 @@ impl LolApiClient for HttpLolApiClient {
             let base = platform.api_endpoint();
             let url = format!("{base}/lol/champion-mastery/v4/scores/by-puuid/{puuid}");
             self.get_json(&url).await
-        })
-    }
-
-    fn get_account_by_puuid<'a>(
-        &'a self,
-        cluster_or_platform: LolPlatform,
-        puuid: &'a str,
-    ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>> {
-        Box::pin(async move {
-            let cluster_base = cluster_or_platform.regional_cluster_endpoint();
-            let mut url = reqwest::Url::parse(cluster_base)
-                .with_context(|| format!("Invalid cluster endpoint URL: {cluster_base}"))?;
-            url.path_segments_mut()
-                .map_err(|_| anyhow::anyhow!("Cannot format path segments on {cluster_base}"))?
-                .extend(&["riot", "account", "v1", "accounts", "by-puuid", puuid]);
-            self.get_json(url.as_str()).await
         })
     }
 }
@@ -1091,20 +1065,6 @@ impl LolApiClient for MockLolApiClient {
     ) -> BoxFuture<'a, Result<i32>> {
         Box::pin(async move { Ok(145) })
     }
-
-    fn get_account_by_puuid<'a>(
-        &'a self,
-        _cluster_or_platform: LolPlatform,
-        puuid: &'a str,
-    ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>> {
-        Box::pin(async move {
-            Ok(crate::valorant::RiotAccount {
-                puuid: puuid.to_string(),
-                game_name: "MockPlayer".to_string(),
-                tag_line: "MOCK".to_string(),
-            })
-        })
-    }
 }
 
 #[cfg(test)]
@@ -1136,12 +1096,30 @@ mod tests {
 
     #[test]
     fn platform_from_riot_region_mapping() {
-        assert_eq!(LolPlatform::from_riot_region(RiotRegion::Ap), LolPlatform::Vn2);
-        assert_eq!(LolPlatform::from_riot_region(RiotRegion::Na), LolPlatform::Na1);
-        assert_eq!(LolPlatform::from_riot_region(RiotRegion::Eu), LolPlatform::Euw1);
-        assert_eq!(LolPlatform::from_riot_region(RiotRegion::Kr), LolPlatform::Kr);
-        assert_eq!(LolPlatform::from_riot_region(RiotRegion::Br), LolPlatform::Br1);
-        assert_eq!(LolPlatform::from_riot_region(RiotRegion::Latam), LolPlatform::La1);
+        assert_eq!(
+            LolPlatform::from_riot_region(RiotRegion::Ap),
+            LolPlatform::Vn2
+        );
+        assert_eq!(
+            LolPlatform::from_riot_region(RiotRegion::Na),
+            LolPlatform::Na1
+        );
+        assert_eq!(
+            LolPlatform::from_riot_region(RiotRegion::Eu),
+            LolPlatform::Euw1
+        );
+        assert_eq!(
+            LolPlatform::from_riot_region(RiotRegion::Kr),
+            LolPlatform::Kr
+        );
+        assert_eq!(
+            LolPlatform::from_riot_region(RiotRegion::Br),
+            LolPlatform::Br1
+        );
+        assert_eq!(
+            LolPlatform::from_riot_region(RiotRegion::Latam),
+            LolPlatform::La1
+        );
     }
 
     #[test]
@@ -1317,13 +1295,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(score, 145);
-
-        let account = mock
-            .get_account_by_puuid(LolPlatform::Vn2, puuid)
-            .await
-            .unwrap();
-        assert_eq!(account.puuid, puuid);
-        assert_eq!(account.game_name, "MockPlayer");
     }
 
     #[test]

@@ -23,12 +23,7 @@ async fn resolve_target_user(
     match member {
         Some(m) => {
             if m.guild_id != guild_id {
-                ui::reply(
-                    ctx,
-                    Tone::Error,
-                    t(lang, TranslationKey::LolNotGuildMember),
-                )
-                .await?;
+                ui::reply(ctx, Tone::Error, t(lang, TranslationKey::LolNotGuildMember)).await?;
                 Ok(None)
             } else {
                 Ok(Some(m.user.id))
@@ -267,7 +262,13 @@ pub async fn matches(
     let data = match ctx
         .data()
         .lol_service()
-        .get_matches(guild_id, ctx.author().id, target_user_id, 5, target_platform)
+        .get_matches(
+            guild_id,
+            ctx.author().id,
+            target_user_id,
+            5,
+            target_platform,
+        )
         .await
     {
         Ok(d) => d,
@@ -320,11 +321,7 @@ pub async fn matches(
     };
 
     let player_display = format!("{}#{}", data.account.game_name, data.account.tag_line);
-    let title = tf(
-        lang,
-        TranslationKey::LolMatchesTitle,
-        &[&player_display],
-    );
+    let title = tf(lang, TranslationKey::LolMatchesTitle, &[&player_display]);
 
     if data.matches.is_empty() {
         let embed = ui::embed(ctx.data(), Tone::Primary)
@@ -435,7 +432,13 @@ pub async fn mastery(
     let data = match ctx
         .data()
         .lol_service()
-        .get_mastery(guild_id, ctx.author().id, target_user_id, 5, target_platform)
+        .get_mastery(
+            guild_id,
+            ctx.author().id,
+            target_user_id,
+            5,
+            target_platform,
+        )
         .await
     {
         Ok(d) => d,
@@ -488,11 +491,7 @@ pub async fn mastery(
     };
 
     let player_display = format!("{}#{}", data.account.game_name, data.account.tag_line);
-    let title = tf(
-        lang,
-        TranslationKey::LolMasteryTitle,
-        &[&player_display],
-    );
+    let title = tf(lang, TranslationKey::LolMasteryTitle, &[&player_display]);
 
     let total_score_line = tf(
         lang,
@@ -526,7 +525,11 @@ pub async fn mastery(
             m.champion_name.clone()
         };
         let level_str = tf(lang, TranslationKey::LolMasteryLevel, &[&m.champion_level]);
-        let points_str = tf(lang, TranslationKey::LolMasteryPoints, &[&m.champion_points]);
+        let points_str = tf(
+            lang,
+            TranslationKey::LolMasteryPoints,
+            &[&m.champion_points],
+        );
         let time_str = if m.last_play_time > 0 {
             format!(" • <t:{}:R>", m.last_play_time / 1000)
         } else {
@@ -590,7 +593,11 @@ mod tests {
         let cmd = lol();
         for sub in &cmd.subcommands {
             let desc = sub.description.as_deref().unwrap_or("");
-            assert!(!desc.is_empty(), "subcommand {} missing description", sub.name);
+            assert!(
+                !desc.is_empty(),
+                "subcommand {} missing description",
+                sub.name
+            );
         }
     }
 
@@ -651,7 +658,8 @@ mod tests {
                 assert!(
                     !text.is_empty(),
                     "Empty translation for {:?} in {:?}",
-                    key, lang
+                    key,
+                    lang
                 );
             }
         }

@@ -642,8 +642,9 @@ pub async fn status(
                 return Ok(());
             }
         },
-        None => RiotRegion::try_parse(&ctx.data().config.riot_default_region)
-            .unwrap_or(RiotRegion::Ap),
+        None => {
+            RiotRegion::try_parse(&ctx.data().config.riot_default_region).unwrap_or(RiotRegion::Ap)
+        }
     };
 
     let status_data = match ctx
@@ -673,7 +674,8 @@ pub async fn status(
         }
     };
 
-    let (tone, title, description) = format_platform_status_content(&status_data, riot_region, lang);
+    let (tone, title, description) =
+        format_platform_status_content(&status_data, riot_region, lang);
     let embed = ui::embed(ctx.data(), tone)
         .title(title)
         .description(description);
@@ -729,11 +731,8 @@ mod tests {
             incidents: vec![],
         };
 
-        let (tone, title, desc) = format_platform_status_content(
-            &status,
-            RiotRegion::Ap,
-            crate::i18n::Language::English,
-        );
+        let (tone, title, desc) =
+            format_platform_status_content(&status, RiotRegion::Ap, crate::i18n::Language::English);
         assert!(matches!(tone, Tone::Success));
         assert!(title.contains("VALORANT (AP)"));
         assert!(desc.contains("All systems operational"));
@@ -773,11 +772,8 @@ mod tests {
         };
 
         // English check
-        let (tone, title, desc) = format_platform_status_content(
-            &status,
-            RiotRegion::Eu,
-            crate::i18n::Language::English,
-        );
+        let (tone, title, desc) =
+            format_platform_status_content(&status, RiotRegion::Eu, crate::i18n::Language::English);
         assert!(matches!(tone, Tone::Warning));
         assert!(title.contains("VALORANT (EU)"));
         assert!(desc.contains("critical"));

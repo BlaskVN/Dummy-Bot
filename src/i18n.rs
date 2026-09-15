@@ -981,10 +981,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ValorantStatusOperational,
         "All systems operational",
     );
-    en.insert(
-        TranslationKey::ValorantStatusIncidents,
-        "Active Incidents",
-    );
+    en.insert(TranslationKey::ValorantStatusIncidents, "Active Incidents");
     en.insert(
         TranslationKey::ValorantStatusMaintenances,
         "Scheduled Maintenance",
@@ -1039,10 +1036,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
 
     en.insert(TranslationKey::LolMatchesTitle, "Recent Matches for {}");
-    en.insert(
-        TranslationKey::LolMatchesEmpty,
-        "No recent matches found.",
-    );
+    en.insert(TranslationKey::LolMatchesEmpty, "No recent matches found.");
     en.insert(TranslationKey::LolMatchesWon, "VICTORY");
     en.insert(TranslationKey::LolMatchesLost, "DEFEAT");
     en.insert(TranslationKey::LolMatchesKda, "K/D/A: {}/{}/{}");
@@ -1654,10 +1648,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ValorantStatusIncidents,
         "Sự cố đang diễn ra",
     );
-    vi.insert(
-        TranslationKey::ValorantStatusMaintenances,
-        "Lịch bảo trì",
-    );
+    vi.insert(TranslationKey::ValorantStatusMaintenances, "Lịch bảo trì");
     vi.insert(
         TranslationKey::ValorantStatusApiError,
         "Không thể lấy trạng thái máy chủ VALORANT từ Riot Games API. Vui lòng thử lại sau.",
@@ -1707,7 +1698,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         "Không thể lấy hồ sơ League of Legends từ Riot Games API. Vui lòng thử lại sau.",
     );
 
-    vi.insert(TranslationKey::LolMatchesTitle, "Lịch sử trận đấu gần đây của {}");
+    vi.insert(
+        TranslationKey::LolMatchesTitle,
+        "Lịch sử trận đấu gần đây của {}",
+    );
     vi.insert(
         TranslationKey::LolMatchesEmpty,
         "Không tìm thấy trận đấu gần đây nào.",
@@ -2328,10 +2322,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
         TranslationKey::ValorantStatusOperational,
         "すべてのシステムが正常に稼働しています",
     );
-    ja.insert(
-        TranslationKey::ValorantStatusIncidents,
-        "発生中の障害",
-    );
+    ja.insert(TranslationKey::ValorantStatusIncidents, "発生中の障害");
     ja.insert(
         TranslationKey::ValorantStatusMaintenances,
         "メンテナンス情報",
@@ -2417,10 +2408,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
 
     ja.insert(TranslationKey::LolMasteryTitle, "{} のチャンピオン熟練度");
-    ja.insert(
-        TranslationKey::LolMasteryTotalScore,
-        "合計熟練度スコア: {}",
-    );
+    ja.insert(TranslationKey::LolMasteryTotalScore, "合計熟練度スコア: {}");
     ja.insert(TranslationKey::LolMasteryLevel, "レベル {}");
     ja.insert(TranslationKey::LolMasteryPoints, "{} ポイント");
     ja.insert(

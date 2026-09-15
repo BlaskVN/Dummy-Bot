@@ -551,13 +551,11 @@ mod tests {
                         Ok(status) => Ok(status.clone()),
                         Err(RiotApiError::NotFound) => Err(RiotApiError::NotFound.into()),
                         Err(RiotApiError::Forbidden) => Err(RiotApiError::Forbidden.into()),
-                        Err(RiotApiError::Api { status, message }) => {
-                            Err(RiotApiError::Api {
-                                status: *status,
-                                message: message.clone(),
-                            }
-                            .into())
+                        Err(RiotApiError::Api { status, message }) => Err(RiotApiError::Api {
+                            status: *status,
+                            message: message.clone(),
                         }
+                        .into()),
                         Err(RiotApiError::Transport(err)) => {
                             Err(anyhow::anyhow!("transport: {err}"))
                         }

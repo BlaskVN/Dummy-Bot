@@ -120,8 +120,8 @@ impl LolService {
             .resolve_target_and_visibility(guild_id, requester_id, target_id)
             .await?;
 
-        let platform = platform_override
-            .unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
+        let platform =
+            platform_override.unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
 
         let summoner = match self
             .api
@@ -198,8 +198,8 @@ impl LolService {
             .resolve_target_and_visibility(guild_id, requester_id, target_id)
             .await?;
 
-        let platform = platform_override
-            .unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
+        let platform =
+            platform_override.unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
 
         let matches = match self
             .api
@@ -243,8 +243,8 @@ impl LolService {
             .resolve_target_and_visibility(guild_id, requester_id, target_id)
             .await?;
 
-        let platform = platform_override
-            .unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
+        let platform =
+            platform_override.unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
 
         let (masteries_res, score_res) = tokio::join!(
             self.api
@@ -369,14 +369,6 @@ mod tests {
             _platform: LolPlatform,
             _puuid: &'a str,
         ) -> BoxFuture<'a, Result<i32>> {
-            Box::pin(async move { Err(anyhow::Error::new(LolApiError::Forbidden)) })
-        }
-
-        fn get_account_by_puuid<'a>(
-            &'a self,
-            _cluster_or_platform: LolPlatform,
-            _puuid: &'a str,
-        ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>> {
             Box::pin(async move { Err(anyhow::Error::new(LolApiError::Forbidden)) })
         }
     }

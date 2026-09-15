@@ -34,10 +34,7 @@ fn apply_localizations(commands: &mut [poise::Command<Data, Error>]) {
     }
 }
 
-fn apply_single_command_localization(
-    parent: Option<&str>,
-    cmd: &mut poise::Command<Data, Error>,
-) {
+fn apply_single_command_localization(parent: Option<&str>, cmd: &mut poise::Command<Data, Error>) {
     let (vi_desc, ja_desc) = get_command_descriptions(parent, &cmd.name);
     cmd.description_localizations
         .insert("vi".to_string(), vi_desc);
@@ -71,8 +68,10 @@ fn get_command_descriptions(parent: Option<&str>, name: &str) -> (String, String
         match name {
             "profile" => {
                 return (
-                    "Xem hồ sơ xếp hạng và thông tin người chơi League of Legends của thành viên.".to_string(),
-                    "メンバーの League of Legends ランクとプロフィール情報を表示します。".to_string(),
+                    "Xem hồ sơ xếp hạng và thông tin người chơi League of Legends của thành viên."
+                        .to_string(),
+                    "メンバーの League of Legends ランクとプロフィール情報を表示します。"
+                        .to_string(),
                 );
             }
             "matches" => {
@@ -83,7 +82,8 @@ fn get_command_descriptions(parent: Option<&str>, name: &str) -> (String, String
             }
             "mastery" => {
                 return (
-                    "Xem điểm thông thạo và các tướng thông thạo cao nhất trong League of Legends.".to_string(),
+                    "Xem điểm thông thạo và các tướng thông thạo cao nhất trong League of Legends."
+                        .to_string(),
                     "League of Legends のチャンピオン熟練度と合計スコアを表示します。".to_string(),
                 );
             }
