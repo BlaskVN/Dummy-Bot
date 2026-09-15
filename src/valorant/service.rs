@@ -3,11 +3,45 @@ use poise::serenity_prelude::{GuildId, UserId};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
-use super::riot_api::{PlayerRankedData, RiotApiClient, RiotApiError, RiotRegion};
+use super::riot_api::{
+    PlatformStatus, PlayerRankedData, RecentMatchSummary, RiotApiClient, RiotApiError, RiotRegion,
+};
 use super::storage::{
     LinkedRiotAccount, get_guild_visibility, get_linked_account, list_guild_visible_accounts,
     remove_linked_account, set_guild_visibility, set_linked_account,
 };
+
+#[derive(Debug)]
+pub enum ValorantMatchesError {
+    NotLinkedSelf,
+    NotLinkedOther,
+    HiddenOther,
+    ApiForbidden,
+    ApiError(anyhow::Error),
+    Database(anyhow::Error),
+}
+
+impl std::fmt::Display for ValorantMatchesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotLinkedSelf => write!(f, "Self Riot account not linked"),
+            Self::NotLinkedOther => write!(f, "Target member Riot account not linked"),
+            Self::HiddenOther => write!(f, "Target member profile is hidden in this guild"),
+            Self::ApiForbidden => write!(f, "Riot API access forbidden"),
+            Self::ApiError(err) => write!(f, "Riot API error: {err}"),
+            Self::Database(err) => write!(f, "Database error: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for ValorantMatchesError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerRecentMatchesData {
+    pub game_name: String,
+    pub tag_line: String,
+    pub matches: Vec<RecentMatchSummary>,
+}
 
 #[derive(Debug)]
 pub enum ValorantLinkError {
@@ -116,6 +150,23 @@ impl From<anyhow::Error> for ValorantVisibilityError {
         Self::Database(err)
     }
 }
+
+#[derive(Debug)]
+pub enum ValorantStatusError {
+    ApiForbidden,
+    ApiError(anyhow::Error),
+}
+
+impl std::fmt::Display for ValorantStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ApiForbidden => write!(f, "Riot API access forbidden"),
+            Self::ApiError(err) => write!(f, "Failed to load platform status: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for ValorantStatusError {}
 
 /// Service encapsulating VALORANT account linking, visibility consent, profile retrieval,
 /// and guild leaderboard aggregation.
@@ -348,6 +399,84 @@ impl ValorantService {
     ) -> Result<bool, anyhow::Error> {
         get_guild_visibility(&self.pool, guild_id, user_id).await
     }
+
+    /// Retrieve recent VALORANT matches for a user, enforcing guild visibility permissions when inspecting another member.
+    pub async fn get_recent_matches(
+        &self,
+        guild_id: GuildId,
+        requester_id: UserId,
+        target_id: UserId,
+        count: usize,
+    ) -> Result<PlayerRecentMatchesData, ValorantMatchesError> {
+        let is_self = requester_id == target_id;
+
+        let account = match get_linked_account(&self.pool, target_id)
+            .await
+            .map_err(ValorantMatchesError::Database)?
+        {
+            Some(acc) => acc,
+            None => {
+                if is_self {
+                    return Err(ValorantMatchesError::NotLinkedSelf);
+                } else {
+                    return Err(ValorantMatchesError::NotLinkedOther);
+                }
+            }
+        };
+
+        if !is_self {
+            let is_visible = get_guild_visibility(&self.pool, guild_id, target_id)
+                .await
+                .map_err(ValorantMatchesError::Database)?;
+
+            if !is_visible {
+                return Err(ValorantMatchesError::HiddenOther);
+            }
+        }
+
+        let matches = match self
+            .riot_api
+            .get_recent_matches(account.region, &account.puuid, count)
+            .await
+        {
+            Ok(m) => m,
+            Err(err) => {
+                tracing::warn!(
+                    err = %err,
+                    puuid = %account.puuid,
+                    user_id = %target_id,
+                    "Failed to load recent matches from Riot API"
+                );
+                if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
+                    return Err(ValorantMatchesError::ApiForbidden);
+                }
+                return Err(ValorantMatchesError::ApiError(err));
+            }
+        };
+
+        Ok(PlayerRecentMatchesData {
+            game_name: account.game_name,
+            tag_line: account.tag_line,
+            matches,
+        })
+    }
+
+    /// Retrieve real-time platform status and incident reports for a Riot region.
+    pub async fn get_platform_status(
+        &self,
+        region: RiotRegion,
+    ) -> Result<PlatformStatus, ValorantStatusError> {
+        self.riot_api
+            .get_platform_status(region)
+            .await
+            .map_err(|err| {
+                if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
+                    ValorantStatusError::ApiForbidden
+                } else {
+                    ValorantStatusError::ApiError(err)
+                }
+            })
+    }
 }
 
 #[cfg(test)]
@@ -376,6 +505,7 @@ mod tests {
     struct MockRiotClient {
         accounts: Mutex<HashMap<(String, String), RiotAccount>>,
         ranked_data: Mutex<HashMap<String, Result<PlayerRankedData, RiotApiError>>>,
+        status_result: Mutex<Option<Result<PlatformStatus, RiotApiError>>>,
     }
 
     impl MockRiotClient {
@@ -383,6 +513,7 @@ mod tests {
             Self {
                 accounts: Mutex::new(HashMap::new()),
                 ranked_data: Mutex::new(HashMap::new()),
+                status_result: Mutex::new(None),
             }
         }
 
@@ -403,6 +534,10 @@ mod tests {
                 .unwrap()
                 .insert(puuid.to_string(), stats);
         }
+
+        fn set_platform_status(&self, res: Result<PlatformStatus, RiotApiError>) {
+            *self.status_result.lock().unwrap() = Some(res);
+        }
     }
 
     impl RiotApiClient for MockRiotClient {
@@ -411,6 +546,21 @@ mod tests {
             _region: RiotRegion,
         ) -> BoxFuture<'a, Result<PlatformStatus>> {
             Box::pin(async move {
+                if let Some(res) = self.status_result.lock().unwrap().as_ref() {
+                    return match res {
+                        Ok(status) => Ok(status.clone()),
+                        Err(RiotApiError::NotFound) => Err(RiotApiError::NotFound.into()),
+                        Err(RiotApiError::Forbidden) => Err(RiotApiError::Forbidden.into()),
+                        Err(RiotApiError::Api { status, message }) => Err(RiotApiError::Api {
+                            status: *status,
+                            message: message.clone(),
+                        }
+                        .into()),
+                        Err(RiotApiError::Transport(err)) => {
+                            Err(anyhow::anyhow!("transport: {err}"))
+                        }
+                    };
+                }
                 Ok(PlatformStatus {
                     id: "VALORANT".to_string(),
                     name: "VALORANT".to_string(),
@@ -474,6 +624,21 @@ mod tests {
                     Some(acc) => Ok(acc.clone()),
                     None => Err(anyhow::Error::new(RiotApiError::NotFound)),
                 }
+            })
+        }
+
+        fn get_recent_matches<'a>(
+            &'a self,
+            _region: RiotRegion,
+            puuid: &'a str,
+            count: usize,
+        ) -> BoxFuture<'a, Result<Vec<RecentMatchSummary>>> {
+            Box::pin(async move {
+                Ok(
+                    super::super::riot_api::MockRiotApiClient::generate_mock_recent_matches(
+                        puuid, count,
+                    ),
+                )
             })
         }
     }
@@ -724,5 +889,97 @@ mod tests {
 
         let err = service.enable_visibility(guild, user).await.unwrap_err();
         assert!(matches!(err, ValorantVisibilityError::NotLinked));
+    }
+
+    #[tokio::test]
+    async fn recent_matches_self_vs_other_privacy_and_linking() {
+        let (pool, _dir) = setup_test_pool().await;
+        let mock = Arc::new(MockRiotClient::new());
+        let service = ValorantService::new(pool, mock.clone());
+        let guild = GuildId::new(1000);
+        let requester = UserId::new(101);
+        let target = UserId::new(102);
+
+        // 1. Caller viewing self without linked account returns NotLinkedSelf
+        let err = service
+            .get_recent_matches(guild, requester, requester, 5)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ValorantMatchesError::NotLinkedSelf));
+
+        // 2. Caller viewing another member without linked account returns NotLinkedOther
+        let err = service
+            .get_recent_matches(guild, requester, target, 5)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ValorantMatchesError::NotLinkedOther));
+
+        // Link target
+        mock.add_account("Jett", "0001", "jett-puuid");
+        service
+            .link_account(target, "Jett#0001", Some("ap"))
+            .await
+            .unwrap();
+
+        // 3. Caller viewing another member who linked account but kept visibility false returns HiddenOther
+        let err = service
+            .get_recent_matches(guild, requester, target, 5)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ValorantMatchesError::HiddenOther));
+
+        // 4. Caller viewing self with linked account returns matches regardless of Guild visibility flag
+        let self_matches = service
+            .get_recent_matches(guild, target, target, 3)
+            .await
+            .unwrap();
+        assert_eq!(self_matches.game_name, "Jett");
+        assert_eq!(self_matches.tag_line, "0001");
+        assert_eq!(self_matches.matches.len(), 3);
+        assert_eq!(self_matches.matches[0].map_name, "Ascent");
+
+        // 5. Target enables visibility; now caller viewing another member succeeds
+        service.enable_visibility(guild, target).await.unwrap();
+
+        let other_matches = service
+            .get_recent_matches(guild, requester, target, 2)
+            .await
+            .unwrap();
+        assert_eq!(other_matches.game_name, "Jett");
+        assert_eq!(other_matches.tag_line, "0001");
+        assert_eq!(other_matches.matches.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn platform_status_success_and_error_handling() {
+        let (pool, _dir) = setup_test_pool().await;
+        let mock = Arc::new(MockRiotClient::new());
+        let service = ValorantService::new(pool, mock.clone());
+
+        // 1. Success case returns PlatformStatus
+        let status = service.get_platform_status(RiotRegion::Ap).await.unwrap();
+        assert_eq!(status.id, "VALORANT");
+        assert_eq!(status.name, "VALORANT");
+        assert!(status.maintenances.is_empty());
+        assert!(status.incidents.is_empty());
+
+        // 2. HTTP 403 Forbidden maps to ValorantStatusError::ApiForbidden
+        mock.set_platform_status(Err(RiotApiError::Forbidden));
+        let err = service
+            .get_platform_status(RiotRegion::Ap)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ValorantStatusError::ApiForbidden));
+
+        // 3. Other API errors map to ValorantStatusError::ApiError
+        mock.set_platform_status(Err(RiotApiError::Api {
+            status: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            message: "internal server error".to_string(),
+        }));
+        let err = service
+            .get_platform_status(RiotRegion::Ap)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ValorantStatusError::ApiError(_)));
     }
 }

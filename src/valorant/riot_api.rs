@@ -195,6 +195,22 @@ pub struct PlayerRankedData {
     pub number_of_wins: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentMatchSummary {
+    pub match_id: String,
+    pub map_name: String,
+    pub game_mode: String,
+    pub game_start_millis: i64,
+    pub character: String,
+    pub rounds_won: u32,
+    pub rounds_lost: u32,
+    pub kills: u32,
+    pub deaths: u32,
+    pub assists: u32,
+    pub won: bool,
+}
+
 /// Seam for official Riot Games Developer API interactions.
 ///
 /// Note (ADR-0004): Automated VALORANT player data is strictly handled through Riot's
@@ -226,6 +242,13 @@ pub trait RiotApiClient: Send + Sync {
         game_name: &'a str,
         tag_line: &'a str,
     ) -> BoxFuture<'a, Result<RiotAccount>>;
+
+    fn get_recent_matches<'a>(
+        &'a self,
+        region: RiotRegion,
+        puuid: &'a str,
+        count: usize,
+    ) -> BoxFuture<'a, Result<Vec<RecentMatchSummary>>>;
 }
 
 /// Structured domain errors for Riot Games API interactions.
@@ -362,6 +385,35 @@ impl RiotApiClient for HttpRiotApiClient {
             self.get_json(url.as_str()).await
         })
     }
+
+    fn get_recent_matches<'a>(
+        &'a self,
+        region: RiotRegion,
+        puuid: &'a str,
+        count: usize,
+    ) -> BoxFuture<'a, Result<Vec<RecentMatchSummary>>> {
+        Box::pin(async move {
+            let base = region.api_endpoint();
+            let url = format!("{base}/val/match/v1/matchlists/by-puuid/{puuid}");
+            #[derive(Deserialize)]
+            #[serde(untagged)]
+            enum MatchListPayload {
+                Direct(Vec<RecentMatchSummary>),
+                Wrapped {
+                    #[serde(alias = "matches", alias = "history")]
+                    history: Vec<RecentMatchSummary>,
+                },
+            }
+
+            let payload: MatchListPayload = self.get_json(&url).await?;
+            let mut matches = match payload {
+                MatchListPayload::Direct(m) => m,
+                MatchListPayload::Wrapped { history } => history,
+            };
+            matches.truncate(count);
+            Ok(matches)
+        })
+    }
 }
 
 /// Offline mock Riot API client for deterministic tests and deployments without an active API key.
@@ -422,6 +474,78 @@ impl MockRiotApiClient {
             ranked_rating,
             number_of_wins,
         }
+    }
+
+    pub fn generate_mock_recent_matches(puuid: &str, count: usize) -> Vec<RecentMatchSummary> {
+        let base_matches = vec![
+            RecentMatchSummary {
+                match_id: format!("mock-match-1-{puuid}"),
+                map_name: "Ascent".to_string(),
+                game_mode: "Competitive".to_string(),
+                game_start_millis: 1718000000000,
+                character: "Jett".to_string(),
+                rounds_won: 13,
+                rounds_lost: 9,
+                kills: 22,
+                deaths: 14,
+                assists: 5,
+                won: true,
+            },
+            RecentMatchSummary {
+                match_id: format!("mock-match-2-{puuid}"),
+                map_name: "Haven".to_string(),
+                game_mode: "Competitive".to_string(),
+                game_start_millis: 1717990000000,
+                character: "Omen".to_string(),
+                rounds_won: 10,
+                rounds_lost: 13,
+                kills: 15,
+                deaths: 17,
+                assists: 9,
+                won: false,
+            },
+            RecentMatchSummary {
+                match_id: format!("mock-match-3-{puuid}"),
+                map_name: "Lotus".to_string(),
+                game_mode: "Competitive".to_string(),
+                game_start_millis: 1717980000000,
+                character: "Killjoy".to_string(),
+                rounds_won: 13,
+                rounds_lost: 11,
+                kills: 18,
+                deaths: 12,
+                assists: 6,
+                won: true,
+            },
+            RecentMatchSummary {
+                match_id: format!("mock-match-4-{puuid}"),
+                map_name: "Sunset".to_string(),
+                game_mode: "Competitive".to_string(),
+                game_start_millis: 1717970000000,
+                character: "Reyna".to_string(),
+                rounds_won: 8,
+                rounds_lost: 13,
+                kills: 21,
+                deaths: 16,
+                assists: 3,
+                won: false,
+            },
+            RecentMatchSummary {
+                match_id: format!("mock-match-5-{puuid}"),
+                map_name: "Bind".to_string(),
+                game_mode: "Competitive".to_string(),
+                game_start_millis: 1717960000000,
+                character: "Viper".to_string(),
+                rounds_won: 13,
+                rounds_lost: 7,
+                kills: 17,
+                deaths: 11,
+                assists: 8,
+                won: true,
+            },
+        ];
+
+        base_matches.into_iter().take(count).collect()
     }
 }
 
@@ -497,11 +621,84 @@ impl RiotApiClient for MockRiotApiClient {
             })
         })
     }
+
+    fn get_recent_matches<'a>(
+        &'a self,
+        _region: RiotRegion,
+        puuid: &'a str,
+        count: usize,
+    ) -> BoxFuture<'a, Result<Vec<RecentMatchSummary>>> {
+        Box::pin(async move { Ok(Self::generate_mock_recent_matches(puuid, count)) })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn mock_riot_api_client_returns_recent_matches() {
+        let client = MockRiotApiClient;
+        let matches = client
+            .get_recent_matches(RiotRegion::Ap, "puuid-test-1", 3)
+            .await
+            .unwrap();
+
+        assert_eq!(matches.len(), 3);
+        // Deterministic mock match 1: Ascent Jett 13-9 Win
+        assert_eq!(matches[0].map_name, "Ascent");
+        assert_eq!(matches[0].character, "Jett");
+        assert_eq!(matches[0].rounds_won, 13);
+        assert_eq!(matches[0].rounds_lost, 9);
+        assert!(matches[0].won);
+        assert_eq!(matches[0].kills, 22);
+
+        // Deterministic mock match 2: Haven Omen 10-13 Loss
+        assert_eq!(matches[1].map_name, "Haven");
+        assert_eq!(matches[1].character, "Omen");
+        assert_eq!(matches[1].rounds_won, 10);
+        assert_eq!(matches[1].rounds_lost, 13);
+        assert!(!matches[1].won);
+
+        // Deterministic mock match 3: Lotus Killjoy 13-11 Win
+        assert_eq!(matches[2].map_name, "Lotus");
+        assert_eq!(matches[2].character, "Killjoy");
+        assert_eq!(matches[2].rounds_won, 13);
+        assert_eq!(matches[2].rounds_lost, 11);
+        assert!(matches[2].won);
+
+        // Test count limit
+        let matches_1 = client
+            .get_recent_matches(RiotRegion::Ap, "puuid-test-1", 1)
+            .await
+            .unwrap();
+        assert_eq!(matches_1.len(), 1);
+        assert_eq!(matches_1[0].map_name, "Ascent");
+    }
+
+    #[test]
+    fn deserializes_recent_match_summary_json() {
+        let json = r#"{
+            "matchId": "match-abc-123",
+            "mapName": "Ascent",
+            "gameMode": "Competitive",
+            "gameStartMillis": 1718000000000,
+            "character": "Jett",
+            "roundsWon": 13,
+            "roundsLost": 9,
+            "kills": 22,
+            "deaths": 14,
+            "assists": 5,
+            "won": true
+        }"#;
+        let match_summary: RecentMatchSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(match_summary.match_id, "match-abc-123");
+        assert_eq!(match_summary.map_name, "Ascent");
+        assert_eq!(match_summary.character, "Jett");
+        assert_eq!(match_summary.rounds_won, 13);
+        assert_eq!(match_summary.rounds_lost, 9);
+        assert!(match_summary.won);
+    }
 
     #[tokio::test]
     async fn mock_riot_api_client_returns_status_and_leaderboard() {

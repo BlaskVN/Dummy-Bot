@@ -1,5 +1,5 @@
-use crate::commands::voice::update_voice_state;
 use crate::presence::restore_presence;
+use crate::voice::update_voice_state;
 use crate::{Data, VoiceConnectionInfo};
 use poise::serenity_prelude as serenity;
 use std::collections::HashMap;

@@ -255,6 +255,67 @@ pub enum TranslationKey {
     ValorantLeaderboardApiError,
     ValorantUnlinkSuccess,
     ValorantUnlinkNotFound,
+    ValorantMatchesTitle,
+    ValorantMatchesEmpty,
+    ValorantMatchesHiddenOther,
+    ValorantMatchesNotLinkedSelf,
+    ValorantMatchesNotLinkedOther,
+    ValorantMatchesScore,
+    ValorantMatchesKda,
+    ValorantMatchesWon,
+    ValorantMatchesLost,
+    ValorantMatchesForbidden,
+    ValorantStatusTitle,
+    ValorantStatusOperational,
+    ValorantStatusIncidents,
+    ValorantStatusMaintenances,
+    ValorantStatusApiError,
+    ValorantStatusForbidden,
+    ValorantStatusInvalidRegion,
+
+    // League of Legends (ADR-0004 & Issue 04)
+    LolProfileTitle,
+    LolProfileSummonerLevel,
+    LolProfileSoloDuo,
+    LolProfileFlex,
+    LolProfileUnranked,
+    LolProfileWinrate,
+    LolProfileWinsLosses,
+    LolProfileNotLinkedSelf,
+    LolProfileNotLinkedOther,
+    LolProfileHiddenOther,
+    LolProfileForbidden,
+    LolProfileNotFound,
+    LolProfileApiError,
+
+    LolMatchesTitle,
+    LolMatchesEmpty,
+    LolMatchesWon,
+    LolMatchesLost,
+    LolMatchesKda,
+    LolMatchesCs,
+    LolMatchesDuration,
+    LolMatchesNotLinkedSelf,
+    LolMatchesNotLinkedOther,
+    LolMatchesHiddenOther,
+    LolMatchesForbidden,
+    LolMatchesApiError,
+
+    LolMasteryTitle,
+    LolMasteryTotalScore,
+    LolMasteryLevel,
+    LolMasteryPoints,
+    LolMasteryEmpty,
+    LolMasteryNotLinkedSelf,
+    LolMasteryNotLinkedOther,
+    LolMasteryHiddenOther,
+    LolMasteryForbidden,
+    LolMasteryApiError,
+
+    LolNotGuildMember,
+    LolProfileVisibilityNoteVisible,
+    LolProfileVisibilityNoteHidden,
+    LolInvalidPlatform,
 }
 
 impl TranslationKey {
@@ -330,6 +391,62 @@ impl TranslationKey {
             "ValorantLeaderboardApiError" => Some(Self::ValorantLeaderboardApiError),
             "ValorantUnlinkSuccess" => Some(Self::ValorantUnlinkSuccess),
             "ValorantUnlinkNotFound" => Some(Self::ValorantUnlinkNotFound),
+            "ValorantMatchesTitle" => Some(Self::ValorantMatchesTitle),
+            "ValorantMatchesEmpty" => Some(Self::ValorantMatchesEmpty),
+            "ValorantMatchesHiddenOther" => Some(Self::ValorantMatchesHiddenOther),
+            "ValorantMatchesNotLinkedSelf" => Some(Self::ValorantMatchesNotLinkedSelf),
+            "ValorantMatchesNotLinkedOther" => Some(Self::ValorantMatchesNotLinkedOther),
+            "ValorantMatchesScore" | "ValorantMatchScore" => Some(Self::ValorantMatchesScore),
+            "ValorantMatchesKda" | "ValorantMatchKda" => Some(Self::ValorantMatchesKda),
+            "ValorantMatchesWon" | "ValorantMatchWon" => Some(Self::ValorantMatchesWon),
+            "ValorantMatchesLost" | "ValorantMatchLost" => Some(Self::ValorantMatchesLost),
+            "ValorantMatchesForbidden" => Some(Self::ValorantMatchesForbidden),
+            "ValorantStatusTitle" => Some(Self::ValorantStatusTitle),
+            "ValorantStatusOperational" => Some(Self::ValorantStatusOperational),
+            "ValorantStatusIncidents" => Some(Self::ValorantStatusIncidents),
+            "ValorantStatusMaintenances" => Some(Self::ValorantStatusMaintenances),
+            "ValorantStatusApiError" => Some(Self::ValorantStatusApiError),
+            "ValorantStatusForbidden" => Some(Self::ValorantStatusForbidden),
+            "ValorantStatusInvalidRegion" => Some(Self::ValorantStatusInvalidRegion),
+            "LolProfileTitle" => Some(Self::LolProfileTitle),
+            "LolProfileSummonerLevel" => Some(Self::LolProfileSummonerLevel),
+            "LolProfileSoloDuo" => Some(Self::LolProfileSoloDuo),
+            "LolProfileFlex" => Some(Self::LolProfileFlex),
+            "LolProfileUnranked" => Some(Self::LolProfileUnranked),
+            "LolProfileWinrate" => Some(Self::LolProfileWinrate),
+            "LolProfileWinsLosses" => Some(Self::LolProfileWinsLosses),
+            "LolProfileNotLinkedSelf" => Some(Self::LolProfileNotLinkedSelf),
+            "LolProfileNotLinkedOther" => Some(Self::LolProfileNotLinkedOther),
+            "LolProfileHiddenOther" => Some(Self::LolProfileHiddenOther),
+            "LolProfileForbidden" => Some(Self::LolProfileForbidden),
+            "LolProfileNotFound" => Some(Self::LolProfileNotFound),
+            "LolProfileApiError" => Some(Self::LolProfileApiError),
+            "LolMatchesTitle" => Some(Self::LolMatchesTitle),
+            "LolMatchesEmpty" => Some(Self::LolMatchesEmpty),
+            "LolMatchesWon" => Some(Self::LolMatchesWon),
+            "LolMatchesLost" => Some(Self::LolMatchesLost),
+            "LolMatchesKda" => Some(Self::LolMatchesKda),
+            "LolMatchesCs" => Some(Self::LolMatchesCs),
+            "LolMatchesDuration" => Some(Self::LolMatchesDuration),
+            "LolMatchesNotLinkedSelf" => Some(Self::LolMatchesNotLinkedSelf),
+            "LolMatchesNotLinkedOther" => Some(Self::LolMatchesNotLinkedOther),
+            "LolMatchesHiddenOther" => Some(Self::LolMatchesHiddenOther),
+            "LolMatchesForbidden" => Some(Self::LolMatchesForbidden),
+            "LolMatchesApiError" => Some(Self::LolMatchesApiError),
+            "LolMasteryTitle" => Some(Self::LolMasteryTitle),
+            "LolMasteryTotalScore" => Some(Self::LolMasteryTotalScore),
+            "LolMasteryLevel" => Some(Self::LolMasteryLevel),
+            "LolMasteryPoints" => Some(Self::LolMasteryPoints),
+            "LolMasteryEmpty" => Some(Self::LolMasteryEmpty),
+            "LolMasteryNotLinkedSelf" => Some(Self::LolMasteryNotLinkedSelf),
+            "LolMasteryNotLinkedOther" => Some(Self::LolMasteryNotLinkedOther),
+            "LolMasteryHiddenOther" => Some(Self::LolMasteryHiddenOther),
+            "LolMasteryForbidden" => Some(Self::LolMasteryForbidden),
+            "LolMasteryApiError" => Some(Self::LolMasteryApiError),
+            "LolNotGuildMember" => Some(Self::LolNotGuildMember),
+            "LolProfileVisibilityNoteVisible" => Some(Self::LolProfileVisibilityNoteVisible),
+            "LolProfileVisibilityNoteHidden" => Some(Self::LolProfileVisibilityNoteHidden),
+            "LolInvalidPlatform" => Some(Self::LolInvalidPlatform),
             _ => None,
         }
     }
@@ -806,7 +923,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::ValorantProfileForbidden,
-        "Access to VALORANT ranked MMR is restricted by Riot Games API policy (Developer Key limitation or requires Production RSO access).",
+        "Access to VALORANT ranked MMR is restricted by Riot Games API policy (personal development keys do not have access to VALORANT match and personal rank endpoints; requires a Production Key or RSO credentials).",
     );
     en.insert(
         TranslationKey::ValorantProfileUnranked,
@@ -827,6 +944,171 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(
         TranslationKey::ValorantUnlinkNotFound,
         "You do not have a linked Riot account.",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesTitle,
+        "Recent Matches for {}",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesEmpty,
+        "No recent matches found.",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesHiddenOther,
+        "This member's VALORANT profile is hidden in this Guild.",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesNotLinkedSelf,
+        "You have not linked your Riot account yet. Use `/valorant link` to connect your account.",
+    );
+    en.insert(
+        TranslationKey::ValorantMatchesNotLinkedOther,
+        "This member has not linked their Riot account.",
+    );
+    en.insert(TranslationKey::ValorantMatchesScore, "Score: {} - {}");
+    en.insert(TranslationKey::ValorantMatchesKda, "K/D/A: {}/{}/{}");
+    en.insert(TranslationKey::ValorantMatchesWon, "VICTORY");
+    en.insert(TranslationKey::ValorantMatchesLost, "DEFEAT");
+    en.insert(
+        TranslationKey::ValorantMatchesForbidden,
+        "Access to VALORANT match history is restricted by Riot Games API policy (match history endpoints require an approved Riot Production Key or player RSO credentials, which personal development keys cannot access).",
+    );
+    en.insert(
+        TranslationKey::ValorantStatusTitle,
+        "VALORANT Server Status — {}",
+    );
+    en.insert(
+        TranslationKey::ValorantStatusOperational,
+        "All systems operational",
+    );
+    en.insert(TranslationKey::ValorantStatusIncidents, "Active Incidents");
+    en.insert(
+        TranslationKey::ValorantStatusMaintenances,
+        "Scheduled Maintenance",
+    );
+    en.insert(
+        TranslationKey::ValorantStatusApiError,
+        "Unable to retrieve VALORANT platform status from Riot Games API. Please try again later.",
+    );
+    en.insert(
+        TranslationKey::ValorantStatusForbidden,
+        "Access to VALORANT platform status is restricted by Riot Games API policy.",
+    );
+    en.insert(
+        TranslationKey::ValorantStatusInvalidRegion,
+        "Invalid region. Supported regions: `ap`, `na`, `eu`, `kr`, `latam`, `br`.",
+    );
+
+    // League of Legends
+    en.insert(
+        TranslationKey::LolProfileTitle,
+        "League of Legends Player Profile",
+    );
+    en.insert(TranslationKey::LolProfileSummonerLevel, "Summoner Level");
+    en.insert(TranslationKey::LolProfileSoloDuo, "Ranked Solo/Duo");
+    en.insert(TranslationKey::LolProfileFlex, "Ranked Flex");
+    en.insert(TranslationKey::LolProfileUnranked, "Unranked");
+    en.insert(TranslationKey::LolProfileWinrate, "{}% Win Rate");
+    en.insert(TranslationKey::LolProfileWinsLosses, "{}W {}L");
+    en.insert(
+        TranslationKey::LolProfileNotLinkedSelf,
+        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
+    );
+    en.insert(
+        TranslationKey::LolProfileNotLinkedOther,
+        "This member has not linked a Riot account.",
+    );
+    en.insert(
+        TranslationKey::LolProfileHiddenOther,
+        "This member has kept their League of Legends profile hidden in this Guild (Guild Profile Visibility is disabled).",
+    );
+    en.insert(
+        TranslationKey::LolProfileForbidden,
+        "League of Legends API access is restricted by Riot Games API policy (developer keys have limited access or require production approval).",
+    );
+    en.insert(
+        TranslationKey::LolProfileNotFound,
+        "Summoner data could not be found for this account on the target Riot platform.",
+    );
+    en.insert(
+        TranslationKey::LolProfileApiError,
+        "Could not retrieve League of Legends profile from Riot Games API. Please try again later.",
+    );
+
+    en.insert(TranslationKey::LolMatchesTitle, "Recent Matches for {}");
+    en.insert(TranslationKey::LolMatchesEmpty, "No recent matches found.");
+    en.insert(TranslationKey::LolMatchesWon, "VICTORY");
+    en.insert(TranslationKey::LolMatchesLost, "DEFEAT");
+    en.insert(TranslationKey::LolMatchesKda, "K/D/A: {}/{}/{}");
+    en.insert(TranslationKey::LolMatchesCs, "CS: {}");
+    en.insert(TranslationKey::LolMatchesDuration, "Duration: {}m {}s");
+    en.insert(
+        TranslationKey::LolMatchesNotLinkedSelf,
+        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
+    );
+    en.insert(
+        TranslationKey::LolMatchesNotLinkedOther,
+        "This member has not linked a Riot account.",
+    );
+    en.insert(
+        TranslationKey::LolMatchesHiddenOther,
+        "This member's League of Legends match history is hidden in this Guild.",
+    );
+    en.insert(
+        TranslationKey::LolMatchesForbidden,
+        "League of Legends match history access is restricted by Riot Games API policy.",
+    );
+    en.insert(
+        TranslationKey::LolMatchesApiError,
+        "Could not retrieve League of Legends match history from Riot Games API. Please try again later.",
+    );
+
+    en.insert(TranslationKey::LolMasteryTitle, "Champion Mastery for {}");
+    en.insert(
+        TranslationKey::LolMasteryTotalScore,
+        "Total Mastery Score: {}",
+    );
+    en.insert(TranslationKey::LolMasteryLevel, "Level {}");
+    en.insert(TranslationKey::LolMasteryPoints, "{} points");
+    en.insert(
+        TranslationKey::LolMasteryEmpty,
+        "No champion mastery data found.",
+    );
+    en.insert(
+        TranslationKey::LolMasteryNotLinkedSelf,
+        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
+    );
+    en.insert(
+        TranslationKey::LolMasteryNotLinkedOther,
+        "This member has not linked a Riot account.",
+    );
+    en.insert(
+        TranslationKey::LolMasteryHiddenOther,
+        "This member has kept their champion mastery hidden in this Guild.",
+    );
+    en.insert(
+        TranslationKey::LolMasteryForbidden,
+        "League of Legends champion mastery access is restricted by Riot Games API policy.",
+    );
+    en.insert(
+        TranslationKey::LolMasteryApiError,
+        "Could not retrieve champion mastery from Riot Games API. Please try again later.",
+    );
+    en.insert(
+        TranslationKey::LolNotGuildMember,
+        "Target member is not in this Guild.",
+    );
+    en.insert(
+        TranslationKey::LolProfileVisibilityNoteVisible,
+        "Guild Profile Visibility is enabled. Other members in this Guild can view your LoL profile.",
+    );
+    en.insert(
+        TranslationKey::LolProfileVisibilityNoteHidden,
+        "Guild Profile Visibility is disabled. Other members in this Guild cannot view your LoL profile.",
+    );
+    en.insert(
+        TranslationKey::LolInvalidPlatform,
+        "Invalid LoL platform. Supported platforms: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`.",
     );
     translations.insert(Language::English, en);
 
@@ -1304,7 +1586,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::ValorantProfileForbidden,
-        "Truy cập dữ liệu xếp hạng VALORANT bị giới hạn bởi chính sách Riot Games API (giới hạn Developer Key hoặc yêu cầu quyền Production RSO).",
+        "Truy cập dữ liệu xếp hạng VALORANT bị giới hạn bởi chính sách Riot Games API (khóa phát triển cá nhân/Developer Key không có quyền truy cập endpoint xếp hạng và trận đấu; yêu cầu Production Key hoặc ủy quyền RSO).",
     );
     vi.insert(
         TranslationKey::ValorantProfileUnranked,
@@ -1325,6 +1607,177 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(
         TranslationKey::ValorantUnlinkNotFound,
         "Bạn chưa có tài khoản Riot nào được liên kết.",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesTitle,
+        "Các trận đấu gần đây của {}",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesEmpty,
+        "Không tìm thấy trận đấu gần đây nào.",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesHiddenOther,
+        "Hồ sơ VALORANT của thành viên này bị ẩn trong Guild này.",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesNotLinkedSelf,
+        "Bạn chưa liên kết tài khoản Riot. Sử dụng `/valorant link` để kết nối tài khoản.",
+    );
+    vi.insert(
+        TranslationKey::ValorantMatchesNotLinkedOther,
+        "Thành viên này chưa liên kết tài khoản Riot.",
+    );
+    vi.insert(TranslationKey::ValorantMatchesScore, "Tỉ số: {} - {}");
+    vi.insert(TranslationKey::ValorantMatchesKda, "K/D/A: {}/{}/{}");
+    vi.insert(TranslationKey::ValorantMatchesWon, "CHIẾN THẮNG");
+    vi.insert(TranslationKey::ValorantMatchesLost, "THẤT BẠI");
+    vi.insert(
+        TranslationKey::ValorantMatchesForbidden,
+        "Truy cập lịch sử trận đấu VALORANT bị giới hạn bởi chính sách Riot Games API (endpoint lịch sử trận đấu yêu cầu Production Key hoặc ủy quyền RSO của người chơi, khóa phát triển cá nhân không thể truy cập).",
+    );
+    vi.insert(
+        TranslationKey::ValorantStatusTitle,
+        "Trạng thái máy chủ VALORANT — {}",
+    );
+    vi.insert(
+        TranslationKey::ValorantStatusOperational,
+        "Tất cả hệ thống hoạt động bình thường",
+    );
+    vi.insert(
+        TranslationKey::ValorantStatusIncidents,
+        "Sự cố đang diễn ra",
+    );
+    vi.insert(TranslationKey::ValorantStatusMaintenances, "Lịch bảo trì");
+    vi.insert(
+        TranslationKey::ValorantStatusApiError,
+        "Không thể lấy trạng thái máy chủ VALORANT từ Riot Games API. Vui lòng thử lại sau.",
+    );
+    vi.insert(
+        TranslationKey::ValorantStatusForbidden,
+        "Truy cập trạng thái máy chủ VALORANT bị giới hạn bởi chính sách Riot Games API.",
+    );
+    vi.insert(
+        TranslationKey::ValorantStatusInvalidRegion,
+        "Khu vực không hợp lệ. Các khu vực hỗ trợ: `ap`, `na`, `eu`, `kr`, `latam`, `br`.",
+    );
+
+    // League of Legends
+    vi.insert(
+        TranslationKey::LolProfileTitle,
+        "Hồ sơ người chơi League of Legends",
+    );
+    vi.insert(TranslationKey::LolProfileSummonerLevel, "Cấp độ người chơi");
+    vi.insert(TranslationKey::LolProfileSoloDuo, "Xếp hạng Đơn/Đôi");
+    vi.insert(TranslationKey::LolProfileFlex, "Xếp hạng Linh hoạt");
+    vi.insert(TranslationKey::LolProfileUnranked, "Chưa xếp hạng");
+    vi.insert(TranslationKey::LolProfileWinrate, "Tỷ lệ thắng: {}%");
+    vi.insert(TranslationKey::LolProfileWinsLosses, "{}T {}B");
+    vi.insert(
+        TranslationKey::LolProfileNotLinkedSelf,
+        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/valorant link <riot_id>` để liên kết tài khoản.",
+    );
+    vi.insert(
+        TranslationKey::LolProfileNotLinkedOther,
+        "Thành viên này chưa liên kết tài khoản Riot.",
+    );
+    vi.insert(
+        TranslationKey::LolProfileHiddenOther,
+        "Thành viên này đã ẩn hồ sơ League of Legends trong Guild này (chế độ hiển thị hồ sơ bị tắt).",
+    );
+    vi.insert(
+        TranslationKey::LolProfileForbidden,
+        "Quyền truy cập API League of Legends bị giới hạn bởi chính sách của Riot Games (khóa nhà phát triển có giới hạn hoặc cần khóa chính thức).",
+    );
+    vi.insert(
+        TranslationKey::LolProfileNotFound,
+        "Không tìm thấy dữ liệu người chơi cho tài khoản này trên máy chủ Riot tương ứng.",
+    );
+    vi.insert(
+        TranslationKey::LolProfileApiError,
+        "Không thể lấy hồ sơ League of Legends từ Riot Games API. Vui lòng thử lại sau.",
+    );
+
+    vi.insert(
+        TranslationKey::LolMatchesTitle,
+        "Lịch sử trận đấu gần đây của {}",
+    );
+    vi.insert(
+        TranslationKey::LolMatchesEmpty,
+        "Không tìm thấy trận đấu gần đây nào.",
+    );
+    vi.insert(TranslationKey::LolMatchesWon, "CHIẾN THẮNG");
+    vi.insert(TranslationKey::LolMatchesLost, "THẤT BẠI");
+    vi.insert(TranslationKey::LolMatchesKda, "K/D/A: {}/{}/{}");
+    vi.insert(TranslationKey::LolMatchesCs, "Chỉ số lính (CS): {}");
+    vi.insert(TranslationKey::LolMatchesDuration, "Thời gian: {}m {}s");
+    vi.insert(
+        TranslationKey::LolMatchesNotLinkedSelf,
+        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/valorant link <riot_id>` để liên kết tài khoản.",
+    );
+    vi.insert(
+        TranslationKey::LolMatchesNotLinkedOther,
+        "Thành viên này chưa liên kết tài khoản Riot.",
+    );
+    vi.insert(
+        TranslationKey::LolMatchesHiddenOther,
+        "Thành viên này đã ẩn lịch sử đấu League of Legends trong Guild này.",
+    );
+    vi.insert(
+        TranslationKey::LolMatchesForbidden,
+        "Truy cập lịch sử đấu League of Legends bị giới hạn bởi chính sách Riot Games API.",
+    );
+    vi.insert(
+        TranslationKey::LolMatchesApiError,
+        "Không thể lấy lịch sử đấu League of Legends từ Riot Games API. Vui lòng thử lại sau.",
+    );
+
+    vi.insert(TranslationKey::LolMasteryTitle, "Thông thạo tướng của {}");
+    vi.insert(
+        TranslationKey::LolMasteryTotalScore,
+        "Tổng điểm thông thạo: {}",
+    );
+    vi.insert(TranslationKey::LolMasteryLevel, "Cấp {}");
+    vi.insert(TranslationKey::LolMasteryPoints, "{} điểm");
+    vi.insert(
+        TranslationKey::LolMasteryEmpty,
+        "Không tìm thấy dữ liệu thông thạo tướng nào.",
+    );
+    vi.insert(
+        TranslationKey::LolMasteryNotLinkedSelf,
+        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/valorant link <riot_id>` để liên kết tài khoản.",
+    );
+    vi.insert(
+        TranslationKey::LolMasteryNotLinkedOther,
+        "Thành viên này chưa liên kết tài khoản Riot.",
+    );
+    vi.insert(
+        TranslationKey::LolMasteryHiddenOther,
+        "Thành viên này đã ẩn dữ liệu thông thạo tướng trong Guild này.",
+    );
+    vi.insert(
+        TranslationKey::LolMasteryForbidden,
+        "Truy cập thông thạo tướng League of Legends bị giới hạn bởi chính sách Riot Games API.",
+    );
+    vi.insert(
+        TranslationKey::LolMasteryApiError,
+        "Không thể lấy thông thạo tướng từ Riot Games API. Vui lòng thử lại sau.",
+    );
+    vi.insert(
+        TranslationKey::LolNotGuildMember,
+        "Thành viên này không thuộc Guild này.",
+    );
+    vi.insert(
+        TranslationKey::LolProfileVisibilityNoteVisible,
+        "Quyền hiển thị hồ sơ Guild đang bật. Thành viên khác có thể xem hồ sơ LoL của bạn.",
+    );
+    vi.insert(
+        TranslationKey::LolProfileVisibilityNoteHidden,
+        "Quyền hiển thị hồ sơ Guild đang tắt. Thành viên khác không thể xem hồ sơ LoL của bạn.",
+    );
+    vi.insert(
+        TranslationKey::LolInvalidPlatform,
+        "Nền tảng LoL không hợp lệ. Các nền tảng hỗ trợ: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`.",
     );
     translations.insert(Language::Vietnamese, vi);
 
@@ -1814,7 +2267,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::ValorantProfileForbidden,
-        "VALORANT ランク MMR へのアクセスは Riot Games API ポリシーにより制限されています（開発者キー制限または本番 RSO 権限が必要です）。",
+        "VALORANT ランク MMR へのアクセスは Riot Games API ポリシーにより制限されています（個人用開発者キーはマッチ履歴およびランクエンドポイントへのアクセス権がありません。本番キーまたは RSO 認証が必要です）。",
     );
     ja.insert(
         TranslationKey::ValorantProfileUnranked,
@@ -1835,6 +2288,168 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::ValorantUnlinkNotFound,
         "連携されている Riot アカウントはありません。",
+    );
+    ja.insert(TranslationKey::ValorantMatchesTitle, "{} の最近の試合");
+    ja.insert(
+        TranslationKey::ValorantMatchesEmpty,
+        "最近の試合が見つかりませんでした。",
+    );
+    ja.insert(
+        TranslationKey::ValorantMatchesHiddenOther,
+        "このメンバーのVALORANTプロフィールはこのギルドでは非公開です。",
+    );
+    ja.insert(
+        TranslationKey::ValorantMatchesNotLinkedSelf,
+        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+    );
+    ja.insert(
+        TranslationKey::ValorantMatchesNotLinkedOther,
+        "このメンバーはRiotアカウントを連携していません。",
+    );
+    ja.insert(TranslationKey::ValorantMatchesScore, "スコア: {} - {}");
+    ja.insert(TranslationKey::ValorantMatchesKda, "K/D/A: {}/{}/{}");
+    ja.insert(TranslationKey::ValorantMatchesWon, "勝利");
+    ja.insert(TranslationKey::ValorantMatchesLost, "敗北");
+    ja.insert(
+        TranslationKey::ValorantMatchesForbidden,
+        "VALORANT 試合履歴へのアクセスは Riot Games API ポリシーにより制限されています（試合履歴エンドポイントには承認された Riot 本番キーまたはプレイヤー RSO 認証が必要であり、個人用開発者キーでは利用できません）。",
+    );
+    ja.insert(
+        TranslationKey::ValorantStatusTitle,
+        "VALORANT サーバーステータス — {}",
+    );
+    ja.insert(
+        TranslationKey::ValorantStatusOperational,
+        "すべてのシステムが正常に稼働しています",
+    );
+    ja.insert(TranslationKey::ValorantStatusIncidents, "発生中の障害");
+    ja.insert(
+        TranslationKey::ValorantStatusMaintenances,
+        "メンテナンス情報",
+    );
+    ja.insert(
+        TranslationKey::ValorantStatusApiError,
+        "Riot Games API から VALORANT のサーバーステータスを取得できませんでした。後でもう一度お試しください。",
+    );
+    ja.insert(
+        TranslationKey::ValorantStatusForbidden,
+        "Riot Games API ポリシーにより VALORANT サーバーステータスへのアクセスが制限されています。",
+    );
+    ja.insert(
+        TranslationKey::ValorantStatusInvalidRegion,
+        "無効な地域です。対応地域: `ap`, `na`, `eu`, `kr`, `latam`, `br`。",
+    );
+
+    // League of Legends
+    ja.insert(
+        TranslationKey::LolProfileTitle,
+        "League of Legends プレイヤープロフィール",
+    );
+    ja.insert(TranslationKey::LolProfileSummonerLevel, "サモナーレベル");
+    ja.insert(TranslationKey::LolProfileSoloDuo, "ランク ソロ/デュオ");
+    ja.insert(TranslationKey::LolProfileFlex, "ランク フレックス");
+    ja.insert(TranslationKey::LolProfileUnranked, "アンランク");
+    ja.insert(TranslationKey::LolProfileWinrate, "勝率: {}%");
+    ja.insert(TranslationKey::LolProfileWinsLosses, "{}勝 {}敗");
+    ja.insert(
+        TranslationKey::LolProfileNotLinkedSelf,
+        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileNotLinkedOther,
+        "このメンバーはRiotアカウントを連携していません。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileHiddenOther,
+        "このメンバーのLeague of Legendsプロフィールはこのギルドでは非公開です（公開設定が無効です）。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileForbidden,
+        "League of Legends API へのアクセスは Riot Games API ポリシーにより制限されています（開発者キーの制限または本番キーの承認が必要です）。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileNotFound,
+        "対象の Riot プラットフォーム上でサモナーデータが見つかりませんでした。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileApiError,
+        "Riot Games API から League of Legends プロフィールを取得できませんでした。後でもう一度お試しください。",
+    );
+
+    ja.insert(TranslationKey::LolMatchesTitle, "{} の最近の試合");
+    ja.insert(
+        TranslationKey::LolMatchesEmpty,
+        "最近の試合が見つかりませんでした。",
+    );
+    ja.insert(TranslationKey::LolMatchesWon, "勝利");
+    ja.insert(TranslationKey::LolMatchesLost, "敗北");
+    ja.insert(TranslationKey::LolMatchesKda, "K/D/A: {}/{}/{}");
+    ja.insert(TranslationKey::LolMatchesCs, "CS: {}");
+    ja.insert(TranslationKey::LolMatchesDuration, "所要時間: {}分{}秒");
+    ja.insert(
+        TranslationKey::LolMatchesNotLinkedSelf,
+        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+    );
+    ja.insert(
+        TranslationKey::LolMatchesNotLinkedOther,
+        "このメンバーはRiotアカウントを連携していません。",
+    );
+    ja.insert(
+        TranslationKey::LolMatchesHiddenOther,
+        "このメンバーのLeague of Legends試合履歴はこのギルドでは非公開です。",
+    );
+    ja.insert(
+        TranslationKey::LolMatchesForbidden,
+        "League of Legends 試合履歴へのアクセスは Riot Games API ポリシーにより制限されています。",
+    );
+    ja.insert(
+        TranslationKey::LolMatchesApiError,
+        "Riot Games API から League of Legends 試合履歴を取得できませんでした。後でもう一度お試しください。",
+    );
+
+    ja.insert(TranslationKey::LolMasteryTitle, "{} のチャンピオン熟練度");
+    ja.insert(TranslationKey::LolMasteryTotalScore, "合計熟練度スコア: {}");
+    ja.insert(TranslationKey::LolMasteryLevel, "レベル {}");
+    ja.insert(TranslationKey::LolMasteryPoints, "{} ポイント");
+    ja.insert(
+        TranslationKey::LolMasteryEmpty,
+        "チャンピオン熟練度データが見つかりませんでした。",
+    );
+    ja.insert(
+        TranslationKey::LolMasteryNotLinkedSelf,
+        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+    );
+    ja.insert(
+        TranslationKey::LolMasteryNotLinkedOther,
+        "このメンバーはRiotアカウントを連携していません。",
+    );
+    ja.insert(
+        TranslationKey::LolMasteryHiddenOther,
+        "このメンバーのチャンピオン熟練度データはこのギルドでは非公開です。",
+    );
+    ja.insert(
+        TranslationKey::LolMasteryForbidden,
+        "League of Legends チャンピオン熟練度へのアクセスは Riot Games API ポリシーにより制限されています。",
+    );
+    ja.insert(
+        TranslationKey::LolMasteryApiError,
+        "Riot Games API からチャンピオン熟練度を取得できませんでした。後でもう一度お試しください。",
+    );
+    ja.insert(
+        TranslationKey::LolNotGuildMember,
+        "指定されたメンバーはこのギルドに参加していません。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileVisibilityNoteVisible,
+        "ギルドプロフィール公開が有効です。このギルドのメンバーはあなたの LoL プロフィールを閲覧できます。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileVisibilityNoteHidden,
+        "ギルドプロフィール公開が無効です。このギルドのメンバーはあなたの LoL プロフィールを閲覧できません。",
+    );
+    ja.insert(
+        TranslationKey::LolInvalidPlatform,
+        "無効な LoL プラットフォームです。サポート対象: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`。",
     );
     translations.insert(Language::Japanese, ja);
 

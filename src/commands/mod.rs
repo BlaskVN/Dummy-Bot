@@ -2,6 +2,7 @@ pub mod activity;
 pub mod configuration;
 pub mod donation;
 pub mod general;
+pub mod lol;
 pub mod moderation;
 pub mod presence;
 pub mod reload_modules;
@@ -22,18 +23,19 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
     commands.push(word_puzzle::word_puzzle());
     commands.push(reload_modules::reload_modules());
     commands.push(valorant::valorant());
+    commands.push(lol::lol());
     apply_localizations(&mut commands);
     commands
 }
 
 fn apply_localizations(commands: &mut [poise::Command<Data, Error>]) {
     for cmd in commands {
-        apply_single_command_localization(cmd);
+        apply_single_command_localization(None, cmd);
     }
 }
 
-fn apply_single_command_localization(cmd: &mut poise::Command<Data, Error>) {
-    let (vi_desc, ja_desc) = get_command_descriptions(&cmd.name);
+fn apply_single_command_localization(parent: Option<&str>, cmd: &mut poise::Command<Data, Error>) {
+    let (vi_desc, ja_desc) = get_command_descriptions(parent, &cmd.name);
     cmd.description_localizations
         .insert("vi".to_string(), vi_desc);
     cmd.description_localizations
@@ -50,11 +52,45 @@ fn apply_single_command_localization(cmd: &mut poise::Command<Data, Error>) {
     }
 
     for sub in &mut cmd.subcommands {
-        apply_single_command_localization(sub);
+        apply_single_command_localization(Some(&cmd.name), sub);
     }
 }
 
-fn get_command_descriptions(name: &str) -> (String, String) {
+fn get_command_descriptions(parent: Option<&str>, name: &str) -> (String, String) {
+    if let (Some("valorant"), "status") = (parent, name) {
+        return (
+            "Kiểm tra trạng thái máy chủ và bảo trì của VALORANT theo khu vực.".to_string(),
+            "VALORANT のサーバー状態とメンテナンス情報を地域ごとに確認します。".to_string(),
+        );
+    }
+
+    if let Some("lol") = parent {
+        match name {
+            "profile" => {
+                return (
+                    "Xem hồ sơ xếp hạng và thông tin người chơi League of Legends của thành viên."
+                        .to_string(),
+                    "メンバーの League of Legends ランクとプロフィール情報を表示します。"
+                        .to_string(),
+                );
+            }
+            "matches" => {
+                return (
+                    "Xem lịch sử các trận đấu League of Legends gần đây của bạn hoặc thành viên khác.".to_string(),
+                    "自分または他のメンバーの League of Legends の最近の試合履歴を表示します。".to_string(),
+                );
+            }
+            "mastery" => {
+                return (
+                    "Xem điểm thông thạo và các tướng thông thạo cao nhất trong League of Legends."
+                        .to_string(),
+                    "League of Legends のチャンピオン熟練度と合計スコアを表示します。".to_string(),
+                );
+            }
+            _ => {}
+        }
+    }
+
     let known = match name {
         "ping" => Some((
             "Kiểm tra độ trễ và khả năng phản hồi của Bot.",
@@ -230,6 +266,14 @@ fn get_command_descriptions(name: &str) -> (String, String) {
             "Hủy liên kết tài khoản Riot khỏi hồ sơ Discord.",
             "Discord プロフィールから Riot アカウントの連携を解除します。",
         )),
+        "matches" => Some((
+            "Xem lịch sử các trận đấu gần đây của bạn hoặc thành viên khác.",
+            "自分または他のメンバーの最近の試合履歴を表示します。",
+        )),
+        "lol" => Some((
+            "Xem hồ sơ xếp hạng, lịch sử đấu và thông thạo tướng League of Legends.",
+            "League of Legends のランクプロフィール、試合履歴、チャンピオン熟練度を確認します。",
+        )),
         _ => None,
     };
 
@@ -281,6 +325,14 @@ fn get_param_descriptions(cmd_name: &str, param_name: &str) -> (String, String) 
         (_, "riot_id") => Some((
             "Riot ID của bạn theo định dạng Tên#TAG (ví dụ: TenZ#0001).",
             "名前#タグ形式の Riot ID（例：TenZ#0001）。",
+        )),
+        ("status", "region") => Some((
+            "Khu vực VALORANT cần kiểm tra (ap, na, eu, kr, latam, br). Mặc định theo cấu hình bot.",
+            "確認対象の VALORANT 地域（ap, na, eu, kr, latam, br）。デフォルトはボットの既定地域。",
+        )),
+        (_, "platform") => Some((
+            "Khu vực/nền tảng LoL (ví dụ vn2, na1, euw1, kr, jp1, oc1). Mặc định theo vùng tài khoản đã liên kết.",
+            "LoL の地域/プラットフォーム（例：vn2, na1, euw1, kr, jp1, oc1）。デフォルトは連携アカウントの地域。",
         )),
         (_, "region") => Some((
             "Khu vực tài khoản VALORANT (ap, na, eu, kr, latam, br).",
@@ -358,10 +410,12 @@ mod tests {
             "connect",
             "reload_modules",
             "valorant",
+            "lol",
         ] {
             assert!(names.contains(&representative), "missing /{representative}");
         }
         assert!(!names.contains(&"setprefix"));
         assert!(names.contains(&"valorant"));
+        assert!(names.contains(&"lol"));
     }
 }
