@@ -20,7 +20,7 @@ pub struct LolProfile {
 }
 
 #[derive(Debug)]
-pub enum LolProfileError {
+pub enum LolDomainError {
     NotLinked { is_self: bool },
     HiddenOther,
     ApiForbidden,
@@ -29,7 +29,7 @@ pub enum LolProfileError {
     Database(anyhow::Error),
 }
 
-impl std::fmt::Display for LolProfileError {
+impl std::fmt::Display for LolDomainError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotLinked { is_self } => {
@@ -44,7 +44,11 @@ impl std::fmt::Display for LolProfileError {
     }
 }
 
-impl std::error::Error for LolProfileError {}
+impl std::error::Error for LolDomainError {}
+
+pub type LolProfileError = LolDomainError;
+pub type LolMatchesError = LolDomainError;
+pub type LolMasteryError = LolDomainError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LolRecentMatchesData {
@@ -54,31 +58,6 @@ pub struct LolRecentMatchesData {
     pub is_visible: bool,
 }
 
-#[derive(Debug)]
-pub enum LolMatchesError {
-    NotLinked { is_self: bool },
-    HiddenOther,
-    ApiForbidden,
-    ApiError(anyhow::Error),
-    Database(anyhow::Error),
-}
-
-impl std::fmt::Display for LolMatchesError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotLinked { is_self } => {
-                write!(f, "LoL account not linked (is_self: {is_self})")
-            }
-            Self::HiddenOther => write!(f, "Target member profile is hidden in this guild"),
-            Self::ApiForbidden => write!(f, "LoL API access forbidden"),
-            Self::ApiError(err) => write!(f, "LoL API error: {err}"),
-            Self::Database(err) => write!(f, "Database error: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for LolMatchesError {}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct LolMasteryData {
     pub account: LinkedRiotAccount,
@@ -87,31 +66,6 @@ pub struct LolMasteryData {
     pub is_self: bool,
     pub is_visible: bool,
 }
-
-#[derive(Debug)]
-pub enum LolMasteryError {
-    NotLinked { is_self: bool },
-    HiddenOther,
-    ApiForbidden,
-    ApiError(anyhow::Error),
-    Database(anyhow::Error),
-}
-
-impl std::fmt::Display for LolMasteryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotLinked { is_self } => {
-                write!(f, "LoL account not linked (is_self: {is_self})")
-            }
-            Self::HiddenOther => write!(f, "Target member profile is hidden in this guild"),
-            Self::ApiForbidden => write!(f, "LoL API access forbidden"),
-            Self::ApiError(err) => write!(f, "LoL API error: {err}"),
-            Self::Database(err) => write!(f, "Database error: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for LolMasteryError {}
 
 /// Domain service for League of Legends player profiles, match history, and champion masteries.
 #[derive(Clone)]
@@ -125,32 +79,49 @@ impl LolService {
         Self { pool, api }
     }
 
+    /// Resolve the target member's linked Riot account and verify guild privacy settings.
+    async fn resolve_target_and_visibility(
+        &self,
+        guild_id: GuildId,
+        requester_id: UserId,
+        target_id: UserId,
+    ) -> Result<(LinkedRiotAccount, bool), LolDomainError> {
+        let is_self = requester_id == target_id;
+
+        let account = match get_linked_account(&self.pool, target_id)
+            .await
+            .map_err(LolDomainError::Database)?
+        {
+            Some(acc) => acc,
+            None => return Err(LolDomainError::NotLinked { is_self }),
+        };
+
+        let is_visible = get_guild_visibility(&self.pool, guild_id, target_id)
+            .await
+            .map_err(LolDomainError::Database)?;
+
+        if !is_self && !is_visible {
+            return Err(LolDomainError::HiddenOther);
+        }
+
+        Ok((account, is_visible))
+    }
+
     /// Retrieve a member's League of Legends profile with summoner and ranked queue entries.
     pub async fn get_profile(
         &self,
         guild_id: GuildId,
         requester_id: UserId,
         target_id: UserId,
+        platform_override: Option<LolPlatform>,
     ) -> Result<LolProfile, LolProfileError> {
         let is_self = requester_id == target_id;
+        let (account, is_visible) = self
+            .resolve_target_and_visibility(guild_id, requester_id, target_id)
+            .await?;
 
-        let account = match get_linked_account(&self.pool, target_id)
-            .await
-            .map_err(LolProfileError::Database)?
-        {
-            Some(acc) => acc,
-            None => return Err(LolProfileError::NotLinked { is_self }),
-        };
-
-        let is_visible = get_guild_visibility(&self.pool, guild_id, target_id)
-            .await
-            .map_err(LolProfileError::Database)?;
-
-        if !is_self && !is_visible {
-            return Err(LolProfileError::HiddenOther);
-        }
-
-        let platform = LolPlatform::from_riot_region(account.region);
+        let platform = platform_override
+            .unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
 
         let summoner = match self
             .api
@@ -220,26 +191,15 @@ impl LolService {
         requester_id: UserId,
         target_id: UserId,
         count: usize,
+        platform_override: Option<LolPlatform>,
     ) -> Result<LolRecentMatchesData, LolMatchesError> {
         let is_self = requester_id == target_id;
+        let (account, is_visible) = self
+            .resolve_target_and_visibility(guild_id, requester_id, target_id)
+            .await?;
 
-        let account = match get_linked_account(&self.pool, target_id)
-            .await
-            .map_err(LolMatchesError::Database)?
-        {
-            Some(acc) => acc,
-            None => return Err(LolMatchesError::NotLinked { is_self }),
-        };
-
-        let is_visible = get_guild_visibility(&self.pool, guild_id, target_id)
-            .await
-            .map_err(LolMatchesError::Database)?;
-
-        if !is_self && !is_visible {
-            return Err(LolMatchesError::HiddenOther);
-        }
-
-        let platform = LolPlatform::from_riot_region(account.region);
+        let platform = platform_override
+            .unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
 
         let matches = match self
             .api
@@ -255,6 +215,7 @@ impl LolService {
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolMatchesError::ApiForbidden),
+                    Some(LolApiError::NotFound) => return Err(LolMatchesError::ApiNotFound),
                     _ => return Err(LolMatchesError::ApiError(err)),
                 }
             }
@@ -275,26 +236,15 @@ impl LolService {
         requester_id: UserId,
         target_id: UserId,
         count: usize,
+        platform_override: Option<LolPlatform>,
     ) -> Result<LolMasteryData, LolMasteryError> {
         let is_self = requester_id == target_id;
+        let (account, is_visible) = self
+            .resolve_target_and_visibility(guild_id, requester_id, target_id)
+            .await?;
 
-        let account = match get_linked_account(&self.pool, target_id)
-            .await
-            .map_err(LolMasteryError::Database)?
-        {
-            Some(acc) => acc,
-            None => return Err(LolMasteryError::NotLinked { is_self }),
-        };
-
-        let is_visible = get_guild_visibility(&self.pool, guild_id, target_id)
-            .await
-            .map_err(LolMasteryError::Database)?;
-
-        if !is_self && !is_visible {
-            return Err(LolMasteryError::HiddenOther);
-        }
-
-        let platform = LolPlatform::from_riot_region(account.region);
+        let platform = platform_override
+            .unwrap_or_else(|| LolPlatform::from_riot_region(account.region));
 
         let (masteries_res, score_res) = tokio::join!(
             self.api
@@ -312,6 +262,7 @@ impl LolService {
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolMasteryError::ApiForbidden),
+                    Some(LolApiError::NotFound) => return Err(LolMasteryError::ApiNotFound),
                     _ => return Err(LolMasteryError::ApiError(err)),
                 }
             }
@@ -327,6 +278,7 @@ impl LolService {
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolMasteryError::ApiForbidden),
+                    Some(LolApiError::NotFound) => return Err(LolMasteryError::ApiNotFound),
                     _ => return Err(LolMasteryError::ApiError(err)),
                 }
             }
@@ -419,6 +371,14 @@ mod tests {
         ) -> BoxFuture<'a, Result<i32>> {
             Box::pin(async move { Err(anyhow::Error::new(LolApiError::Forbidden)) })
         }
+
+        fn get_account_by_puuid<'a>(
+            &'a self,
+            _cluster_or_platform: LolPlatform,
+            _puuid: &'a str,
+        ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>> {
+            Box::pin(async move { Err(anyhow::Error::new(LolApiError::Forbidden)) })
+        }
     }
 
     #[tokio::test]
@@ -433,13 +393,13 @@ mod tests {
 
         // Neither linked
         let err = service
-            .get_profile(guild_id, requester_id, requester_id)
+            .get_profile(guild_id, requester_id, requester_id, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolProfileError::NotLinked { is_self: true }));
 
         let err = service
-            .get_profile(guild_id, requester_id, target_id)
+            .get_profile(guild_id, requester_id, target_id, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolProfileError::NotLinked { is_self: false }));
@@ -458,14 +418,14 @@ mod tests {
 
         // Requester viewing target -> HiddenOther
         let err = service
-            .get_profile(guild_id, requester_id, target_id)
+            .get_profile(guild_id, requester_id, target_id, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolProfileError::HiddenOther));
 
         // Target viewing self -> allowed even though is_visible is false
         let self_profile = service
-            .get_profile(guild_id, target_id, target_id)
+            .get_profile(guild_id, target_id, target_id, None)
             .await
             .unwrap();
         assert!(self_profile.is_self);
@@ -481,12 +441,19 @@ mod tests {
 
         // Requester viewing target now succeeds
         let other_profile = service
-            .get_profile(guild_id, requester_id, target_id)
+            .get_profile(guild_id, requester_id, target_id, None)
             .await
             .unwrap();
         assert!(!other_profile.is_self);
         assert!(other_profile.is_visible);
         assert_eq!(other_profile.account.game_name, "Faker");
+
+        // Custom platform override
+        let jp_profile = service
+            .get_profile(guild_id, requester_id, target_id, Some(LolPlatform::Jp1))
+            .await
+            .unwrap();
+        assert_eq!(jp_profile.account.game_name, "Faker");
 
         pool.close().await;
         let _ = tokio::fs::remove_dir_all(&dir).await;
@@ -504,7 +471,7 @@ mod tests {
 
         // Not linked
         let err = service
-            .get_matches(guild_id, requester_id, requester_id, 5)
+            .get_matches(guild_id, requester_id, requester_id, 5, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolMatchesError::NotLinked { is_self: true }));
@@ -523,14 +490,14 @@ mod tests {
 
         // Hidden to other
         let err = service
-            .get_matches(guild_id, requester_id, target_id, 5)
+            .get_matches(guild_id, requester_id, target_id, 5, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolMatchesError::HiddenOther));
 
         // Visible to self
         let self_matches = service
-            .get_matches(guild_id, target_id, target_id, 3)
+            .get_matches(guild_id, target_id, target_id, 3, None)
             .await
             .unwrap();
         assert_eq!(self_matches.matches.len(), 3);
@@ -541,7 +508,7 @@ mod tests {
             .await
             .unwrap();
         let other_matches = service
-            .get_matches(guild_id, requester_id, target_id, 2)
+            .get_matches(guild_id, requester_id, target_id, 2, None)
             .await
             .unwrap();
         assert_eq!(other_matches.matches.len(), 2);
@@ -564,7 +531,7 @@ mod tests {
 
         // Not linked
         let err = service
-            .get_mastery(guild_id, requester_id, requester_id, 5)
+            .get_mastery(guild_id, requester_id, requester_id, 5, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolMasteryError::NotLinked { is_self: true }));
@@ -583,14 +550,14 @@ mod tests {
 
         // Hidden to other
         let err = service
-            .get_mastery(guild_id, requester_id, target_id, 5)
+            .get_mastery(guild_id, requester_id, target_id, 5, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolMasteryError::HiddenOther));
 
         // Visible to self
         let self_mastery = service
-            .get_mastery(guild_id, target_id, target_id, 3)
+            .get_mastery(guild_id, target_id, target_id, 3, None)
             .await
             .unwrap();
         assert_eq!(self_mastery.top_masteries.len(), 3);
@@ -602,7 +569,7 @@ mod tests {
             .await
             .unwrap();
         let other_mastery = service
-            .get_mastery(guild_id, requester_id, target_id, 5)
+            .get_mastery(guild_id, requester_id, target_id, 5, None)
             .await
             .unwrap();
         assert_eq!(other_mastery.top_masteries.len(), 5);
@@ -638,19 +605,19 @@ mod tests {
         let service = LolService::new(pool.clone(), forbidden_client);
 
         let err = service
-            .get_profile(guild_id, user_id, user_id)
+            .get_profile(guild_id, user_id, user_id, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolProfileError::ApiForbidden));
 
         let err = service
-            .get_matches(guild_id, user_id, user_id, 5)
+            .get_matches(guild_id, user_id, user_id, 5, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolMatchesError::ApiForbidden));
 
         let err = service
-            .get_mastery(guild_id, user_id, user_id, 5)
+            .get_mastery(guild_id, user_id, user_id, 5, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolMasteryError::ApiForbidden));
@@ -663,7 +630,7 @@ mod tests {
         let service = LolService::new(pool.clone(), not_found_client);
 
         let err = service
-            .get_profile(guild_id, user_id, user_id)
+            .get_profile(guild_id, user_id, user_id, None)
             .await
             .unwrap_err();
         assert!(matches!(err, LolProfileError::ApiNotFound));

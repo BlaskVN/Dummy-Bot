@@ -26,7 +26,7 @@ async fn resolve_target_user(
                 ui::reply(
                     ctx,
                     Tone::Error,
-                    t(lang, TranslationKey::ValorantProfileNotGuildMember),
+                    t(lang, TranslationKey::LolNotGuildMember),
                 )
                 .await?;
                 Ok(None)
@@ -44,11 +44,29 @@ pub async fn profile(
     ctx: Context<'_>,
     #[description = "Member whose League of Legends profile to view (defaults to yourself)"]
     member: Option<serenity::Member>,
+    #[description = "LoL region/platform (e.g. vn2, na1, euw1, kr, jp1, oc1). Defaults to linked account region"]
+    platform: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
+
+    let target_platform = match platform {
+        Some(ref p) => match crate::lol::LolPlatform::try_parse(p) {
+            Some(plat) => Some(plat),
+            None => {
+                ui::reply(
+                    ctx,
+                    Tone::Warning,
+                    t(lang, TranslationKey::LolInvalidPlatform),
+                )
+                .await?;
+                return Ok(());
+            }
+        },
+        None => None,
+    };
 
     let Some(target_user_id) = resolve_target_user(ctx, member.as_ref(), guild_id, lang).await?
     else {
@@ -58,7 +76,7 @@ pub async fn profile(
     let profile = match ctx
         .data()
         .lol_service()
-        .get_profile(guild_id, ctx.author().id, target_user_id)
+        .get_profile(guild_id, ctx.author().id, target_user_id, target_platform)
         .await
     {
         Ok(p) => p,
@@ -169,12 +187,12 @@ pub async fn profile(
         if profile.is_visible {
             format!(
                 "\n\n> {}",
-                t(lang, TranslationKey::ValorantProfileVisibilityNoteVisible)
+                t(lang, TranslationKey::LolProfileVisibilityNoteVisible)
             )
         } else {
             format!(
                 "\n\n> {}",
-                t(lang, TranslationKey::ValorantProfileVisibilityNoteHidden)
+                t(lang, TranslationKey::LolProfileVisibilityNoteHidden)
             )
         }
     } else {
@@ -217,11 +235,29 @@ pub async fn matches(
     ctx: Context<'_>,
     #[description = "Member whose League of Legends matches to view (defaults to yourself)"]
     member: Option<serenity::Member>,
+    #[description = "LoL region/platform (e.g. vn2, na1, euw1, kr, jp1, oc1). Defaults to linked account region"]
+    platform: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
+
+    let target_platform = match platform {
+        Some(ref p) => match crate::lol::LolPlatform::try_parse(p) {
+            Some(plat) => Some(plat),
+            None => {
+                ui::reply(
+                    ctx,
+                    Tone::Warning,
+                    t(lang, TranslationKey::LolInvalidPlatform),
+                )
+                .await?;
+                return Ok(());
+            }
+        },
+        None => None,
+    };
 
     let target_user_id = match resolve_target_user(ctx, member.as_ref(), guild_id, lang).await? {
         Some(id) => id,
@@ -231,7 +267,7 @@ pub async fn matches(
     let data = match ctx
         .data()
         .lol_service()
-        .get_matches(guild_id, ctx.author().id, target_user_id, 5)
+        .get_matches(guild_id, ctx.author().id, target_user_id, 5, target_platform)
         .await
     {
         Ok(d) => d,
@@ -258,6 +294,15 @@ pub async fn matches(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::LolMatchesForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(LolMatchesError::ApiNotFound) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::LolProfileNotFound),
             )
             .await?;
             return Ok(());
@@ -301,6 +346,11 @@ pub async fn matches(
         } else {
             m.champion_name.clone()
         };
+        let map_name = if !m.map_name.is_empty() {
+            m.map_name.as_str()
+        } else {
+            crate::lol::map_name_by_id(m.map_id)
+        };
         let kda_str = tf(
             lang,
             TranslationKey::LolMatchesKda,
@@ -333,7 +383,7 @@ pub async fn matches(
         };
 
         match_blocks.push(format!(
-            "{outcome_badge} — **{champ}** ({mode}) • {duration_str}{time_str}\n> {kda_str} • {cs_str}{items_line}",
+            "{outcome_badge} — **{champ}** • {map_name} ({mode}) • {duration_str}{time_str}\n> {kda_str} • {cs_str}{items_line}",
             champ = champion_display,
             mode = m.game_mode,
         ));
@@ -353,11 +403,29 @@ pub async fn mastery(
     ctx: Context<'_>,
     #[description = "Member whose champion masteries to view (defaults to yourself)"]
     member: Option<serenity::Member>,
+    #[description = "LoL region/platform (e.g. vn2, na1, euw1, kr, jp1, oc1). Defaults to linked account region"]
+    platform: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
+
+    let target_platform = match platform {
+        Some(ref p) => match crate::lol::LolPlatform::try_parse(p) {
+            Some(plat) => Some(plat),
+            None => {
+                ui::reply(
+                    ctx,
+                    Tone::Warning,
+                    t(lang, TranslationKey::LolInvalidPlatform),
+                )
+                .await?;
+                return Ok(());
+            }
+        },
+        None => None,
+    };
 
     let target_user_id = match resolve_target_user(ctx, member.as_ref(), guild_id, lang).await? {
         Some(id) => id,
@@ -367,7 +435,7 @@ pub async fn mastery(
     let data = match ctx
         .data()
         .lol_service()
-        .get_mastery(guild_id, ctx.author().id, target_user_id, 5)
+        .get_mastery(guild_id, ctx.author().id, target_user_id, 5, target_platform)
         .await
     {
         Ok(d) => d,
@@ -394,6 +462,15 @@ pub async fn mastery(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::LolMasteryForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(LolMasteryError::ApiNotFound) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::LolProfileNotFound),
             )
             .await?;
             return Ok(());
@@ -490,13 +567,20 @@ mod tests {
 
         for sub in &cmd.subcommands {
             assert!(sub.slash_action.is_some());
-            assert_eq!(sub.parameters.len(), 1);
-            let param = &sub.parameters[0];
-            assert_eq!(param.name, "member");
-            assert!(!param.required);
+            assert_eq!(sub.parameters.len(), 2);
+            let param0 = &sub.parameters[0];
+            assert_eq!(param0.name, "member");
+            assert!(!param0.required);
             assert!(
-                !param.description.as_deref().unwrap_or("").is_empty(),
+                !param0.description.as_deref().unwrap_or("").is_empty(),
                 "parameter description must not be empty"
+            );
+            let param1 = &sub.parameters[1];
+            assert_eq!(param1.name, "platform");
+            assert!(!param1.required);
+            assert!(
+                !param1.description.as_deref().unwrap_or("").is_empty(),
+                "platform parameter description must not be empty"
             );
         }
     }
@@ -548,6 +632,10 @@ mod tests {
             TranslationKey::LolMasteryHiddenOther,
             TranslationKey::LolMasteryForbidden,
             TranslationKey::LolMasteryApiError,
+            TranslationKey::LolNotGuildMember,
+            TranslationKey::LolProfileVisibilityNoteVisible,
+            TranslationKey::LolProfileVisibilityNoteHidden,
+            TranslationKey::LolInvalidPlatform,
         ];
 
         let languages = [Language::English, Language::Vietnamese, Language::Japanese];
@@ -607,6 +695,10 @@ mod tests {
             "LolMasteryHiddenOther",
             "LolMasteryForbidden",
             "LolMasteryApiError",
+            "LolNotGuildMember",
+            "LolProfileVisibilityNoteVisible",
+            "LolProfileVisibilityNoteHidden",
+            "LolInvalidPlatform",
         ];
 
         for name in key_names {

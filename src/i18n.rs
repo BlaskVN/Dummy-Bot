@@ -311,6 +311,11 @@ pub enum TranslationKey {
     LolMasteryHiddenOther,
     LolMasteryForbidden,
     LolMasteryApiError,
+
+    LolNotGuildMember,
+    LolProfileVisibilityNoteVisible,
+    LolProfileVisibilityNoteHidden,
+    LolInvalidPlatform,
 }
 
 impl TranslationKey {
@@ -438,6 +443,10 @@ impl TranslationKey {
             "LolMasteryHiddenOther" => Some(Self::LolMasteryHiddenOther),
             "LolMasteryForbidden" => Some(Self::LolMasteryForbidden),
             "LolMasteryApiError" => Some(Self::LolMasteryApiError),
+            "LolNotGuildMember" => Some(Self::LolNotGuildMember),
+            "LolProfileVisibilityNoteVisible" => Some(Self::LolProfileVisibilityNoteVisible),
+            "LolProfileVisibilityNoteHidden" => Some(Self::LolProfileVisibilityNoteHidden),
+            "LolInvalidPlatform" => Some(Self::LolInvalidPlatform),
             _ => None,
         }
     }
@@ -1014,7 +1023,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::LolProfileHiddenOther,
-        "This member has kept their League of Legends profile hidden in this server (Guild Profile Visibility is disabled).",
+        "This member has kept their League of Legends profile hidden in this Guild (Guild Profile Visibility is disabled).",
     );
     en.insert(
         TranslationKey::LolProfileForbidden,
@@ -1049,7 +1058,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::LolMatchesHiddenOther,
-        "This member's League of Legends match history is hidden in this server.",
+        "This member's League of Legends match history is hidden in this Guild.",
     );
     en.insert(
         TranslationKey::LolMatchesForbidden,
@@ -1081,7 +1090,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::LolMasteryHiddenOther,
-        "This member has kept their champion mastery hidden in this server.",
+        "This member has kept their champion mastery hidden in this Guild.",
     );
     en.insert(
         TranslationKey::LolMasteryForbidden,
@@ -1090,6 +1099,22 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(
         TranslationKey::LolMasteryApiError,
         "Could not retrieve champion mastery from Riot Games API. Please try again later.",
+    );
+    en.insert(
+        TranslationKey::LolNotGuildMember,
+        "Target member is not in this Guild.",
+    );
+    en.insert(
+        TranslationKey::LolProfileVisibilityNoteVisible,
+        "Guild Profile Visibility is enabled. Other members in this Guild can view your LoL profile.",
+    );
+    en.insert(
+        TranslationKey::LolProfileVisibilityNoteHidden,
+        "Guild Profile Visibility is disabled. Other members in this Guild cannot view your LoL profile.",
+    );
+    en.insert(
+        TranslationKey::LolInvalidPlatform,
+        "Invalid LoL platform. Supported platforms: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`.",
     );
     translations.insert(Language::English, en);
 
@@ -1667,7 +1692,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::LolProfileHiddenOther,
-        "Thành viên này đã ẩn hồ sơ League of Legends trong máy chủ này (chế độ hiển thị hồ sơ bị tắt).",
+        "Thành viên này đã ẩn hồ sơ League of Legends trong Guild này (chế độ hiển thị hồ sơ bị tắt).",
     );
     vi.insert(
         TranslationKey::LolProfileForbidden,
@@ -1702,7 +1727,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::LolMatchesHiddenOther,
-        "Thành viên này đã ẩn lịch sử đấu League of Legends trong máy chủ này.",
+        "Thành viên này đã ẩn lịch sử đấu League of Legends trong Guild này.",
     );
     vi.insert(
         TranslationKey::LolMatchesForbidden,
@@ -1734,7 +1759,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::LolMasteryHiddenOther,
-        "Thành viên này đã ẩn dữ liệu thông thạo tướng trong máy chủ này.",
+        "Thành viên này đã ẩn dữ liệu thông thạo tướng trong Guild này.",
     );
     vi.insert(
         TranslationKey::LolMasteryForbidden,
@@ -1743,6 +1768,22 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(
         TranslationKey::LolMasteryApiError,
         "Không thể lấy thông thạo tướng từ Riot Games API. Vui lòng thử lại sau.",
+    );
+    vi.insert(
+        TranslationKey::LolNotGuildMember,
+        "Thành viên này không thuộc Guild này.",
+    );
+    vi.insert(
+        TranslationKey::LolProfileVisibilityNoteVisible,
+        "Quyền hiển thị hồ sơ Guild đang bật. Thành viên khác có thể xem hồ sơ LoL của bạn.",
+    );
+    vi.insert(
+        TranslationKey::LolProfileVisibilityNoteHidden,
+        "Quyền hiển thị hồ sơ Guild đang tắt. Thành viên khác không thể xem hồ sơ LoL của bạn.",
+    );
+    vi.insert(
+        TranslationKey::LolInvalidPlatform,
+        "Nền tảng LoL không hợp lệ. Các nền tảng hỗ trợ: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`.",
     );
     translations.insert(Language::Vietnamese, vi);
 
@@ -2329,7 +2370,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::LolProfileHiddenOther,
-        "このメンバーのLeague of Legendsプロフィールはこのサーバーでは非公開です（公開設定が無効です）。",
+        "このメンバーのLeague of Legendsプロフィールはこのギルドでは非公開です（公開設定が無効です）。",
     );
     ja.insert(
         TranslationKey::LolProfileForbidden,
@@ -2364,7 +2405,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::LolMatchesHiddenOther,
-        "このメンバーのLeague of Legends試合履歴はこのサーバーでは非公開です。",
+        "このメンバーのLeague of Legends試合履歴はこのギルドでは非公開です。",
     );
     ja.insert(
         TranslationKey::LolMatchesForbidden,
@@ -2396,7 +2437,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::LolMasteryHiddenOther,
-        "このメンバーのチャンピオン熟練度データはこのサーバーでは非公開です。",
+        "このメンバーのチャンピオン熟練度データはこのギルドでは非公開です。",
     );
     ja.insert(
         TranslationKey::LolMasteryForbidden,
@@ -2405,6 +2446,22 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::LolMasteryApiError,
         "Riot Games API からチャンピオン熟練度を取得できませんでした。後でもう一度お試しください。",
+    );
+    ja.insert(
+        TranslationKey::LolNotGuildMember,
+        "指定されたメンバーはこのギルドに参加していません。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileVisibilityNoteVisible,
+        "ギルドプロフィール公開が有効です。このギルドのメンバーはあなたの LoL プロフィールを閲覧できます。",
+    );
+    ja.insert(
+        TranslationKey::LolProfileVisibilityNoteHidden,
+        "ギルドプロフィール公開が無効です。このギルドのメンバーはあなたの LoL プロフィールを閲覧できません。",
+    );
+    ja.insert(
+        TranslationKey::LolInvalidPlatform,
+        "無効な LoL プラットフォームです。サポート対象: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`。",
     );
     translations.insert(Language::Japanese, ja);
 

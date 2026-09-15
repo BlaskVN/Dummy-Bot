@@ -621,7 +621,7 @@ pub fn format_platform_status_content(
 #[poise::command(slash_command, guild_only)]
 pub async fn status(
     ctx: Context<'_>,
-    #[description = "Region to check (ap, na, eu, kr, latam, br). Defaults to server default."]
+    #[description = "Region to check (ap, na, eu, kr, latam, br). Defaults to bot default."]
     region: Option<String>,
 ) -> Result<(), Error> {
     let guild_id = ctx

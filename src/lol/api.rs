@@ -283,6 +283,10 @@ impl LolLeagueEntry {
 pub struct LolRecentMatch {
     pub match_id: String,
     pub game_mode: String,
+    #[serde(default)]
+    pub map_id: i32,
+    #[serde(default)]
+    pub map_name: String,
     pub game_start_millis: i64,
     pub game_duration: u32,
     pub champion_id: u32,
@@ -481,6 +485,21 @@ pub fn champion_name_by_id(id: u32) -> String {
     name.to_string()
 }
 
+/// Map known League of Legends map IDs to canonical map names.
+pub fn map_name_by_id(id: i32) -> &'static str {
+    match id {
+        1 | 2 | 11 => "Summoner's Rift",
+        3 => "The Proving Grounds",
+        4 | 10 => "Twisted Treeline",
+        8 => "The Crystal Scar",
+        12 => "Howling Abyss",
+        21 => "Nexus Blitz",
+        22 => "Convergence",
+        30 => "Rings of Wrath",
+        _ => "Unknown Map",
+    }
+}
+
 /// Seam trait for League of Legends official API interactions.
 pub trait LolApiClient: Send + Sync {
     fn get_summoner_by_puuid<'a>(
@@ -515,6 +534,12 @@ pub trait LolApiClient: Send + Sync {
         platform: LolPlatform,
         puuid: &'a str,
     ) -> BoxFuture<'a, Result<i32>>;
+
+    fn get_account_by_puuid<'a>(
+        &'a self,
+        cluster_or_platform: LolPlatform,
+        puuid: &'a str,
+    ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>>;
 }
 
 /// Structured domain errors for League of Legends API interactions.
@@ -622,6 +647,8 @@ struct MatchParticipantDto {
 struct MatchInfoDto {
     #[serde(rename = "gameMode")]
     game_mode: String,
+    #[serde(rename = "mapId", default)]
+    map_id: i32,
     #[serde(rename = "gameStartTimestamp")]
     game_start_timestamp: i64,
     #[serde(rename = "gameDuration")]
@@ -741,12 +768,17 @@ impl LolApiClient for HttpLolApiClient {
                         match_dto.info.game_duration as u32
                     };
 
+                    let map_id = match_dto.info.map_id;
+                    let map_name = map_name_by_id(map_id).to_string();
+
                     results.push(LolRecentMatch {
                         match_id: match_dto
                             .metadata
                             .map(|m| m.match_id)
                             .unwrap_or(match_id),
                         game_mode: match_dto.info.game_mode,
+                        map_id,
+                        map_name,
                         game_start_millis: match_dto.info.game_start_timestamp,
                         game_duration: duration_secs,
                         champion_id: p.champion_id,
@@ -804,6 +836,22 @@ impl LolApiClient for HttpLolApiClient {
             let base = platform.api_endpoint();
             let url = format!("{base}/lol/champion-mastery/v4/scores/by-puuid/{puuid}");
             self.get_json(&url).await
+        })
+    }
+
+    fn get_account_by_puuid<'a>(
+        &'a self,
+        cluster_or_platform: LolPlatform,
+        puuid: &'a str,
+    ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>> {
+        Box::pin(async move {
+            let cluster_base = cluster_or_platform.regional_cluster_endpoint();
+            let mut url = reqwest::Url::parse(cluster_base)
+                .with_context(|| format!("Invalid cluster endpoint URL: {cluster_base}"))?;
+            url.path_segments_mut()
+                .map_err(|_| anyhow::anyhow!("Cannot format path segments on {cluster_base}"))?
+                .extend(&["riot", "account", "v1", "accounts", "by-puuid", puuid]);
+            self.get_json(url.as_str()).await
         })
     }
 }
@@ -876,6 +924,8 @@ impl MockLolApiClient {
             LolRecentMatch {
                 match_id: format!("VN2_MOCK_1_{puuid}"),
                 game_mode: "CLASSIC".to_string(),
+                map_id: 11,
+                map_name: "Summoner's Rift".to_string(),
                 game_start_millis: 1718000000000,
                 game_duration: 1832,
                 champion_id: 157,
@@ -890,6 +940,8 @@ impl MockLolApiClient {
             LolRecentMatch {
                 match_id: format!("VN2_MOCK_2_{puuid}"),
                 game_mode: "CLASSIC".to_string(),
+                map_id: 11,
+                map_name: "Summoner's Rift".to_string(),
                 game_start_millis: 1717990000000,
                 game_duration: 1520,
                 champion_id: 222,
@@ -904,6 +956,8 @@ impl MockLolApiClient {
             LolRecentMatch {
                 match_id: format!("VN2_MOCK_3_{puuid}"),
                 game_mode: "ARAM".to_string(),
+                map_id: 12,
+                map_name: "Howling Abyss".to_string(),
                 game_start_millis: 1717980000000,
                 game_duration: 1150,
                 champion_id: 103,
@@ -918,6 +972,8 @@ impl MockLolApiClient {
             LolRecentMatch {
                 match_id: format!("VN2_MOCK_4_{puuid}"),
                 game_mode: "CLASSIC".to_string(),
+                map_id: 11,
+                map_name: "Summoner's Rift".to_string(),
                 game_start_millis: 1717970000000,
                 game_duration: 2100,
                 champion_id: 64,
@@ -932,6 +988,8 @@ impl MockLolApiClient {
             LolRecentMatch {
                 match_id: format!("VN2_MOCK_5_{puuid}"),
                 game_mode: "CLASSIC".to_string(),
+                map_id: 11,
+                map_name: "Summoner's Rift".to_string(),
                 game_start_millis: 1717960000000,
                 game_duration: 1650,
                 champion_id: 202,
@@ -1032,6 +1090,20 @@ impl LolApiClient for MockLolApiClient {
         _puuid: &'a str,
     ) -> BoxFuture<'a, Result<i32>> {
         Box::pin(async move { Ok(145) })
+    }
+
+    fn get_account_by_puuid<'a>(
+        &'a self,
+        _cluster_or_platform: LolPlatform,
+        puuid: &'a str,
+    ) -> BoxFuture<'a, Result<crate::valorant::RiotAccount>> {
+        Box::pin(async move {
+            Ok(crate::valorant::RiotAccount {
+                puuid: puuid.to_string(),
+                game_name: "MockPlayer".to_string(),
+                tag_line: "MOCK".to_string(),
+            })
+        })
     }
 }
 
@@ -1227,6 +1299,10 @@ mod tests {
         assert_eq!(matches[0].champion_id, 157);
         assert_eq!(matches[0].champion_name, "Yasuo");
         assert_eq!(matches[0].items.len(), 7);
+        assert_eq!(matches[0].map_id, 11);
+        assert_eq!(matches[0].map_name, "Summoner's Rift");
+        assert_eq!(matches[2].map_id, 12);
+        assert_eq!(matches[2].map_name, "Howling Abyss");
 
         let masteries = mock
             .get_top_champion_masteries(LolPlatform::Vn2, puuid, 2)
@@ -1241,6 +1317,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(score, 145);
+
+        let account = mock
+            .get_account_by_puuid(LolPlatform::Vn2, puuid)
+            .await
+            .unwrap();
+        assert_eq!(account.puuid, puuid);
+        assert_eq!(account.game_name, "MockPlayer");
+    }
+
+    #[test]
+    fn map_name_mapping_covers_known_maps() {
+        assert_eq!(map_name_by_id(11), "Summoner's Rift");
+        assert_eq!(map_name_by_id(12), "Howling Abyss");
+        assert_eq!(map_name_by_id(21), "Nexus Blitz");
+        assert_eq!(map_name_by_id(9999), "Unknown Map");
     }
 
     #[test]

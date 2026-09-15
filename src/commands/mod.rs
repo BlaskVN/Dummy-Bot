@@ -274,10 +274,6 @@ fn get_command_descriptions(parent: Option<&str>, name: &str) -> (String, String
             "Xem hồ sơ xếp hạng, lịch sử đấu và thông thạo tướng League of Legends.",
             "League of Legends のランクプロフィール、試合履歴、チャンピオン熟練度を確認します。",
         )),
-        "mastery" => Some((
-            "Xem thông thạo tướng và điểm thông thạo của thành viên.",
-            "メンバーのチャンピオン熟練度を表示します。",
-        )),
         _ => None,
     };
 
@@ -331,8 +327,12 @@ fn get_param_descriptions(cmd_name: &str, param_name: &str) -> (String, String) 
             "名前#タグ形式の Riot ID（例：TenZ#0001）。",
         )),
         ("status", "region") => Some((
-            "Khu vực VALORANT cần kiểm tra (ap, na, eu, kr, latam, br). Mặc định là khu vực máy chủ.",
-            "確認対象の VALORANT 地域（ap, na, eu, kr, latam, br）。デフォルトはサーバーの既定地域。",
+            "Khu vực VALORANT cần kiểm tra (ap, na, eu, kr, latam, br). Mặc định theo cấu hình bot.",
+            "確認対象の VALORANT 地域（ap, na, eu, kr, latam, br）。デフォルトはボットの既定地域。",
+        )),
+        (_, "platform") => Some((
+            "Khu vực/nền tảng LoL (ví dụ vn2, na1, euw1, kr, jp1, oc1). Mặc định theo vùng tài khoản đã liên kết.",
+            "LoL の地域/プラットフォーム（例：vn2, na1, euw1, kr, jp1, oc1）。デフォルトは連携アカウントの地域。",
         )),
         (_, "region") => Some((
             "Khu vực tài khoản VALORANT (ap, na, eu, kr, latam, br).",
