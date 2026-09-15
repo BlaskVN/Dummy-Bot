@@ -1,8 +1,8 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::ui::{self, Tone};
 use crate::valorant::{
-    ValorantLeaderboardError, ValorantLinkError, ValorantMatchesError, ValorantProfileError,
-    ValorantVisibilityError,
+    PlatformStatus, RiotRegion, StatusIncident, ValorantLeaderboardError, ValorantLinkError,
+    ValorantMatchesError, ValorantProfileError, ValorantStatusError, ValorantVisibilityError,
 };
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -10,7 +10,15 @@ use poise::serenity_prelude as serenity;
 /// VALORANT player statistics and Guild leaderboard management.
 #[poise::command(
     slash_command,
-    subcommands("profile", "leaderboard", "visibility", "link", "unlink", "matches"),
+    subcommands(
+        "profile",
+        "leaderboard",
+        "visibility",
+        "link",
+        "unlink",
+        "matches",
+        "status"
+    ),
     guild_only
 )]
 pub async fn valorant(_ctx: Context<'_>) -> Result<(), Error> {
@@ -235,7 +243,11 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Manage Guild Profile Visibility consent for this server.
-#[poise::command(slash_command, subcommands("enable", "disable", "status"), guild_only)]
+#[poise::command(
+    slash_command,
+    subcommands("enable", "disable", "visibility_status"),
+    guild_only
+)]
 pub async fn visibility(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
@@ -299,8 +311,8 @@ pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Check your current Guild Profile Visibility status in this server.
-#[poise::command(slash_command, guild_only)]
-pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
+#[poise::command(slash_command, guild_only, rename = "status")]
+pub async fn visibility_status(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
@@ -468,7 +480,7 @@ pub async fn matches(
             ui::reply(
                 ctx,
                 Tone::Warning,
-                t(lang, TranslationKey::ValorantProfileForbidden),
+                t(lang, TranslationKey::ValorantMatchesForbidden),
             )
             .await?;
             return Ok(());
@@ -539,16 +551,148 @@ pub async fn matches(
     Ok(())
 }
 
+fn pick_incident_title(incident: &StatusIncident, lang: crate::i18n::Language) -> &str {
+    let target_locales: &[&str] = match lang {
+        crate::i18n::Language::English => &["en_US", "en_GB", "en"],
+        crate::i18n::Language::Vietnamese => &["vi_VN", "vi", "en_US", "en"],
+        crate::i18n::Language::Japanese => &["ja_JP", "ja", "en_US", "en"],
+    };
+    for target in target_locales {
+        if let Some(item) = incident
+            .titles
+            .iter()
+            .find(|t| t.locale.eq_ignore_ascii_case(target))
+        {
+            return &item.content;
+        }
+    }
+    incident
+        .titles
+        .first()
+        .map(|t| t.content.as_str())
+        .unwrap_or("(No title)")
+}
+
+pub fn format_platform_status_content(
+    status: &PlatformStatus,
+    region: RiotRegion,
+    lang: crate::i18n::Language,
+) -> (Tone, String, String) {
+    let title = tf(lang, TranslationKey::ValorantStatusTitle, &[&status.name]);
+    let region_badge = region.as_str().to_ascii_uppercase();
+
+    if status.maintenances.is_empty() && status.incidents.is_empty() {
+        let desc = format!(
+            "🟢 **{}**\n\n> **Region:** `{region_badge}`",
+            t(lang, TranslationKey::ValorantStatusOperational)
+        );
+        (Tone::Success, title, desc)
+    } else {
+        let mut sections = Vec::new();
+        sections.push(format!("> **Region:** `{region_badge}`"));
+
+        if !status.incidents.is_empty() {
+            let label = t(lang, TranslationKey::ValorantStatusIncidents);
+            let mut inc_lines = vec![format!("**{label}**")];
+            for inc in &status.incidents {
+                let sev = inc.incident_severity.as_deref().unwrap_or("info");
+                let incident_title = pick_incident_title(inc, lang);
+                inc_lines.push(format!("⚠️ **[{sev}]** {incident_title}"));
+            }
+            sections.push(inc_lines.join("\n"));
+        }
+
+        if !status.maintenances.is_empty() {
+            let label = t(lang, TranslationKey::ValorantStatusMaintenances);
+            let mut maint_lines = vec![format!("**{label}**")];
+            for m in &status.maintenances {
+                let st = m.maintenance_status.as_deref().unwrap_or("scheduled");
+                let maint_title = pick_incident_title(m, lang);
+                maint_lines.push(format!("🛠️ **[{st}]** {maint_title}"));
+            }
+            sections.push(maint_lines.join("\n"));
+        }
+
+        (Tone::Warning, title, sections.join("\n\n"))
+    }
+}
+
+/// Check real-time VALORANT server status and maintenance incidents.
+#[poise::command(slash_command, guild_only)]
+pub async fn status(
+    ctx: Context<'_>,
+    #[description = "Region to check (ap, na, eu, kr, latam, br). Defaults to server default."]
+    region: Option<String>,
+) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
+    let lang = ctx.data().language(guild_id).await;
+
+    let riot_region = match region {
+        Some(ref r) => match RiotRegion::try_parse(r) {
+            Some(reg) => reg,
+            None => {
+                ui::reply(
+                    ctx,
+                    Tone::Warning,
+                    t(lang, TranslationKey::ValorantStatusInvalidRegion),
+                )
+                .await?;
+                return Ok(());
+            }
+        },
+        None => RiotRegion::try_parse(&ctx.data().config.riot_default_region)
+            .unwrap_or(RiotRegion::Ap),
+    };
+
+    let status_data = match ctx
+        .data()
+        .valorant_service()
+        .get_platform_status(riot_region)
+        .await
+    {
+        Ok(s) => s,
+        Err(ValorantStatusError::ApiForbidden) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantStatusForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantStatusError::ApiError(_)) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::ValorantStatusApiError),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
+
+    let (tone, title, description) = format_platform_status_content(&status_data, riot_region, lang);
+    let embed = ui::embed(ctx.data(), tone)
+        .title(title)
+        .description(description);
+
+    ctx.send(ui::embed_reply(embed)).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::valorant::riot_api::LocalizedContent;
 
     #[test]
     fn valorant_command_structure_is_valid() {
         let cmd = valorant();
         assert_eq!(cmd.name, "valorant");
         assert!(cmd.slash_action.is_some());
-        assert_eq!(cmd.subcommands.len(), 6);
+        assert_eq!(cmd.subcommands.len(), 7);
 
         let sub_names: Vec<_> = cmd.subcommands.iter().map(|s| s.name.as_str()).collect();
         assert!(sub_names.contains(&"profile"));
@@ -557,6 +701,7 @@ mod tests {
         assert!(sub_names.contains(&"link"));
         assert!(sub_names.contains(&"unlink"));
         assert!(sub_names.contains(&"matches"));
+        assert!(sub_names.contains(&"status"));
 
         let vis_cmd = cmd
             .subcommands
@@ -572,5 +717,80 @@ mod tests {
         assert!(vis_subs.contains(&"enable"));
         assert!(vis_subs.contains(&"disable"));
         assert!(vis_subs.contains(&"status"));
+    }
+
+    #[test]
+    fn format_platform_status_content_operational() {
+        let status = PlatformStatus {
+            id: "VALORANT".to_string(),
+            name: "VALORANT (AP)".to_string(),
+            locales: vec!["en_US".to_string()],
+            maintenances: vec![],
+            incidents: vec![],
+        };
+
+        let (tone, title, desc) = format_platform_status_content(
+            &status,
+            RiotRegion::Ap,
+            crate::i18n::Language::English,
+        );
+        assert!(matches!(tone, Tone::Success));
+        assert!(title.contains("VALORANT (AP)"));
+        assert!(desc.contains("All systems operational"));
+        assert!(desc.contains("AP"));
+    }
+
+    #[test]
+    fn format_platform_status_content_with_incidents_and_maintenances() {
+        let status = PlatformStatus {
+            id: "VALORANT".to_string(),
+            name: "VALORANT (EU)".to_string(),
+            locales: vec!["en_US".to_string(), "vi_VN".to_string()],
+            maintenances: vec![StatusIncident {
+                id: 1,
+                maintenance_status: Some("in_progress".to_string()),
+                incident_severity: None,
+                titles: vec![LocalizedContent {
+                    locale: "en_US".to_string(),
+                    content: "Scheduled server maintenance".to_string(),
+                }],
+            }],
+            incidents: vec![StatusIncident {
+                id: 2,
+                maintenance_status: None,
+                incident_severity: Some("critical".to_string()),
+                titles: vec![
+                    LocalizedContent {
+                        locale: "en_US".to_string(),
+                        content: "Ranked queue disabled".to_string(),
+                    },
+                    LocalizedContent {
+                        locale: "vi_VN".to_string(),
+                        content: "Hàng chờ xếp hạng tạm đóng".to_string(),
+                    },
+                ],
+            }],
+        };
+
+        // English check
+        let (tone, title, desc) = format_platform_status_content(
+            &status,
+            RiotRegion::Eu,
+            crate::i18n::Language::English,
+        );
+        assert!(matches!(tone, Tone::Warning));
+        assert!(title.contains("VALORANT (EU)"));
+        assert!(desc.contains("critical"));
+        assert!(desc.contains("Ranked queue disabled"));
+        assert!(desc.contains("in_progress"));
+        assert!(desc.contains("Scheduled server maintenance"));
+
+        // Vietnamese localization check
+        let (_tone_vi, _title_vi, desc_vi) = format_platform_status_content(
+            &status,
+            RiotRegion::Eu,
+            crate::i18n::Language::Vietnamese,
+        );
+        assert!(desc_vi.contains("Hàng chờ xếp hạng tạm đóng"));
     }
 }

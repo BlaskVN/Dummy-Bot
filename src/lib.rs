@@ -14,6 +14,7 @@ pub mod error;
 pub mod game_config;
 pub mod handlers;
 pub mod i18n;
+pub mod lol;
 pub mod message_log;
 pub mod moderation_cases;
 pub mod moderation_channel;

@@ -4,12 +4,13 @@ pub mod storage;
 
 pub use riot_api::{
     CompetitiveTier, HttpRiotApiClient, LeaderboardPlayer, LeaderboardResponse, MockRiotApiClient,
-    PlayerRankedData, RecentMatchSummary, RiotAccount, RiotApiClient, RiotApiError, RiotRegion,
+    PlatformStatus, PlayerRankedData, RecentMatchSummary, RiotAccount, RiotApiClient, RiotApiError,
+    RiotRegion, StatusIncident,
 };
 pub use service::{
     PlayerRecentMatchesData, ValorantLeaderboardEntry, ValorantLeaderboardError, ValorantLinkError,
     ValorantMatchesError, ValorantProfile, ValorantProfileError, ValorantService,
-    ValorantVisibilityError,
+    ValorantStatusError, ValorantVisibilityError,
 };
 pub use storage::{
     LinkedRiotAccount, get_guild_visibility, get_linked_account, list_guild_visible_accounts,

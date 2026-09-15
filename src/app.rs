@@ -69,6 +69,15 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                         None => Arc::new(crate::valorant::MockRiotApiClient),
                     };
 
+                let lol_api: Arc<dyn crate::lol::LolApiClient> =
+                    match &setup_config.riot_api_key {
+                        Some(key) => Arc::new(crate::lol::HttpLolApiClient::new(
+                            key.clone(),
+                            reqwest::Client::new(),
+                        )),
+                        None => Arc::new(crate::lol::MockLolApiClient),
+                    };
+
                 let data = Data {
                     config: setup_config,
                     db_pool: setup_pool,
@@ -82,6 +91,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
                     manual_checkins: Arc::new(RwLock::new(HashSet::new())),
                     rule_engine,
                     riot_api,
+                    lol_api,
                 };
                 if let Err(error) =
                     crate::attendance::clear_stale_active_starts(&data.db_pool).await

@@ -35,6 +35,7 @@ pub struct Data {
     pub manual_checkins: Arc<RwLock<HashSet<ManualCheckIn>>>,
     pub rule_engine: Arc<dyn crate::core::RuleEngine>,
     pub riot_api: Arc<dyn crate::valorant::RiotApiClient>,
+    pub lol_api: Arc<dyn crate::lol::LolApiClient>,
 }
 
 impl Data {
@@ -48,5 +49,9 @@ impl Data {
 
     pub fn valorant_service(&self) -> crate::valorant::ValorantService {
         crate::valorant::ValorantService::new(self.db_pool.clone(), Arc::clone(&self.riot_api))
+    }
+
+    pub fn lol_service(&self) -> crate::lol::LolService {
+        crate::lol::LolService::new(self.db_pool.clone(), Arc::clone(&self.lol_api))
     }
 }
