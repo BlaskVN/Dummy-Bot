@@ -6,13 +6,19 @@ use std::pin::Pin;
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Supported Riot Games VALORANT API routing regions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, poise::ChoiceParameter)]
 pub enum RiotRegion {
+    #[name = "ap (Asia-Pacific)"]
     Ap,
+    #[name = "br (Brazil)"]
     Br,
+    #[name = "eu (Europe)"]
     Eu,
+    #[name = "kr (Korea)"]
     Kr,
+    #[name = "latam (Latin America)"]
     Latam,
+    #[name = "na (North America)"]
     Na,
 }
 
@@ -256,6 +262,7 @@ pub trait RiotApiClient: Send + Sync {
 pub enum RiotApiError {
     NotFound,
     Forbidden,
+    Unauthorized,
     Api {
         status: reqwest::StatusCode,
         message: String,
@@ -268,6 +275,7 @@ impl std::fmt::Display for RiotApiError {
         match self {
             Self::NotFound => write!(f, "Riot account or data not found (404)"),
             Self::Forbidden => write!(f, "Riot API access forbidden (403)"),
+            Self::Unauthorized => write!(f, "Riot API unauthorized or key expired (401)"),
             Self::Api { status, message } => write!(f, "Riot API error {status}: {message}"),
             Self::Transport(err) => write!(f, "Network error communicating with Riot API: {err}"),
         }
@@ -292,6 +300,7 @@ impl HttpRiotApiClient {
             .client
             .get(url)
             .header("X-Riot-Token", &self.api_key)
+            .header("User-Agent", "Dummy-Bot/3.4 (DiscordBot)")
             .send()
             .await
             .map_err(RiotApiError::Transport)
@@ -305,6 +314,9 @@ impl HttpRiotApiClient {
             }
             if status == reqwest::StatusCode::FORBIDDEN {
                 return Err(RiotApiError::Forbidden.into());
+            }
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(RiotApiError::Unauthorized.into());
             }
             return Err(RiotApiError::Api { status, message }.into());
         }

@@ -6,6 +6,7 @@ pub mod lol;
 pub mod moderation;
 pub mod presence;
 pub mod reload_modules;
+pub mod riot;
 pub mod valorant;
 pub mod voice;
 pub mod word_puzzle;
@@ -24,6 +25,7 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
     commands.push(reload_modules::reload_modules());
     commands.push(valorant::valorant());
     commands.push(lol::lol());
+    commands.push(riot::riot());
     apply_localizations(&mut commands);
     commands
 }
@@ -274,6 +276,10 @@ fn get_command_descriptions(parent: Option<&str>, name: &str) -> (String, String
             "Xem hồ sơ xếp hạng, lịch sử đấu và thông thạo tướng League of Legends.",
             "League of Legends のランクプロフィール、試合履歴、チャンピオン熟練度を確認します。",
         )),
+        "riot" => Some((
+            "Quản lý liên kết tài khoản Riot Games và quyền riêng tư hiển thị cho VALORANT và LoL.",
+            "VALORANT および LoL 向けの Riot Games アカウント連携と公開設定を管理します。",
+        )),
         _ => None,
     };
 
@@ -310,9 +316,10 @@ fn get_param_descriptions(cmd_name: &str, param_name: &str) -> (String, String) 
             "Số lượng tin nhắn muốn xóa (từ 1 đến 100).",
             "削除するメッセージ数（1〜100）。",
         )),
-        ("language", "lang_code") => {
-            Some(("Mã ngôn ngữ (en, vi, ja).", "言語コード (en, vi, ja)。"))
-        }
+        ("language", "language") | ("language", "lang_code") => Some((
+            "Ngôn ngữ phản hồi của Bot (en, vi, ja).",
+            "ボットの応答言語 (en, vi, ja)。",
+        )),
         ("timezone", "iana_name") => Some((
             "Tên múi giờ IANA chuẩn, ví dụ Asia/Ho_Chi_Minh.",
             "標準 IANA タイムゾーン名（例：Asia/Tokyo）。",
@@ -327,16 +334,16 @@ fn get_param_descriptions(cmd_name: &str, param_name: &str) -> (String, String) 
             "名前#タグ形式の Riot ID（例：TenZ#0001）。",
         )),
         ("status", "region") => Some((
-            "Khu vực VALORANT cần kiểm tra (ap, na, eu, kr, latam, br). Mặc định theo cấu hình bot.",
-            "確認対象の VALORANT 地域（ap, na, eu, kr, latam, br）。デフォルトはボットの既定地域。",
+            "Khu vực VALORANT cần kiểm tra. Mặc định theo cấu hình bot.",
+            "確認対象の VALORANT 地域。デフォルトはボットの既定地域。",
         )),
         (_, "platform") => Some((
-            "Khu vực/nền tảng LoL (ví dụ vn2, na1, euw1, kr, jp1, oc1). Mặc định theo vùng tài khoản đã liên kết.",
-            "LoL の地域/プラットフォーム（例：vn2, na1, euw1, kr, jp1, oc1）。デフォルトは連携アカウントの地域。",
+            "Khu vực/nền tảng LoL. Mặc định theo vùng tài khoản đã liên kết.",
+            "LoL の地域/プラットフォーム。デフォルトは連携アカウントの地域。",
         )),
         (_, "region") => Some((
-            "Khu vực tài khoản VALORANT (ap, na, eu, kr, latam, br).",
-            "VALORANT アカウントの地域（ap, na, eu, kr, latam, br）。",
+            "Khu vực tài khoản Riot / VALORANT.",
+            "Riot / VALORANT アカウントの地域。",
         )),
         _ => None,
     };
@@ -411,11 +418,13 @@ mod tests {
             "reload_modules",
             "valorant",
             "lol",
+            "riot",
         ] {
             assert!(names.contains(&representative), "missing /{representative}");
         }
         assert!(!names.contains(&"setprefix"));
         assert!(names.contains(&"valorant"));
         assert!(names.contains(&"lol"));
+        assert!(names.contains(&"riot"));
     }
 }

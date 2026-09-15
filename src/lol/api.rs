@@ -8,23 +8,41 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 use crate::valorant::riot_api::RiotRegion;
 
 /// Supported League of Legends platform routing shards.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, poise::ChoiceParameter,
+)]
 pub enum LolPlatform {
+    #[name = "vn2 (Vietnam)"]
     Vn2,
+    #[name = "kr (Korea)"]
     Kr,
+    #[name = "jp1 (Japan)"]
     Jp1,
+    #[name = "na1 (North America)"]
     Na1,
+    #[name = "euw1 (Europe West)"]
     Euw1,
+    #[name = "eun1 (Europe Nordic & East)"]
     Eun1,
+    #[name = "oc1 (Oceania)"]
     Oc1,
+    #[name = "br1 (Brazil)"]
     Br1,
+    #[name = "la1 (Latin America North)"]
     La1,
+    #[name = "la2 (Latin America South)"]
     La2,
+    #[name = "tr1 (Turkey)"]
     Tr1,
+    #[name = "ru (Russia)"]
     Ru,
+    #[name = "sg2 (Singapore)"]
     Sg2,
+    #[name = "ph2 (Philippines)"]
     Ph2,
+    #[name = "th2 (Thailand)"]
     Th2,
+    #[name = "tw2 (Taiwan)"]
     Tw2,
 }
 
@@ -121,11 +139,10 @@ impl LolPlatform {
 #[serde(rename_all = "camelCase")]
 pub struct LolSummoner {
     pub puuid: String,
-    #[serde(rename = "id", alias = "summonerId")]
-    pub summoner_id: String,
-    pub account_id: String,
     pub profile_icon_id: i32,
     pub summoner_level: u64,
+    #[serde(default)]
+    pub revision_date: i64,
 }
 
 /// League of Legends ranked tiers.
@@ -511,7 +528,6 @@ pub trait LolApiClient: Send + Sync {
     fn get_league_entries<'a>(
         &'a self,
         platform: LolPlatform,
-        summoner_id: &'a str,
         puuid: &'a str,
     ) -> BoxFuture<'a, Result<Vec<LolLeagueEntry>>>;
 
@@ -541,6 +557,7 @@ pub trait LolApiClient: Send + Sync {
 pub enum LolApiError {
     NotFound,
     Forbidden,
+    Unauthorized,
     Api {
         status: reqwest::StatusCode,
         message: String,
@@ -553,6 +570,7 @@ impl std::fmt::Display for LolApiError {
         match self {
             Self::NotFound => write!(f, "LoL summoner or match data not found (404)"),
             Self::Forbidden => write!(f, "LoL API access forbidden (403)"),
+            Self::Unauthorized => write!(f, "LoL API unauthorized or key expired (401)"),
             Self::Api { status, message } => write!(f, "LoL API error {status}: {message}"),
             Self::Transport(err) => write!(f, "Network error communicating with LoL API: {err}"),
         }
@@ -577,6 +595,7 @@ impl HttpLolApiClient {
             .client
             .get(url)
             .header("X-Riot-Token", &self.api_key)
+            .header("User-Agent", "Dummy-Bot/3.4 (DiscordBot)")
             .send()
             .await
             .map_err(LolApiError::Transport)
@@ -590,6 +609,9 @@ impl HttpLolApiClient {
             }
             if status == reqwest::StatusCode::FORBIDDEN {
                 return Err(LolApiError::Forbidden.into());
+            }
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(LolApiError::Unauthorized.into());
             }
             return Err(LolApiError::Api { status, message }.into());
         }
@@ -688,33 +710,12 @@ impl LolApiClient for HttpLolApiClient {
     fn get_league_entries<'a>(
         &'a self,
         platform: LolPlatform,
-        summoner_id: &'a str,
         puuid: &'a str,
     ) -> BoxFuture<'a, Result<Vec<LolLeagueEntry>>> {
         Box::pin(async move {
             let base = platform.api_endpoint();
-            // League-v4 supports /entries/by-summoner/{id} or /entries/by-puuid/{puuid}
-            let url = if !summoner_id.is_empty() {
-                format!("{base}/lol/league/v4/entries/by-summoner/{summoner_id}")
-            } else {
-                format!("{base}/lol/league/v4/entries/by-puuid/{puuid}")
-            };
-
-            match self.get_json::<Vec<LolLeagueEntry>>(&url).await {
-                Ok(entries) => Ok(entries),
-                Err(err) => {
-                    // Fallback to puuid endpoint if summoner_id failed with 404
-                    if !summoner_id.is_empty() {
-                        let fallback_url = format!("{base}/lol/league/v4/entries/by-puuid/{puuid}");
-                        if let Ok(entries) =
-                            self.get_json::<Vec<LolLeagueEntry>>(&fallback_url).await
-                        {
-                            return Ok(entries);
-                        }
-                    }
-                    Err(err)
-                }
-            }
+            let url = format!("{base}/lol/league/v4/entries/by-puuid/{puuid}");
+            self.get_json::<Vec<LolLeagueEntry>>(&url).await
         })
     }
 
@@ -842,10 +843,9 @@ impl MockLolApiClient {
 
         LolSummoner {
             puuid: puuid.to_string(),
-            summoner_id: format!("summoner-{}", &puuid[..puuid.len().min(8)]),
-            account_id: format!("account-{}", &puuid[..puuid.len().min(8)]),
             profile_icon_id: ((hash % 500) + 1) as i32,
             summoner_level: (hash % 300) + 30,
+            revision_date: 1758038760000,
         }
     }
 
@@ -1034,7 +1034,6 @@ impl LolApiClient for MockLolApiClient {
     fn get_league_entries<'a>(
         &'a self,
         _platform: LolPlatform,
-        _summoner_id: &'a str,
         puuid: &'a str,
     ) -> BoxFuture<'a, Result<Vec<LolLeagueEntry>>> {
         Box::pin(async move { Ok(Self::generate_mock_league_entries(puuid)) })
@@ -1180,11 +1179,28 @@ mod tests {
             "summonerLevel": 250
         }"#;
         let summoner: LolSummoner = serde_json::from_str(json).unwrap();
-        assert_eq!(summoner.summoner_id, "sum-123");
-        assert_eq!(summoner.account_id, "acc-123");
         assert_eq!(summoner.puuid, "puuid-123");
         assert_eq!(summoner.profile_icon_id, 542);
         assert_eq!(summoner.summoner_level, 250);
+        assert_eq!(summoner.revision_date, 1600000000000);
+    }
+
+    #[test]
+    fn deserializes_modern_summoner_json() {
+        let json = r#"{
+            "puuid": "5ihTQlUoGVGv5umCYdGJZes-p60ZWbZ9VJw7_hSaIudkjDoOUTr0UqnnWMVx5MLVS50mMIGUKlslbQ",
+            "profileIconId": 6353,
+            "revisionDate": 1758038760000,
+            "summonerLevel": 37
+        }"#;
+        let summoner: LolSummoner = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            summoner.puuid,
+            "5ihTQlUoGVGv5umCYdGJZes-p60ZWbZ9VJw7_hSaIudkjDoOUTr0UqnnWMVx5MLVS50mMIGUKlslbQ"
+        );
+        assert_eq!(summoner.profile_icon_id, 6353);
+        assert_eq!(summoner.summoner_level, 37);
+        assert_eq!(summoner.revision_date, 1758038760000);
     }
 
     #[test]
@@ -1262,7 +1278,7 @@ mod tests {
         assert!(summoner.summoner_level >= 30);
 
         let entries = mock
-            .get_league_entries(LolPlatform::Vn2, &summoner.summoner_id, puuid)
+            .get_league_entries(LolPlatform::Vn2, puuid)
             .await
             .unwrap();
         assert_eq!(entries.len(), 2);

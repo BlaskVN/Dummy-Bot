@@ -11,6 +11,20 @@ set -euo pipefail
 #   5. Push branches and release tag to origin (triggers GitHub Actions)
 #   6. Checkout back to develop
 # -----------------------------------------------------------------------------
+# Nâng bản vá (patch: 3.4.0 -> 3.4.1)
+# ./scripts/release.sh patch "Release v3.4.1: Bug fixes"
+#
+# Nâng bản tính năng (minor: 3.4.0 -> 3.5.0)
+# ./scripts/release.sh minor "Release v3.5.0: New feature set"
+#
+# Nâng bản lớn (major: 3.4.0 -> 4.0.0)
+# ./scripts/release.sh major "Release v4.0.0: Major rewrite"
+#
+# Chỉ định phiên bản cụ thể
+# ./scripts/release.sh 3.4.1 "Release v3.4.1: Custom notes"
+#
+# Chạy thử nghiệm mà không ghi đè commit/push (Dry Run)
+# ./scripts/release.sh patch --dry-run
 
 COLOR_RED="\033[0;31m"
 COLOR_GREEN="\033[0;32m"

@@ -3,10 +3,13 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 /// Supported languages
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, poise::ChoiceParameter)]
 pub enum Language {
+    #[name = "English (en)"]
     English,
+    #[name = "Tiếng Việt (vi)"]
     Vietnamese,
+    #[name = "日本語 (ja)"]
     Japanese,
 }
 
@@ -316,6 +319,7 @@ pub enum TranslationKey {
     LolProfileVisibilityNoteVisible,
     LolProfileVisibilityNoteHidden,
     LolInvalidPlatform,
+    RiotApiUnauthorized,
 }
 
 impl TranslationKey {
@@ -447,6 +451,7 @@ impl TranslationKey {
             "LolProfileVisibilityNoteVisible" => Some(Self::LolProfileVisibilityNoteVisible),
             "LolProfileVisibilityNoteHidden" => Some(Self::LolProfileVisibilityNoteHidden),
             "LolInvalidPlatform" => Some(Self::LolInvalidPlatform),
+            "RiotApiUnauthorized" => Some(Self::RiotApiUnauthorized),
             _ => None,
         }
     }
@@ -847,7 +852,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(TranslationKey::ValorantProfileWinsLabel, "Act Wins");
     en.insert(
         TranslationKey::ValorantProfileNotLinkedSelf,
-        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
+        "You have not linked a Riot account yet. Use `/riot link <riot_id>` to connect your account.",
     );
     en.insert(
         TranslationKey::ValorantProfileNotLinkedOther,
@@ -855,15 +860,15 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::ValorantProfileHiddenOther,
-        "This member has kept their VALORANT profile hidden in this server (Guild Profile Visibility is disabled).",
+        "This member has kept their VALORANT profile hidden in this Guild (Guild Profile Visibility is disabled).",
     );
     en.insert(
         TranslationKey::ValorantProfileVisibilityNoteHidden,
-        "Your profile is currently hidden from other members in this server. Use `/valorant visibility enable` to make it visible.",
+        "Your profile is currently hidden from other members in this Guild. Use `/riot visibility enable` to make it visible.",
     );
     en.insert(
         TranslationKey::ValorantProfileVisibilityNoteVisible,
-        "Your profile is visible to other members on the server leaderboard.",
+        "Your profile is visible to other members on the Guild leaderboard.",
     );
     en.insert(
         TranslationKey::ValorantProfileNotGuildMember,
@@ -875,7 +880,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::ValorantLeaderboardEmpty,
-        "No server members have enabled Guild Profile Visibility yet. Link your account with `/valorant link` and enable visibility with `/valorant visibility enable` to appear here!",
+        "No Guild members have enabled Guild Profile Visibility yet. Link your account with `/riot link` and enable visibility with `/riot visibility enable` to appear here!",
     );
     en.insert(
         TranslationKey::ValorantVisibilityTitle,
@@ -883,27 +888,27 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::ValorantVisibilityEnabled,
-        "Guild Profile Visibility has been enabled for this server. Your rank and stats will now be visible to members and on the server leaderboard.",
+        "Guild Profile Visibility has been enabled for this Guild. Your rank and stats will now be visible to members and on the Guild leaderboard.",
     );
     en.insert(
         TranslationKey::ValorantVisibilityDisabled,
-        "Guild Profile Visibility has been disabled for this server. Your rank and stats are now hidden from other members.",
+        "Guild Profile Visibility has been disabled for this Guild. Your rank and stats are now hidden from other members.",
     );
     en.insert(
         TranslationKey::ValorantVisibilityStatusEnabled,
-        "Guild Profile Visibility is currently **enabled** in this server.",
+        "Guild Profile Visibility is currently **enabled** in this Guild.",
     );
     en.insert(
         TranslationKey::ValorantVisibilityStatusDisabled,
-        "Guild Profile Visibility is currently **disabled** in this server.",
+        "Guild Profile Visibility is currently **disabled** in this Guild.",
     );
     en.insert(
         TranslationKey::ValorantVisibilityNotLinked,
-        "You must link your Riot account with `/valorant link` before configuring profile visibility.",
+        "You must link your Riot account with `/riot link` before configuring profile visibility.",
     );
     en.insert(
         TranslationKey::ValorantLinkSuccess,
-        "Riot account **{}** successfully linked! By default, your profile is hidden in all servers. Use `/valorant visibility enable` to show your stats in this server.",
+        "Riot account **{}** successfully linked! By default, your profile is hidden in all guilds. Use `/riot visibility enable` to show your stats in this Guild.",
     );
     en.insert(
         TranslationKey::ValorantLinkNotFound,
@@ -959,7 +964,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::ValorantMatchesNotLinkedSelf,
-        "You have not linked your Riot account yet. Use `/valorant link` to connect your account.",
+        "You have not linked your Riot account yet. Use `/riot link` to connect your account.",
     );
     en.insert(
         TranslationKey::ValorantMatchesNotLinkedOther,
@@ -1012,7 +1017,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(TranslationKey::LolProfileWinsLosses, "{}W {}L");
     en.insert(
         TranslationKey::LolProfileNotLinkedSelf,
-        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
+        "You have not linked a Riot account yet. Use `/riot link <riot_id>` to connect your account.",
     );
     en.insert(
         TranslationKey::LolProfileNotLinkedOther,
@@ -1044,7 +1049,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(TranslationKey::LolMatchesDuration, "Duration: {}m {}s");
     en.insert(
         TranslationKey::LolMatchesNotLinkedSelf,
-        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
+        "You have not linked a Riot account yet. Use `/riot link <riot_id>` to connect your account.",
     );
     en.insert(
         TranslationKey::LolMatchesNotLinkedOther,
@@ -1076,7 +1081,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     en.insert(
         TranslationKey::LolMasteryNotLinkedSelf,
-        "You have not linked a Riot account yet. Use `/valorant link <riot_id>` to connect your account.",
+        "You have not linked a Riot account yet. Use `/riot link <riot_id>` to connect your account.",
     );
     en.insert(
         TranslationKey::LolMasteryNotLinkedOther,
@@ -1109,6 +1114,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     en.insert(
         TranslationKey::LolInvalidPlatform,
         "Invalid LoL platform. Supported platforms: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`.",
+    );
+    en.insert(
+        TranslationKey::RiotApiUnauthorized,
+        "The bot's Riot API key has expired or is invalid (401 Unauthorized). If using a personal/development key, please refresh it on the Riot Developer Portal and update the bot configuration.",
     );
     translations.insert(Language::English, en);
 
@@ -1510,7 +1519,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::ValorantProfileNotLinkedSelf,
-        "Bạn chưa liên kết tài khoản Riot. Hãy dùng `/valorant link <riot_id>` để liên kết tài khoản.",
+        "Bạn chưa liên kết tài khoản Riot. Hãy dùng `/riot link <riot_id>` để liên kết tài khoản.",
     );
     vi.insert(
         TranslationKey::ValorantProfileNotLinkedOther,
@@ -1518,55 +1527,55 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::ValorantProfileHiddenOther,
-        "Thành viên này đang ẩn hồ sơ VALORANT trong máy chủ này (Guild Profile Visibility đang tắt).",
+        "Thành viên này đang ẩn hồ sơ VALORANT trong Guild này (Guild Profile Visibility đang tắt).",
     );
     vi.insert(
         TranslationKey::ValorantProfileVisibilityNoteHidden,
-        "Hồ sơ của bạn đang ẩn với các thành viên khác trong máy chủ này. Dùng `/valorant visibility enable` để hiển thị.",
+        "Hồ sơ của bạn đang ẩn với các thành viên khác trong Guild này. Dùng `/riot visibility enable` để hiển thị.",
     );
     vi.insert(
         TranslationKey::ValorantProfileVisibilityNoteVisible,
-        "Hồ sơ của bạn đang hiển thị cho các thành viên khác trên bảng xếp hạng máy chủ.",
+        "Hồ sơ của bạn đang hiển thị cho các thành viên khác trên bảng xếp hạng Guild.",
     );
     vi.insert(
         TranslationKey::ValorantProfileNotGuildMember,
-        "Người dùng được yêu cầu không phải là thành viên của máy chủ này.",
+        "Người dùng được yêu cầu không phải là thành viên của Guild này.",
     );
     vi.insert(
         TranslationKey::ValorantLeaderboardTitle,
-        "Bảng Xếp Hạng VALORANT Máy Chủ",
+        "Bảng Xếp Hạng VALORANT Guild",
     );
     vi.insert(
         TranslationKey::ValorantLeaderboardEmpty,
-        "Chưa có thành viên nào bật hiển thị hồ sơ trong máy chủ này. Hãy liên kết tài khoản bằng `/valorant link` và bật hiển thị với `/valorant visibility enable` để tham gia!",
+        "Chưa có thành viên nào bật hiển thị hồ sơ trong Guild này. Hãy liên kết tài khoản bằng `/riot link` và bật hiển thị với `/riot visibility enable` để tham gia!",
     );
     vi.insert(
         TranslationKey::ValorantVisibilityTitle,
-        "Quyền Riêng Tư Hồ Sơ Máy Chủ",
+        "Quyền Riêng Tư Hồ Sơ Guild",
     );
     vi.insert(
         TranslationKey::ValorantVisibilityEnabled,
-        "Đã bật hiển thị hồ sơ cho máy chủ này. Rank và chỉ số của bạn sẽ hiển thị cho các thành viên và trên bảng xếp hạng máy chủ.",
+        "Đã bật hiển thị hồ sơ cho Guild này. Rank và chỉ số của bạn sẽ hiển thị cho các thành viên và trên bảng xếp hạng Guild.",
     );
     vi.insert(
         TranslationKey::ValorantVisibilityDisabled,
-        "Đã tắt hiển thị hồ sơ cho máy chủ này. Rank và chỉ số của bạn hiện đã được ẩn với các thành viên khác.",
+        "Đã tắt hiển thị hồ sơ cho Guild này. Rank và chỉ số của bạn hiện đã được ẩn với các thành viên khác.",
     );
     vi.insert(
         TranslationKey::ValorantVisibilityStatusEnabled,
-        "Hiển thị hồ sơ hiện đang **bật** trong máy chủ này.",
+        "Hiển thị hồ sơ hiện đang **bật** trong Guild này.",
     );
     vi.insert(
         TranslationKey::ValorantVisibilityStatusDisabled,
-        "Hiển thị hồ sơ hiện đang **tắt** trong máy chủ này.",
+        "Hiển thị hồ sơ hiện đang **tắt** trong Guild này.",
     );
     vi.insert(
         TranslationKey::ValorantVisibilityNotLinked,
-        "Bạn cần liên kết tài khoản Riot bằng `/valorant link` trước khi cấu hình quyền riêng tư hiển thị.",
+        "Bạn cần liên kết tài khoản Riot bằng `/riot link` trước khi cấu hình quyền riêng tư hiển thị.",
     );
     vi.insert(
         TranslationKey::ValorantLinkSuccess,
-        "Đã liên kết thành công tài khoản Riot **{}**! Theo mặc định, hồ sơ của bạn sẽ ẩn ở mọi máy chủ. Dùng `/valorant visibility enable` để bật hiển thị tại máy chủ này.",
+        "Đã liên kết thành công tài khoản Riot **{}**! Theo mặc định, hồ sơ của bạn sẽ ẩn ở mọi Guild. Dùng `/riot visibility enable` để bật hiển thị tại Guild này.",
     );
     vi.insert(
         TranslationKey::ValorantLinkNotFound,
@@ -1602,7 +1611,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::ValorantUnlinkSuccess,
-        "Đã hủy liên kết tài khoản Riot và xóa toàn bộ cài đặt hiển thị trên các máy chủ.",
+        "Đã hủy liên kết tài khoản Riot và xóa toàn bộ cài đặt hiển thị trên các Guild.",
     );
     vi.insert(
         TranslationKey::ValorantUnlinkNotFound,
@@ -1622,7 +1631,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::ValorantMatchesNotLinkedSelf,
-        "Bạn chưa liên kết tài khoản Riot. Sử dụng `/valorant link` để kết nối tài khoản.",
+        "Bạn chưa liên kết tài khoản Riot. Sử dụng `/riot link` để kết nối tài khoản.",
     );
     vi.insert(
         TranslationKey::ValorantMatchesNotLinkedOther,
@@ -1675,7 +1684,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(TranslationKey::LolProfileWinsLosses, "{}T {}B");
     vi.insert(
         TranslationKey::LolProfileNotLinkedSelf,
-        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/valorant link <riot_id>` để liên kết tài khoản.",
+        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/riot link <riot_id>` để liên kết tài khoản.",
     );
     vi.insert(
         TranslationKey::LolProfileNotLinkedOther,
@@ -1713,7 +1722,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(TranslationKey::LolMatchesDuration, "Thời gian: {}m {}s");
     vi.insert(
         TranslationKey::LolMatchesNotLinkedSelf,
-        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/valorant link <riot_id>` để liên kết tài khoản.",
+        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/riot link <riot_id>` để liên kết tài khoản.",
     );
     vi.insert(
         TranslationKey::LolMatchesNotLinkedOther,
@@ -1745,7 +1754,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     vi.insert(
         TranslationKey::LolMasteryNotLinkedSelf,
-        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/valorant link <riot_id>` để liên kết tài khoản.",
+        "Bạn chưa liên kết tài khoản Riot. Dùng lệnh `/riot link <riot_id>` để liên kết tài khoản.",
     );
     vi.insert(
         TranslationKey::LolMasteryNotLinkedOther,
@@ -1778,6 +1787,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     vi.insert(
         TranslationKey::LolInvalidPlatform,
         "Nền tảng LoL không hợp lệ. Các nền tảng hỗ trợ: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`.",
+    );
+    vi.insert(
+        TranslationKey::RiotApiUnauthorized,
+        "Riot API key của bot đã hết hạn hoặc không hợp lệ (401 Unauthorized). Nếu đang dùng Development Key, vui lòng tạo lại key mới trên Riot Developer Portal và cập nhật cấu hình bot.",
     );
     translations.insert(Language::Vietnamese, vi);
 
@@ -2191,7 +2204,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(TranslationKey::ValorantProfileWinsLabel, "Act 勝利数");
     ja.insert(
         TranslationKey::ValorantProfileNotLinkedSelf,
-        "Riot アカウントがまだ連携されていません。`/valorant link <riot_id>` でアカウントを連携してください。",
+        "Riot アカウントがまだ連携されていません。`/riot link <riot_id>` でアカウントを連携してください。",
     );
     ja.insert(
         TranslationKey::ValorantProfileNotLinkedOther,
@@ -2199,55 +2212,55 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::ValorantProfileHiddenOther,
-        "このメンバーはこのサーバーで VALORANT プロフィールを非公開にしています (Guild Profile Visibility が無効)。",
+        "このメンバーはこのギルドで VALORANT プロフィールを非公開にしています (Guild Profile Visibility が無効)。",
     );
     ja.insert(
         TranslationKey::ValorantProfileVisibilityNoteHidden,
-        "あなたのプロフィールは現在このサーバーの他メンバーから非公開です。`/valorant visibility enable` で公開できます。",
+        "あなたのプロフィールは現在このギルドの他メンバーから非公開です。`/riot visibility enable` で公開できます。",
     );
     ja.insert(
         TranslationKey::ValorantProfileVisibilityNoteVisible,
-        "あなたのプロフィールはサーバーリーダーボードで公開されています。",
+        "あなたのプロフィールはギルドリーダーボードで公開されています。",
     );
     ja.insert(
         TranslationKey::ValorantProfileNotGuildMember,
-        "指定されたユーザーはこのサーバーのメンバーではありません。",
+        "指定されたユーザーはこのギルドのメンバーではありません。",
     );
     ja.insert(
         TranslationKey::ValorantLeaderboardTitle,
-        "サーバー VALORANT リーダーボード",
+        "ギルド VALORANT リーダーボード",
     );
     ja.insert(
         TranslationKey::ValorantLeaderboardEmpty,
-        "このサーバーでプロフィール公開を有効にしているメンバーがまだいません。`/valorant link` で連携し `/valorant visibility enable` で公開設定を行ってください！",
+        "このギルドでプロフィール公開を有効にしているメンバーがまだいません。`/riot link` で連携し `/riot visibility enable` で公開設定を行ってください！",
     );
     ja.insert(
         TranslationKey::ValorantVisibilityTitle,
-        "サーバープロフィール公開設定",
+        "ギルドプロフィール公開設定",
     );
     ja.insert(
         TranslationKey::ValorantVisibilityEnabled,
-        "このサーバーでのプロフィール公開を有効にしました。ランクと戦績がメンバーおよびリーダーボードに表示されます。",
+        "このギルドでのプロフィール公開を有効にしました。ランクと戦績がメンバーおよびリーダーボードに表示されます。",
     );
     ja.insert(
         TranslationKey::ValorantVisibilityDisabled,
-        "このサーバーでのプロフィール公開を無効にしました。ランクと戦績は非公開になりました。",
+        "このギルドでのプロフィール公開を無効にしました。ランクと戦績は非公開になりました。",
     );
     ja.insert(
         TranslationKey::ValorantVisibilityStatusEnabled,
-        "このサーバーでのプロフィール公開は現在 **有効** です。",
+        "このギルドでのプロフィール公開は現在 **有効** です。",
     );
     ja.insert(
         TranslationKey::ValorantVisibilityStatusDisabled,
-        "このサーバーでのプロフィール公開は現在 **無効** です。",
+        "このギルドでのプロフィール公開は現在 **無効** です。",
     );
     ja.insert(
         TranslationKey::ValorantVisibilityNotLinked,
-        "公開設定を行う前に、`/valorant link` で Riot アカウントを連携してください。",
+        "公開設定を行う前に、`/riot link` で Riot アカウントを連携してください。",
     );
     ja.insert(
         TranslationKey::ValorantLinkSuccess,
-        "Riot アカウント **{}** を連携しました！初期設定ではすべてのサーバーで非公開です。このサーバーで公開するには `/valorant visibility enable` を使用してください。",
+        "Riot アカウント **{}** を連携しました！初期設定ではすべてのギルドで非公開です。このギルドで公開するには `/riot visibility enable` を使用してください。",
     );
     ja.insert(
         TranslationKey::ValorantLinkNotFound,
@@ -2279,11 +2292,11 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::ValorantLeaderboardApiError,
-        "現在 Riot Games API からサーバー VALORANT リーダーボードを読み込めません。後でもう一度お試しください。",
+        "現在 Riot Games API からギルド VALORANT リーダーボードを読み込めません。後でもう一度お試しください。",
     );
     ja.insert(
         TranslationKey::ValorantUnlinkSuccess,
-        "Riot アカウントの連携を解除し、すべてのサーバー公開設定を削除しました。",
+        "Riot アカウントの連携を解除し、すべてのギルド公開設定を削除しました。",
     );
     ja.insert(
         TranslationKey::ValorantUnlinkNotFound,
@@ -2300,7 +2313,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::ValorantMatchesNotLinkedSelf,
-        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+        "まだRiotアカウントを連携していません。`/riot link` でアカウントを連携してください。",
     );
     ja.insert(
         TranslationKey::ValorantMatchesNotLinkedOther,
@@ -2353,7 +2366,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(TranslationKey::LolProfileWinsLosses, "{}勝 {}敗");
     ja.insert(
         TranslationKey::LolProfileNotLinkedSelf,
-        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+        "まだRiotアカウントを連携していません。`/riot link` でアカウントを連携してください。",
     );
     ja.insert(
         TranslationKey::LolProfileNotLinkedOther,
@@ -2388,7 +2401,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(TranslationKey::LolMatchesDuration, "所要時間: {}分{}秒");
     ja.insert(
         TranslationKey::LolMatchesNotLinkedSelf,
-        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+        "まだRiotアカウントを連携していません。`/riot link` でアカウントを連携してください。",
     );
     ja.insert(
         TranslationKey::LolMatchesNotLinkedOther,
@@ -2417,7 +2430,7 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     );
     ja.insert(
         TranslationKey::LolMasteryNotLinkedSelf,
-        "まだRiotアカウントを連携していません。`/valorant link` でアカウントを連携してください。",
+        "まだRiotアカウントを連携していません。`/riot link` でアカウントを連携してください。",
     );
     ja.insert(
         TranslationKey::LolMasteryNotLinkedOther,
@@ -2450,6 +2463,10 @@ static TRANSLATIONS: LazyLock<HashMap<Language, TranslationMap>> = LazyLock::new
     ja.insert(
         TranslationKey::LolInvalidPlatform,
         "無効な LoL プラットフォームです。サポート対象: `vn2`, `na1`, `euw1`, `kr`, `jp1`, `oc1`, `eun1`, `br1`, `la1`, `la2`, `tr1`, `ru`, `sg2`, `ph2`, `th2`, `tw2`。",
+    );
+    ja.insert(
+        TranslationKey::RiotApiUnauthorized,
+        "ボットの Riot API キーが無効または有効期限切れです（401 Unauthorized）。Developer Key を使用している場合は、Riot Developer Portal で再生成してボット設定を更新してください。",
     );
     translations.insert(Language::Japanese, ja);
 
