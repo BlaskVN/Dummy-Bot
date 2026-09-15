@@ -39,29 +39,16 @@ pub async fn profile(
     ctx: Context<'_>,
     #[description = "Member whose League of Legends profile to view (defaults to yourself)"]
     member: Option<serenity::Member>,
-    #[description = "LoL region/platform (e.g. vn2, na1, euw1, kr, jp1, oc1). Defaults to linked account region"]
-    platform: Option<String>,
+    #[description = "LoL region/platform (defaults to linked account region)"] platform: Option<
+        crate::lol::LolPlatform,
+    >,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let target_platform = match platform {
-        Some(ref p) => match crate::lol::LolPlatform::try_parse(p) {
-            Some(plat) => Some(plat),
-            None => {
-                ui::reply(
-                    ctx,
-                    Tone::Warning,
-                    t(lang, TranslationKey::LolInvalidPlatform),
-                )
-                .await?;
-                return Ok(());
-            }
-        },
-        None => None,
-    };
+    let target_platform = platform;
 
     let Some(target_user_id) = resolve_target_user(ctx, member.as_ref(), guild_id, lang).await?
     else {
@@ -98,6 +85,15 @@ pub async fn profile(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::LolProfileForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(LolProfileError::ApiUnauthorized) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::RiotApiUnauthorized),
             )
             .await?;
             return Ok(());
@@ -230,29 +226,16 @@ pub async fn matches(
     ctx: Context<'_>,
     #[description = "Member whose League of Legends matches to view (defaults to yourself)"]
     member: Option<serenity::Member>,
-    #[description = "LoL region/platform (e.g. vn2, na1, euw1, kr, jp1, oc1). Defaults to linked account region"]
-    platform: Option<String>,
+    #[description = "LoL region/platform (defaults to linked account region)"] platform: Option<
+        crate::lol::LolPlatform,
+    >,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let target_platform = match platform {
-        Some(ref p) => match crate::lol::LolPlatform::try_parse(p) {
-            Some(plat) => Some(plat),
-            None => {
-                ui::reply(
-                    ctx,
-                    Tone::Warning,
-                    t(lang, TranslationKey::LolInvalidPlatform),
-                )
-                .await?;
-                return Ok(());
-            }
-        },
-        None => None,
-    };
+    let target_platform = platform;
 
     let target_user_id = match resolve_target_user(ctx, member.as_ref(), guild_id, lang).await? {
         Some(id) => id,
@@ -295,6 +278,15 @@ pub async fn matches(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::LolMatchesForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(LolMatchesError::ApiUnauthorized) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::RiotApiUnauthorized),
             )
             .await?;
             return Ok(());
@@ -400,29 +392,16 @@ pub async fn mastery(
     ctx: Context<'_>,
     #[description = "Member whose champion masteries to view (defaults to yourself)"]
     member: Option<serenity::Member>,
-    #[description = "LoL region/platform (e.g. vn2, na1, euw1, kr, jp1, oc1). Defaults to linked account region"]
-    platform: Option<String>,
+    #[description = "LoL region/platform (defaults to linked account region)"] platform: Option<
+        crate::lol::LolPlatform,
+    >,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let target_platform = match platform {
-        Some(ref p) => match crate::lol::LolPlatform::try_parse(p) {
-            Some(plat) => Some(plat),
-            None => {
-                ui::reply(
-                    ctx,
-                    Tone::Warning,
-                    t(lang, TranslationKey::LolInvalidPlatform),
-                )
-                .await?;
-                return Ok(());
-            }
-        },
-        None => None,
-    };
+    let target_platform = platform;
 
     let target_user_id = match resolve_target_user(ctx, member.as_ref(), guild_id, lang).await? {
         Some(id) => id,
@@ -465,6 +444,15 @@ pub async fn mastery(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::LolMasteryForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(LolMasteryError::ApiUnauthorized) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::RiotApiUnauthorized),
             )
             .await?;
             return Ok(());
@@ -581,6 +569,7 @@ mod tests {
             let param1 = &sub.parameters[1];
             assert_eq!(param1.name, "platform");
             assert!(!param1.required);
+            assert_eq!(param1.choices.len(), 16);
             assert!(
                 !param1.description.as_deref().unwrap_or("").is_empty(),
                 "platform parameter description must not be empty"

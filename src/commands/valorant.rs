@@ -1,8 +1,8 @@
 use crate::i18n::{TranslationKey, t, tf};
 use crate::ui::{self, Tone};
 use crate::valorant::{
-    PlatformStatus, RiotRegion, StatusIncident, ValorantLeaderboardError, ValorantLinkError,
-    ValorantMatchesError, ValorantProfileError, ValorantStatusError, ValorantVisibilityError,
+    PlatformStatus, RiotRegion, StatusIncident, ValorantLeaderboardError, ValorantMatchesError,
+    ValorantProfileError, ValorantStatusError,
 };
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
@@ -10,15 +10,7 @@ use poise::serenity_prelude as serenity;
 /// VALORANT player statistics and Guild leaderboard management.
 #[poise::command(
     slash_command,
-    subcommands(
-        "profile",
-        "leaderboard",
-        "visibility",
-        "link",
-        "unlink",
-        "matches",
-        "status"
-    ),
+    subcommands("profile", "leaderboard", "matches", "status"),
     guild_only
 )]
 pub async fn valorant(_ctx: Context<'_>) -> Result<(), Error> {
@@ -97,6 +89,15 @@ pub async fn profile(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::ValorantProfileForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantProfileError::ApiUnauthorized) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::RiotApiUnauthorized),
             )
             .await?;
             return Ok(());
@@ -200,6 +201,15 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
             .await?;
             return Ok(());
         }
+        Err(ValorantLeaderboardError::ApiUnauthorized) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::RiotApiUnauthorized),
+            )
+            .await?;
+            return Ok(());
+        }
         Err(ValorantLeaderboardError::ApiError(_)) => {
             ui::reply(
                 ctx,
@@ -239,188 +249,6 @@ pub async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
         .description(lines.join("\n"));
 
     ctx.send(ui::embed_reply(embed)).await?;
-    Ok(())
-}
-
-/// Manage Guild Profile Visibility consent for this server.
-#[poise::command(
-    slash_command,
-    subcommands("enable", "disable", "visibility_status"),
-    guild_only
-)]
-pub async fn visibility(_ctx: Context<'_>) -> Result<(), Error> {
-    Ok(())
-}
-
-/// Enable Guild Profile Visibility for this server.
-#[poise::command(slash_command, guild_only)]
-pub async fn enable(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx
-        .guild_id()
-        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
-    let lang = ctx.data().language(guild_id).await;
-
-    match ctx
-        .data()
-        .valorant_service()
-        .enable_visibility(guild_id, ctx.author().id)
-        .await
-    {
-        Ok(()) => {
-            ui::reply(
-                ctx,
-                Tone::Success,
-                t(lang, TranslationKey::ValorantVisibilityEnabled),
-            )
-            .await?;
-        }
-        Err(ValorantVisibilityError::NotLinked) => {
-            ui::reply(
-                ctx,
-                Tone::Warning,
-                t(lang, TranslationKey::ValorantVisibilityNotLinked),
-            )
-            .await?;
-        }
-        Err(ValorantVisibilityError::Database(err)) => return Err(err.into()),
-    }
-
-    Ok(())
-}
-
-/// Disable Guild Profile Visibility for this server.
-#[poise::command(slash_command, guild_only)]
-pub async fn disable(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx
-        .guild_id()
-        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
-    let lang = ctx.data().language(guild_id).await;
-
-    ctx.data()
-        .valorant_service()
-        .disable_visibility(guild_id, ctx.author().id)
-        .await?;
-
-    ui::reply(
-        ctx,
-        Tone::Success,
-        t(lang, TranslationKey::ValorantVisibilityDisabled),
-    )
-    .await?;
-    Ok(())
-}
-
-/// Check your current Guild Profile Visibility status in this server.
-#[poise::command(slash_command, guild_only, rename = "status")]
-pub async fn visibility_status(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx
-        .guild_id()
-        .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
-    let lang = ctx.data().language(guild_id).await;
-
-    let is_visible = ctx
-        .data()
-        .valorant_service()
-        .get_visibility_status(guild_id, ctx.author().id)
-        .await?;
-
-    let key = if is_visible {
-        TranslationKey::ValorantVisibilityStatusEnabled
-    } else {
-        TranslationKey::ValorantVisibilityStatusDisabled
-    };
-
-    ui::reply(ctx, Tone::Primary, t(lang, key)).await?;
-    Ok(())
-}
-
-/// Link a Riot account to your Discord profile.
-#[poise::command(slash_command, guild_only)]
-pub async fn link(
-    ctx: Context<'_>,
-    #[description = "Your Riot ID in GameName#TAG format (e.g. TenZ#0001)"] riot_id: String,
-    #[description = "Your account region (ap, na, eu, kr, latam, br)"] region: Option<String>,
-) -> Result<(), Error> {
-    let lang = match ctx.guild_id() {
-        Some(guild_id) => ctx.data().language(guild_id).await,
-        None => ctx.data().default_language(),
-    };
-
-    match ctx
-        .data()
-        .valorant_service()
-        .link_account(ctx.author().id, &riot_id, region.as_deref())
-        .await
-    {
-        Ok(linked) => {
-            let full_id = format!("{}#{}", linked.game_name, linked.tag_line);
-            let msg = tf(lang, TranslationKey::ValorantLinkSuccess, &[&full_id]);
-            ui::reply(ctx, Tone::Success, msg).await?;
-        }
-        Err(ValorantLinkError::InvalidFormat) => {
-            ui::reply(
-                ctx,
-                Tone::Error,
-                t(lang, TranslationKey::ValorantLinkInvalidFormat),
-            )
-            .await?;
-        }
-        Err(ValorantLinkError::InvalidRegion) => {
-            ui::reply(
-                ctx,
-                Tone::Error,
-                t(lang, TranslationKey::ValorantLinkInvalidRegion),
-            )
-            .await?;
-        }
-        Err(ValorantLinkError::AccountNotFound(full_id)) => {
-            let msg = tf(lang, TranslationKey::ValorantLinkNotFound, &[&full_id]);
-            ui::reply(ctx, Tone::Error, msg).await?;
-        }
-        Err(ValorantLinkError::ApiError(_)) => {
-            ui::reply(
-                ctx,
-                Tone::Error,
-                t(lang, TranslationKey::ValorantLinkApiError),
-            )
-            .await?;
-        }
-        Err(ValorantLinkError::Database(err)) => return Err(err.into()),
-    }
-
-    Ok(())
-}
-
-/// Unlink your Riot account from your Discord profile.
-#[poise::command(slash_command, guild_only)]
-pub async fn unlink(ctx: Context<'_>) -> Result<(), Error> {
-    let lang = match ctx.guild_id() {
-        Some(guild_id) => ctx.data().language(guild_id).await,
-        None => ctx.data().default_language(),
-    };
-
-    let removed = ctx
-        .data()
-        .valorant_service()
-        .unlink_account(ctx.author().id)
-        .await?;
-
-    if removed {
-        ui::reply(
-            ctx,
-            Tone::Success,
-            t(lang, TranslationKey::ValorantUnlinkSuccess),
-        )
-        .await?;
-    } else {
-        ui::reply(
-            ctx,
-            Tone::Warning,
-            t(lang, TranslationKey::ValorantUnlinkNotFound),
-        )
-        .await?;
-    }
-
     Ok(())
 }
 
@@ -481,6 +309,15 @@ pub async fn matches(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::ValorantMatchesForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantMatchesError::ApiUnauthorized) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::RiotApiUnauthorized),
             )
             .await?;
             return Ok(());
@@ -621,31 +458,16 @@ pub fn format_platform_status_content(
 #[poise::command(slash_command, guild_only)]
 pub async fn status(
     ctx: Context<'_>,
-    #[description = "Region to check (ap, na, eu, kr, latam, br). Defaults to bot default."]
-    region: Option<String>,
+    #[description = "Region to check (defaults to bot default)"] region: Option<RiotRegion>,
 ) -> Result<(), Error> {
     let guild_id = ctx
         .guild_id()
         .ok_or_else(|| anyhow::anyhow!("Not in a guild"))?;
     let lang = ctx.data().language(guild_id).await;
 
-    let riot_region = match region {
-        Some(ref r) => match RiotRegion::try_parse(r) {
-            Some(reg) => reg,
-            None => {
-                ui::reply(
-                    ctx,
-                    Tone::Warning,
-                    t(lang, TranslationKey::ValorantStatusInvalidRegion),
-                )
-                .await?;
-                return Ok(());
-            }
-        },
-        None => {
-            RiotRegion::try_parse(&ctx.data().config.riot_default_region).unwrap_or(RiotRegion::Ap)
-        }
-    };
+    let riot_region = region.unwrap_or_else(|| {
+        RiotRegion::try_parse(&ctx.data().config.riot_default_region).unwrap_or(RiotRegion::Ap)
+    });
 
     let status_data = match ctx
         .data()
@@ -659,6 +481,15 @@ pub async fn status(
                 ctx,
                 Tone::Warning,
                 t(lang, TranslationKey::ValorantStatusForbidden),
+            )
+            .await?;
+            return Ok(());
+        }
+        Err(ValorantStatusError::ApiUnauthorized) => {
+            ui::reply(
+                ctx,
+                Tone::Warning,
+                t(lang, TranslationKey::RiotApiUnauthorized),
             )
             .await?;
             return Ok(());
@@ -694,31 +525,22 @@ mod tests {
         let cmd = valorant();
         assert_eq!(cmd.name, "valorant");
         assert!(cmd.slash_action.is_some());
-        assert_eq!(cmd.subcommands.len(), 7);
+        assert_eq!(cmd.subcommands.len(), 4);
 
         let sub_names: Vec<_> = cmd.subcommands.iter().map(|s| s.name.as_str()).collect();
         assert!(sub_names.contains(&"profile"));
         assert!(sub_names.contains(&"leaderboard"));
-        assert!(sub_names.contains(&"visibility"));
-        assert!(sub_names.contains(&"link"));
-        assert!(sub_names.contains(&"unlink"));
         assert!(sub_names.contains(&"matches"));
         assert!(sub_names.contains(&"status"));
 
-        let vis_cmd = cmd
-            .subcommands
+        let status_cmd = cmd.subcommands.iter().find(|s| s.name == "status").unwrap();
+        let status_region = status_cmd
+            .parameters
             .iter()
-            .find(|s| s.name == "visibility")
+            .find(|p| p.name == "region")
             .unwrap();
-        assert_eq!(vis_cmd.subcommands.len(), 3);
-        let vis_subs: Vec<_> = vis_cmd
-            .subcommands
-            .iter()
-            .map(|s| s.name.as_str())
-            .collect();
-        assert!(vis_subs.contains(&"enable"));
-        assert!(vis_subs.contains(&"disable"));
-        assert!(vis_subs.contains(&"status"));
+        assert!(!status_region.required);
+        assert_eq!(status_region.choices.len(), 6);
     }
 
     #[test]

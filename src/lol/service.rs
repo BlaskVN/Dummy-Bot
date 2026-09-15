@@ -24,6 +24,7 @@ pub enum LolDomainError {
     NotLinked { is_self: bool },
     HiddenOther,
     ApiForbidden,
+    ApiUnauthorized,
     ApiNotFound,
     ApiError(anyhow::Error),
     Database(anyhow::Error),
@@ -37,6 +38,7 @@ impl std::fmt::Display for LolDomainError {
             }
             Self::HiddenOther => write!(f, "Target member profile is hidden in this guild"),
             Self::ApiForbidden => write!(f, "LoL API access forbidden"),
+            Self::ApiUnauthorized => write!(f, "LoL API unauthorized or key expired (401)"),
             Self::ApiNotFound => write!(f, "LoL summoner not found on platform"),
             Self::ApiError(err) => write!(f, "LoL API error: {err}"),
             Self::Database(err) => write!(f, "Database error: {err}"),
@@ -138,26 +140,28 @@ impl LolService {
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolProfileError::ApiForbidden),
+                    Some(LolApiError::Unauthorized) => {
+                        return Err(LolProfileError::ApiUnauthorized);
+                    }
                     Some(LolApiError::NotFound) => return Err(LolProfileError::ApiNotFound),
                     _ => return Err(LolProfileError::ApiError(err)),
                 }
             }
         };
 
-        let league_entries = match self
-            .api
-            .get_league_entries(platform, &summoner.summoner_id, &account.puuid)
-            .await
-        {
+        let league_entries = match self.api.get_league_entries(platform, &account.puuid).await {
             Ok(entries) => entries,
             Err(err) => {
                 tracing::warn!(
                     err = %err,
-                    summoner_id = %summoner.summoner_id,
+                    puuid = %account.puuid,
                     "Failed to load LoL league entries"
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolProfileError::ApiForbidden),
+                    Some(LolApiError::Unauthorized) => {
+                        return Err(LolProfileError::ApiUnauthorized);
+                    }
                     _ => return Err(LolProfileError::ApiError(err)),
                 }
             }
@@ -215,6 +219,9 @@ impl LolService {
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolMatchesError::ApiForbidden),
+                    Some(LolApiError::Unauthorized) => {
+                        return Err(LolMatchesError::ApiUnauthorized);
+                    }
                     Some(LolApiError::NotFound) => return Err(LolMatchesError::ApiNotFound),
                     _ => return Err(LolMatchesError::ApiError(err)),
                 }
@@ -262,6 +269,9 @@ impl LolService {
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolMasteryError::ApiForbidden),
+                    Some(LolApiError::Unauthorized) => {
+                        return Err(LolMasteryError::ApiUnauthorized);
+                    }
                     Some(LolApiError::NotFound) => return Err(LolMasteryError::ApiNotFound),
                     _ => return Err(LolMasteryError::ApiError(err)),
                 }
@@ -278,6 +288,9 @@ impl LolService {
                 );
                 match err.downcast_ref::<LolApiError>() {
                     Some(LolApiError::Forbidden) => return Err(LolMasteryError::ApiForbidden),
+                    Some(LolApiError::Unauthorized) => {
+                        return Err(LolMasteryError::ApiUnauthorized);
+                    }
                     Some(LolApiError::NotFound) => return Err(LolMasteryError::ApiNotFound),
                     _ => return Err(LolMasteryError::ApiError(err)),
                 }
@@ -340,7 +353,6 @@ mod tests {
         fn get_league_entries<'a>(
             &'a self,
             _platform: LolPlatform,
-            _summoner_id: &'a str,
             _puuid: &'a str,
         ) -> BoxFuture<'a, Result<Vec<LolLeagueEntry>>> {
             Box::pin(async move { Err(anyhow::Error::new(LolApiError::Forbidden)) })

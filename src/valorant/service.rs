@@ -17,6 +17,7 @@ pub enum ValorantMatchesError {
     NotLinkedOther,
     HiddenOther,
     ApiForbidden,
+    ApiUnauthorized,
     ApiError(anyhow::Error),
     Database(anyhow::Error),
 }
@@ -28,6 +29,7 @@ impl std::fmt::Display for ValorantMatchesError {
             Self::NotLinkedOther => write!(f, "Target member Riot account not linked"),
             Self::HiddenOther => write!(f, "Target member profile is hidden in this guild"),
             Self::ApiForbidden => write!(f, "Riot API access forbidden"),
+            Self::ApiUnauthorized => write!(f, "Riot API unauthorized or key expired (401)"),
             Self::ApiError(err) => write!(f, "Riot API error: {err}"),
             Self::Database(err) => write!(f, "Database error: {err}"),
         }
@@ -48,6 +50,8 @@ pub enum ValorantLinkError {
     InvalidFormat,
     InvalidRegion,
     AccountNotFound(String),
+    ApiForbidden,
+    ApiUnauthorized,
     ApiError(anyhow::Error),
     Database(anyhow::Error),
 }
@@ -58,6 +62,8 @@ impl std::fmt::Display for ValorantLinkError {
             Self::InvalidFormat => write!(f, "Invalid Riot ID format (must be GameName#TAG)"),
             Self::InvalidRegion => write!(f, "Invalid region specified"),
             Self::AccountNotFound(id) => write!(f, "Riot account not found: {id}"),
+            Self::ApiForbidden => write!(f, "Riot API access forbidden"),
+            Self::ApiUnauthorized => write!(f, "Riot API unauthorized or key expired (401)"),
             Self::ApiError(err) => write!(f, "Riot API error: {err}"),
             Self::Database(err) => write!(f, "Database error: {err}"),
         }
@@ -79,6 +85,7 @@ pub enum ValorantProfileError {
     NotLinked { is_self: bool },
     HiddenOther,
     ApiForbidden,
+    ApiUnauthorized,
     ApiUnranked,
     ApiError(anyhow::Error),
     Database(anyhow::Error),
@@ -92,6 +99,7 @@ impl std::fmt::Display for ValorantProfileError {
             }
             Self::HiddenOther => write!(f, "User profile is private in this guild"),
             Self::ApiForbidden => write!(f, "Riot API access forbidden"),
+            Self::ApiUnauthorized => write!(f, "Riot API unauthorized or key expired (401)"),
             Self::ApiUnranked => write!(f, "Player has no ranked data in this episode/act"),
             Self::ApiError(err) => write!(f, "Failed to load player ranked data: {err}"),
             Self::Database(err) => write!(f, "Database error: {err}"),
@@ -111,6 +119,7 @@ pub struct ValorantLeaderboardEntry {
 pub enum ValorantLeaderboardError {
     Empty,
     ApiForbidden,
+    ApiUnauthorized,
     ApiError(anyhow::Error),
     Database(anyhow::Error),
 }
@@ -120,6 +129,7 @@ impl std::fmt::Display for ValorantLeaderboardError {
         match self {
             Self::Empty => write!(f, "No members have shared their profile in this guild"),
             Self::ApiForbidden => write!(f, "Riot API access forbidden"),
+            Self::ApiUnauthorized => write!(f, "Riot API unauthorized or key expired (401)"),
             Self::ApiError(err) => write!(f, "Failed to load leaderboard data: {err}"),
             Self::Database(err) => write!(f, "Database error: {err}"),
         }
@@ -154,6 +164,7 @@ impl From<anyhow::Error> for ValorantVisibilityError {
 #[derive(Debug)]
 pub enum ValorantStatusError {
     ApiForbidden,
+    ApiUnauthorized,
     ApiError(anyhow::Error),
 }
 
@@ -161,6 +172,7 @@ impl std::fmt::Display for ValorantStatusError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ApiForbidden => write!(f, "Riot API access forbidden"),
+            Self::ApiUnauthorized => write!(f, "Riot API unauthorized or key expired (401)"),
             Self::ApiError(err) => write!(f, "Failed to load platform status: {err}"),
         }
     }
@@ -215,6 +227,12 @@ impl ValorantService {
                     let full_id = format!("{game_name}#{tag_line}");
                     return Err(ValorantLinkError::AccountNotFound(full_id));
                 }
+                if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
+                    return Err(ValorantLinkError::ApiForbidden);
+                }
+                if let Some(RiotApiError::Unauthorized) = err.downcast_ref::<RiotApiError>() {
+                    return Err(ValorantLinkError::ApiUnauthorized);
+                }
 
                 tracing::warn!(
                     %err,
@@ -253,7 +271,6 @@ impl ValorantService {
         target_id: UserId,
     ) -> Result<ValorantProfile, ValorantProfileError> {
         let is_self = requester_id == target_id;
-
         let account = match get_linked_account(&self.pool, target_id)
             .await
             .map_err(ValorantProfileError::Database)?
@@ -286,6 +303,9 @@ impl ValorantService {
                 match err.downcast_ref::<RiotApiError>() {
                     Some(RiotApiError::Forbidden) => {
                         return Err(ValorantProfileError::ApiForbidden);
+                    }
+                    Some(RiotApiError::Unauthorized) => {
+                        return Err(ValorantProfileError::ApiUnauthorized);
                     }
                     Some(RiotApiError::NotFound) => return Err(ValorantProfileError::ApiUnranked),
                     _ => return Err(ValorantProfileError::ApiError(err)),
@@ -335,6 +355,10 @@ impl ValorantService {
                     Err(err) => {
                         if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
                             had_forbidden = true;
+                        }
+                        if let Some(RiotApiError::Unauthorized) = err.downcast_ref::<RiotApiError>()
+                        {
+                            return Err(ValorantLeaderboardError::ApiUnauthorized);
                         }
                         tracing::warn!(
                             %err,
@@ -450,6 +474,9 @@ impl ValorantService {
                 if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
                     return Err(ValorantMatchesError::ApiForbidden);
                 }
+                if let Some(RiotApiError::Unauthorized) = err.downcast_ref::<RiotApiError>() {
+                    return Err(ValorantMatchesError::ApiUnauthorized);
+                }
                 return Err(ValorantMatchesError::ApiError(err));
             }
         };
@@ -472,6 +499,9 @@ impl ValorantService {
             .map_err(|err| {
                 if let Some(RiotApiError::Forbidden) = err.downcast_ref::<RiotApiError>() {
                     ValorantStatusError::ApiForbidden
+                } else if let Some(RiotApiError::Unauthorized) = err.downcast_ref::<RiotApiError>()
+                {
+                    ValorantStatusError::ApiUnauthorized
                 } else {
                     ValorantStatusError::ApiError(err)
                 }
@@ -551,6 +581,7 @@ mod tests {
                         Ok(status) => Ok(status.clone()),
                         Err(RiotApiError::NotFound) => Err(RiotApiError::NotFound.into()),
                         Err(RiotApiError::Forbidden) => Err(RiotApiError::Forbidden.into()),
+                        Err(RiotApiError::Unauthorized) => Err(RiotApiError::Unauthorized.into()),
                         Err(RiotApiError::Api { status, message }) => Err(RiotApiError::Api {
                             status: *status,
                             message: message.clone(),
@@ -601,6 +632,9 @@ mod tests {
                     }
                     Some(Err(RiotApiError::Forbidden)) => {
                         Err(anyhow::Error::new(RiotApiError::Forbidden))
+                    }
+                    Some(Err(RiotApiError::Unauthorized)) => {
+                        Err(anyhow::Error::new(RiotApiError::Unauthorized))
                     }
                     Some(Err(e)) => Err(anyhow::anyhow!("{e}")),
                     None => Ok(
